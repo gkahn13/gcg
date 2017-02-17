@@ -44,7 +44,6 @@ class AnalyzeRNNCritic(object):
         return d['policy']
 
     def _load_itr(self, itr):
-
         graph = tf.Graph()
         with graph.as_default():
             sess = tf.Session(graph=graph)
@@ -163,7 +162,9 @@ class AnalyzeRNNCritic(object):
         plt.close(f)
 
     def _plot_rollouts(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train):
-        env = env_itrs[0].wrapped_env
+        env = env_itrs[0]
+        while hasattr(env, 'wrapped_env'):
+            env = env.wrapped_env
         if type(env) == PointEnv:
             self._plot_rollouts_PointEnv(train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train)
         elif type(env) == GymEnv:

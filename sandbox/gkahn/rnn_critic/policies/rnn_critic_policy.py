@@ -51,9 +51,7 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
 
         self._get_action_preprocess = self._get_action_setup()
 
-        # super(RNNCriticPolicy, self).__init__(env_spec)
         Policy.__init__(self, env_spec)
-        # Parameterized.__init__(self, sess=self._tf_sess)
 
     ###########################
     ### TF graph operations ###
