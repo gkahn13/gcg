@@ -11,7 +11,7 @@ from rllab.core.serializable import Serializable
 import rllab.misc.logger as logger
 
 from sandbox.rocky.tf.policies.base import Policy
-from sandbox.gkahn.tf.core.parameterized import Parameterized
+from sandbox.rocky.tf.core.parameterized import Parameterized
 
 class RNNCriticPolicy(Policy, Parameterized, Serializable):
     def __init__(self,
@@ -47,13 +47,13 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
             logger.log('RNNCriticPolicy\t{0}: {1}'.format(attr, getattr(self, attr)))
 
         self._tf_obs_ph, self._tf_actions_ph, self._tf_rewards_ph, self._d_preprocess, \
-            self._tf_rewards, self._tf_cost, self._tf_opt, self._tf_graph, self._tf_sess, self._tf_saver = self._graph_setup()
+            self._tf_rewards, self._tf_cost, self._tf_opt, self._tf_sess, self._tf_saver = self._graph_setup()
 
         self._get_action_preprocess = self._get_action_setup()
 
         # super(RNNCriticPolicy, self).__init__(env_spec)
         Policy.__init__(self, env_spec)
-        Parameterized.__init__(self, sess=self._tf_sess)
+        # Parameterized.__init__(self, sess=self._tf_sess)
 
     ###########################
     ### TF graph operations ###
@@ -130,24 +130,22 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
         tf_sess.run([tf.initialize_all_variables()])
 
     def _graph_setup(self):
-        tf_graph = tf.Graph()
-        with tf_graph.as_default():
-            tf_sess = tf.Session(graph=tf_graph)
+        tf_sess = tf.get_default_session()
 
-            tf_obs_ph, tf_actions_ph, tf_rewards_ph = self._graph_inputs_outputs_from_placeholders()
-            d_preprocess = self._graph_preprocess_from_placeholders()
-            tf_rewards = self._graph_inference(tf_obs_ph, tf_actions_ph, d_preprocess)
-            tf_cost, tf_mse = self._graph_cost(tf_rewards_ph, tf_rewards)
-            tf_opt = self._graph_optimize(tf_cost)
+        tf_obs_ph, tf_actions_ph, tf_rewards_ph = self._graph_inputs_outputs_from_placeholders()
+        d_preprocess = self._graph_preprocess_from_placeholders()
+        tf_rewards = self._graph_inference(tf_obs_ph, tf_actions_ph, d_preprocess)
+        tf_cost, tf_mse = self._graph_cost(tf_rewards_ph, tf_rewards)
+        tf_opt = self._graph_optimize(tf_cost)
 
-            self._graph_init_vars(tf_sess)
+        self._graph_init_vars(tf_sess)
 
-            merged = tf.merge_all_summaries()
-            writer = tf.train.SummaryWriter('/tmp', graph_def=tf_sess.graph_def)
+        merged = tf.merge_all_summaries()
+        writer = tf.train.SummaryWriter('/tmp', graph_def=tf_sess.graph_def)
 
-            tf_saver = tf.train.Saver(max_to_keep=None)
+        tf_saver = tf.train.Saver(max_to_keep=None)
 
-        return tf_obs_ph, tf_actions_ph, tf_rewards_ph, d_preprocess, tf_rewards, tf_cost, tf_opt, tf_graph, tf_sess, tf_saver
+        return tf_obs_ph, tf_actions_ph, tf_rewards_ph, d_preprocess, tf_rewards, tf_cost, tf_opt, tf_sess, tf_saver
 
     def _graph_set_preprocess(self, replay_pool):
         obs_mean, obs_orth, actions_mean, actions_orth, rewards_mean, rewards_orth = replay_pool.get_whitening()
@@ -173,8 +171,7 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
         :type replay_pool: RNNCriticReplayPool
         """
         if self._reset_every_train:
-            with self._tf_graph.as_default():
-                self._graph_init_vars(self._tf_sess)
+            self._graph_init_vars(self._tf_sess)
 
         self._graph_set_preprocess(replay_pool)
 

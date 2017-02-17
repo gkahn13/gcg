@@ -44,11 +44,16 @@ class AnalyzeRNNCritic(object):
         return d['policy']
 
     def _load_itr(self, itr):
-        d = joblib.load(self._itr_file(itr))
-        train_log = d['train_log']
-        rollouts = d['rollouts']
-        env = d['env']
-        d['policy'].terminate()
+
+        graph = tf.Graph()
+        with graph.as_default():
+            sess = tf.Session(graph=graph)
+            with sess.as_default():
+                d = joblib.load(self._itr_file(itr))
+                train_log = d['train_log']
+                rollouts = d['rollouts']
+                env = d['env']
+                d['policy'].terminate()
 
         return train_log, rollouts, env
 
@@ -73,16 +78,20 @@ class AnalyzeRNNCritic(object):
 
         itr = 0
         while os.path.exists(self._itr_file(itr)):
-            env = env_itrs[itr]
-            policy = self._load_itr_policy(itr)
+            graph = tf.Graph()
+            with graph.as_default():
+                sess = tf.Session(graph=graph)
+                with sess.as_default():
+                    env = env_itrs[itr]
+                    policy = self._load_itr_policy(itr)
 
-            rollouts = []
-            for _ in range(50):
-                path = rollout_policy(env, policy, max_path_length=env.horizon)
-                rollout = Rollout()
-                for obs, action, reward in zip(path['observations'], path['actions'], path['rewards']):
-                    rollout.add(obs, action, reward, False)
-                rollouts.append(rollout)
+                    rollouts = []
+                    for _ in range(50):
+                        path = rollout_policy(env, policy, max_path_length=env.horizon)
+                        rollout = Rollout()
+                        for obs, action, reward in zip(path['observations'], path['actions'], path['rewards']):
+                            rollout.add(obs, action, reward, False)
+                        rollouts.append(rollout)
 
             rollouts_itrs.append(rollouts)
             itr += 1
@@ -292,7 +301,5 @@ if __name__ == '__main__':
     parser.add_argument('folder', type=str)
     args = parser.parse_args()
 
-    graph = tf.Graph()
-    with tf.Session(graph=graph):
-        analyze = AnalyzeRNNCritic(os.path.join('/home/gkahn/code/rllab/data/local/rnn-critic/', args.folder))
-        analyze.run()
+    analyze = AnalyzeRNNCritic(os.path.join('/home/gkahn/code/rllab/data/local/rnn-critic/', args.folder))
+    analyze.run()

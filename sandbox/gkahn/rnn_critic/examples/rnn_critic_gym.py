@@ -34,26 +34,25 @@ def run_task(*_):
         get_action_params=random_get_action_params,
     )
 
+    sess = tf.Session()
+    with sess.as_default():
+        policy = RNNCriticMLPPolicy(
+            hidden_layers=[40, 40],
+            activation=tf.nn.relu,
+            **rnn_critic_policy_params
+        )
 
-    # graph = tf.Graph()
-    # with tf.Session(graph=graph):
-    policy = RNNCriticMLPPolicy(
-        hidden_layers=[40, 40],
-        activation=tf.nn.relu,
-        **rnn_critic_policy_params
-    )
-
-    algo = RNNCritic(
-        env=env,
-        policy=policy,
-        n_rollouts=500,
-        max_path_length=env.horizon,
-        exploration_strategy=GaussianStrategy(env.spec, max_sigma=0.5, min_sigma=0.01),
-        train_every_n_rollouts=100,
-        render=False,
-        store_rollouts=True
-    )
-    algo.train()
+        algo = RNNCritic(
+            env=env,
+            policy=policy,
+            n_rollouts=500,
+            max_path_length=env.horizon,
+            exploration_strategy=GaussianStrategy(env.spec, max_sigma=0.5, min_sigma=0.01),
+            train_every_n_rollouts=100,
+            render=False,
+            store_rollouts=True
+        )
+        algo.train()
 
 seed = 1
 tf.set_random_seed(seed)
