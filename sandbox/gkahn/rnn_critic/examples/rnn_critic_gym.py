@@ -45,10 +45,10 @@ def run_task(*_):
         algo = RNNCritic(
             env=env,
             policy=policy,
-            n_rollouts=500,
+            n_rollouts=1000,
             max_path_length=env.horizon,
             exploration_strategy=GaussianStrategy(env.spec, max_sigma=0.5, min_sigma=0.01),
-            train_every_n_rollouts=100,
+            train_every_n_rollouts=200,
             render=False,
             store_rollouts=True
         )
@@ -67,6 +67,6 @@ run_experiment_lite(
     # will be used
     seed=seed,
     # plot=True,
-    exp_name='test',
+    exp_name='exp14',
     exp_prefix='rnn_critic'
 )

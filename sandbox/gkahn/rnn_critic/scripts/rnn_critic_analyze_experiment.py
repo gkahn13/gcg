@@ -293,8 +293,8 @@ class AnalyzeRNNCritic(object):
         train_log_itrs, train_rollouts_itrs, env_itrs = self._load_all_itrs()
         eval_rollouts_itrs = self._eval_all_policies(env_itrs)
         self._plot_analyze(train_log_itrs, train_rollouts_itrs, eval_rollouts_itrs)
-        self._plot_rollouts(train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train=True)
         self._plot_rollouts(train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train=False)
+        self._plot_rollouts(train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train=True)
         self._plot_policies(train_rollouts_itrs, env_itrs)
 
 if __name__ == '__main__':

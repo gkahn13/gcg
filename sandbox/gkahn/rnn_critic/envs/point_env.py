@@ -32,3 +32,9 @@ class PointEnv(Env):
     @property
     def horizon(self):
         return 50
+
+    def get_param_values(self):
+        return dict()
+
+    def set_param_values(self, params):
+        pass

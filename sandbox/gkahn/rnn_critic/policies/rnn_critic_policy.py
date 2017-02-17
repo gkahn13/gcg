@@ -42,6 +42,7 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
         self._train_steps = train_steps
         self._batch_size = batch_size
         self._get_action_params = get_action_params
+        self._exploration_strategy = None # don't set in init b/c will then be Serialized
 
         for attr in [attr for attr in dir(self) if '__' not in attr and not inspect.ismethod(getattr(self, attr))]:
             logger.log('RNNCriticPolicy\t{0}: {1}'.format(attr, getattr(self, attr)))
@@ -211,6 +212,9 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
 
         return get_action_preprocess
 
+    def set_exploration_strategy(self, exploration_strategy):
+        self._exploration_strategy = exploration_strategy
+
     def get_action(self, observation):
         # randomly sample, then evaluate
         action_lower, action_upper = self._env_spec.action_space.bounds
@@ -230,6 +234,11 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
                                                     self._tf_actions_ph: actions})[0]
 
         chosen_action = actions[pred_rewards.sum(axis=1).argmax()][:self._env_spec.action_space.flat_dim]
+
+        if self._exploration_strategy is not None:
+            exploration_func = lambda: None
+            exploration_func.get_action = lambda _: (chosen_action, dict())
+            chosen_action = self._exploration_strategy.get_action(0, observation, exploration_func)
 
         return chosen_action, dict()
 
