@@ -29,7 +29,7 @@ def run_task(*_):
         weight_decay=0.,
         learning_rate=0.001,
         reset_every_train=True,
-        train_steps=1000,
+        train_steps=500,
         batch_size=16,
         get_action_params=random_get_action_params,
     )
@@ -45,10 +45,10 @@ def run_task(*_):
         algo = RNNCritic(
             env=env,
             policy=policy,
-            n_rollouts=1000,
+            n_rollouts=10000,
             max_path_length=env.horizon,
             exploration_strategy=GaussianStrategy(env.spec, max_sigma=0.5, min_sigma=0.01),
-            train_every_n_rollouts=200,
+            train_every_n_rollouts=1000,
             render=False,
             store_rollouts=True
         )
@@ -60,13 +60,13 @@ tf.set_random_seed(seed)
 run_experiment_lite(
     run_task,
     # Number of parallel workers for sampling
-    n_parallel=1,
+    n_parallel=8,
     # Only keep the snapshot parameters for the last iteration
     snapshot_mode="all",
     # Specifies the seed for the experiment. If this is not provided, a random seed
     # will be used
     seed=seed,
     # plot=True,
-    exp_name='exp14',
+    exp_name='exp16',
     exp_prefix='rnn_critic'
 )

@@ -65,7 +65,7 @@ class RNNCritic(RLAlgorithm):
 
                 logger.log('Processing samples...')
                 rollouts = self._sampler.process_samples(itr, paths)
-                for rollout in rollouts:
+                for rollout in rollouts[:self._train_every_n_rollouts]:
                     replay_pool.add_rollout(rollout)
 
                 logger.log('Optimizing policy...')
