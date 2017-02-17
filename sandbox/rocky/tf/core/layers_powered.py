@@ -13,5 +13,6 @@ class LayersPowered(Parameterized):
     def get_params_internal(self, **tags):
         layers = L.get_all_layers(self._output_layers, treat_as_input=self._input_layers)
         params = itertools.chain.from_iterable(l.get_params(**tags) for l in layers)
+        import IPython; IPython.embed()
         return L.unique(params)
 
