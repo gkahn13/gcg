@@ -1,72 +1,70 @@
-from sandbox.rocky.tf.core.layers_powered import LayersPowered
-import sandbox.rocky.tf.core.layers as L
-from sandbox.rocky.tf.core.network import MLP
-from rllab.core.serializable import Serializable
-from sandbox.rocky.tf.policies.base import Policy
-from sandbox.rocky.tf.misc import tensor_utils
-from rllab.misc.overrides import overrides
-
-import numpy as np
 import tensorflow as tf
 
+from rllab.misc.overrides import overrides
+from rllab.core.serializable import Serializable
+from sandbox.gkahn.rnn_critic.policies.rnn_critic_policy import RNNCriticPolicy
 
-class RNNCriticMLPPolicy(Policy, LayersPowered, Serializable):
+class RNNCriticMLPPolicy(RNNCriticPolicy, Serializable):
     def __init__(self,
-                 name,
-                 env_spec,
-                 H,
-                 hidden_sizes=(40, 40),
-                 hidden_nonlinearity=tf.nn.relu,
-                 output_nonlinearity=lambda x: x):
+                 hidden_layers,
+                 activation,
+                 **kwargs):
         """
-        :param env_spec: A spec for the mdp.
-        :param H: horizon
-        :param hidden_sizes: list of sizes for the fully connected hidden layers
-        :param hidden_nonlinearity: nonlinearity used for each hidden layer
-        :param output_nonlinearity: nonlinearity used for output layer
+        :param hidden_layers: list of layer sizes
+        :param activation: e.g. relu
         """
         Serializable.quick_init(self, locals())
 
-        with tf.variable_scope(name):
-            network = MLP(
-                input_shape=(env_spec.observation_space.flat_dim + H * env_spec.action_space.flat_dim,),
-                output_dim=H,
-                hidden_sizes=hidden_sizes,
-                hidden_nonlinearity=hidden_nonlinearity,
-                output_nonlinearity=output_nonlinearity,
-                name='network',
-            )
+        self._hidden_layers = list(hidden_layers)
+        self._activation = activation
 
-            self._l_rewards = network.output_layer
-            self._l_obs_actions = network.input_layer
-            self._f_rewards = tensor_utils.compile_function(
-                [network.input_layer.input_var],
-                L.get_output(network.output_layer)
-            )
-
-            super(RNNCriticMLPPolicy, self).__init__(env_spec)
-            LayersPowered.__init__(self, [network.output_layer])
-
-        self._H = H
-
-    @property
-    def vectorized(self):
-        return True
+        RNNCriticPolicy.__init__(self, **kwargs)
 
     @overrides
-    def get_action(self, observation):
-        ### random sampler
-        N = 1000 # TODO: pass in as param
-        action_lower, action_upper = self._env_spec.action_space.bounds
-        actions = np.random.uniform(action_lower.tolist(), action_upper.tolist(),
-                                    size=(N, self._H, self._env_spec.action_space.flat_dim))
-        actions = actions.reshape(N, self._H * self._env_spec.action_space.flat_dim)
+    def _graph_inference(self, tf_obs_ph, tf_actions_ph, d_preprocess):
+        input_dim = self._env_spec.observation_space.flat_dim + self._env_spec.action_space.flat_dim * self._H
+        output_dim = self._H
 
-        flat_obs = self.observation_space.flatten(observation)
-        network_input = np.hstack(([flat_obs] * len(actions), actions))
-        rewards = self._f_rewards(network_input)
+        with tf.name_scope('inference'):
+            tf_obs, tf_actions = self._graph_preprocess_inputs(tf_obs_ph, tf_actions_ph, d_preprocess)
 
-        cost = -rewards.sum(axis=1) # TODO: sum of discounted rewards
-        chosen_action = actions[cost.argmin()][:self._env_spec.action_space.flat_dim]
+            input_layer = tf.concat(1, [tf_obs, tf_actions])
 
-        return chosen_action, dict()
+            ### weights
+            with tf.variable_scope('inference_vars'):
+                weights = []
+                biases = []
+
+                curr_layer = input_dim
+                for i, next_layer in enumerate(self._hidden_layers + [output_dim]):
+                    weights.append(tf.get_variable('w_hidden_{0}'.format(i), [curr_layer, next_layer],
+                                                   initializer=tf.contrib.layers.xavier_initializer()))
+                    biases.append(tf.get_variable('b_hidden_{0}'.format(i), [next_layer],
+                                                  initializer=tf.constant_initializer(0.)))
+                    curr_layer = next_layer
+
+            ### weight decays
+            for v in weights:
+                tf.add_to_collection('weight_decays', 0.5 * tf.reduce_mean(v ** 2))
+
+            ### fully connected
+            layer = input_layer
+            for i, (weight, bias) in enumerate(zip(weights, biases)):
+                with tf.name_scope('hidden_{0}'.format(i)):
+                    layer = tf.add(tf.matmul(layer, weight), bias)
+                    if i < len(weights) - 1:
+                        layer = self._activation(layer)
+            tf_rewards = self._graph_preprocess_outputs(layer, d_preprocess)
+
+        return tf_rewards
+
+    @property
+    def recurrent(self):
+        return False
+
+    ######################
+    ### Saving/loading ###
+    ######################
+
+    # def get_params_internal(self, **tags):
+    #     return RNNCriticPolicy.get_params_internal(self, **tags)
