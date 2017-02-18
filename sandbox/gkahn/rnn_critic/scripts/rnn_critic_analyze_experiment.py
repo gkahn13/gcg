@@ -161,19 +161,19 @@ class AnalyzeRNNCritic(object):
         f.savefig(self._analyze_img_file, bbox_inches='tight')
         plt.close(f)
 
-    def _plot_rollouts(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train):
+    def _plot_rollouts(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train, plot_prior):
         env = env_itrs[0]
         while hasattr(env, 'wrapped_env'):
             env = env.wrapped_env
         if type(env) == PointEnv:
-            self._plot_rollouts_PointEnv(train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train)
+            self._plot_rollouts_PointEnv(train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train, plot_prior)
         elif type(env) == GymEnv:
             if 'Reacher' in env.env_id:
-                self._plot_rollouts_Reacher(train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train)
+                self._plot_rollouts_Reacher(train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train, plot_prior)
         else:
             pass
 
-    def _plot_rollouts_PointEnv(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train):
+    def _plot_rollouts_PointEnv(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train, plot_prior):
         rollouts_itrs = train_rollouts_itrs if is_train else eval_rollouts_itrs
 
         for itr, rollouts in enumerate(rollouts_itrs):
@@ -191,10 +191,11 @@ class AnalyzeRNNCritic(object):
 
             for ax, rollout in zip(axes.ravel(), sorted(rollouts, key=lambda r: r.rewards[-1], reverse=True)):
                 # plot all prior rollouts
-                for train_rollout in itertools.chain(*train_rollouts_itrs[:itr + 1]):
-                    train_positions = np.array(train_rollout.observations)
-                    ax.plot(train_positions[:, 0], train_positions[:, 1], color='b', marker='', linestyle='-',
-                            alpha=0.2)
+                if plot_prior:
+                    for train_rollout in itertools.chain(*train_rollouts_itrs[:itr + 1]):
+                        train_positions = np.array(train_rollout.observations)
+                        ax.plot(train_positions[:, 0], train_positions[:, 1], color='b', marker='', linestyle='-',
+                                alpha=0.2)
 
                 # plot this rollout
                 positions = np.array(rollout.observations)
@@ -212,7 +213,7 @@ class AnalyzeRNNCritic(object):
             f.savefig(self._analyze_rollout_img_file(itr, is_train), bbox_inches='tight', dpi=200.)
             plt.close(f)
 
-    def _plot_rollouts_Reacher(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train):
+    def _plot_rollouts_Reacher(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train, plot_prior):
         def get_rollout_positions(rollout):
             observations = np.array(rollout.observations)
             goal_pos = observations[0, 4:6]
@@ -234,10 +235,11 @@ class AnalyzeRNNCritic(object):
 
             for ax, rollout in zip(axes.ravel(), sorted(rollouts, key=lambda r: r.rewards[-1], reverse=True)):
                 # plot all prior rollouts
-                for train_rollout in itertools.chain(*train_rollouts_itrs[:itr + 1]):
-                    train_positions, _ = get_rollout_positions(train_rollout)
-                    ax.plot(train_positions[:, 0], train_positions[:, 1], color='b', marker='', linestyle='-',
-                            alpha=0.2)
+                if plot_prior:
+                    for train_rollout in itertools.chain(*train_rollouts_itrs[:itr + 1]):
+                        train_positions, _ = get_rollout_positions(train_rollout)
+                        ax.plot(train_positions[:, 0], train_positions[:, 1], color='b', marker='', linestyle='-',
+                                alpha=0.2)
 
                 # plot this rollout
                 positions, goal_pos = get_rollout_positions(rollout)
@@ -293,8 +295,8 @@ class AnalyzeRNNCritic(object):
         train_log_itrs, train_rollouts_itrs, env_itrs = self._load_all_itrs()
         eval_rollouts_itrs = self._eval_all_policies(env_itrs)
         self._plot_analyze(train_log_itrs, train_rollouts_itrs, eval_rollouts_itrs)
-        self._plot_rollouts(train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train=False)
-        self._plot_rollouts(train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train=True)
+        self._plot_rollouts(train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train=False, plot_prior=False)
+        self._plot_rollouts(train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train=True, plot_prior=False)
         self._plot_policies(train_rollouts_itrs, env_itrs)
 
 if __name__ == '__main__':

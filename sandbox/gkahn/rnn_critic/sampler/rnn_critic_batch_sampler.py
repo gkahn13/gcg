@@ -1,3 +1,4 @@
+import os
 from rllab.sampler.base import Sampler
 from rllab.sampler import parallel_sampler
 from rllab.sampler.stateful_pool import singleton_pool
@@ -8,6 +9,15 @@ from sandbox.gkahn.rnn_critic.algos.rnn_util import Rollout
 def worker_init_tf(G):
     G.sess = tf.Session()
     G.sess.__enter__()
+    # os.environ["CUDA_VISIBLE_DEVICES"] = '0'
+    # gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.3)
+    # config = tf.ConfigProto(gpu_options=gpu_options,
+    #                         log_device_placement=False,
+    #                         allow_soft_placement=True)
+    # G.sess = tf.Session(config=config)
+    # G.sess.__enter__()
+    print('hello'*1000)
+    import IPython; IPython.embed()
 
 def worker_init_tf_vars(G):
     G.sess.run(tf.initialize_all_variables())

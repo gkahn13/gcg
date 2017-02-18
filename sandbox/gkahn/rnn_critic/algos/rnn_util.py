@@ -71,7 +71,7 @@ class RNNCriticReplayPool(object):
         """
         # sample rollout according to relative length
         rollouts = self.get_rollouts()
-        rollout_lens = [(len(rollout) >= H) * len(rollout) for rollout in rollouts]
+        rollout_lens = [(len(rollout) > H) * len(rollout) for rollout in rollouts]
         rollout_ratios = np.asarray(rollout_lens, dtype=float) / sum(rollout_lens)
         rollout_idx = np.random.choice(range(len(rollouts)), p=rollout_ratios)
         rollout = rollouts[rollout_idx]

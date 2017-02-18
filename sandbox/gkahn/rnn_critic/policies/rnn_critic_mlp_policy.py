@@ -61,10 +61,3 @@ class RNNCriticMLPPolicy(RNNCriticPolicy, Serializable):
     @property
     def recurrent(self):
         return False
-
-    ######################
-    ### Saving/loading ###
-    ######################
-
-    # def get_params_internal(self, **tags):
-    #     return RNNCriticPolicy.get_params_internal(self, **tags)

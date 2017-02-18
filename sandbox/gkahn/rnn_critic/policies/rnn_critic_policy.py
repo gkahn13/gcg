@@ -44,8 +44,8 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
         self._get_action_params = get_action_params
         self._exploration_strategy = None # don't set in init b/c will then be Serialized
 
-        for attr in [attr for attr in dir(self) if '__' not in attr and not inspect.ismethod(getattr(self, attr))]:
-            logger.log('RNNCriticPolicy\t{0}: {1}'.format(attr, getattr(self, attr)))
+        # for attr in [attr for attr in dir(self) if '__' not in attr and not inspect.ismethod(getattr(self, attr))]:
+        #     logger.log('RNNCriticPolicy\t{0}: {1}'.format(attr, getattr(self, attr)))
 
         self._tf_obs_ph, self._tf_actions_ph, self._tf_rewards_ph, self._d_preprocess, \
             self._tf_rewards, self._tf_cost, self._tf_opt, self._tf_sess, self._tf_saver = self._graph_setup()
@@ -134,6 +134,8 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
         tf_obs_ph, tf_actions_ph, tf_rewards_ph = self._graph_inputs_outputs_from_placeholders()
         d_preprocess = self._graph_preprocess_from_placeholders()
         tf_rewards = self._graph_inference(tf_obs_ph, tf_actions_ph, d_preprocess)
+        for v in tf.all_variables():
+            tf.add_to_collection('params_internal', v)
         tf_cost, tf_mse = self._graph_cost(tf_rewards_ph, tf_rewards)
         tf_opt = self._graph_optimize(tf_cost)
 
@@ -254,4 +256,4 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
     ######################
 
     def get_params_internal(self, **tags):
-        return sorted(tf.all_variables(), key=lambda v: v.name)
+        return sorted(tf.get_collection('params_internal'), key=lambda v: v.name)
