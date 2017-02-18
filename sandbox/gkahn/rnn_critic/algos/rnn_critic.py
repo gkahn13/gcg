@@ -8,6 +8,54 @@ from rllab.misc.overrides import overrides
 import rllab.misc.logger as logger
 from sandbox.gkahn.rnn_critic.algos import rnn_util
 from sandbox.gkahn.rnn_critic.sampler.rnn_critic_batch_sampler import RNNCriticBatchSampler
+from sandbox.gkahn.rnn_critic.algos.rnn_critic_sampler import RNNCriticSampler
+
+class RNNCritic(RLAlgorithm):
+
+    def __init__(self,
+                 env,
+                 sampling_policy,
+                 training_policy,
+                 n_rollouts,
+                 max_path_length,
+                 exploration_strategy,
+                 train_every_n_rollouts,
+                 render=False,
+                 is_async=False):
+        """
+        :param env: Environment
+        :param sampling_policy: RNNCriticPolicy
+        :param training_policy: RNNCriticPolicy
+        :param n_rollouts: maximum number of rollouts to train with
+        :param max_path_length: maximum length of a single rollout
+        :param exploration_strategy: how actions are modified
+        :param train_every_n_rollouts: train policy every __ rollouts
+        :param render: show env
+        :param is_async: asynchronous sampling/training
+        """
+        self._sampling_policy = sampling_policy
+        self._training_policy = training_policy
+        self._n_rollouts = n_rollouts
+        self._max_path_length = max_path_length
+        self._train_every_n_rollouts = train_every_n_rollouts
+        self._is_async = is_async
+
+        # for attr in [attr for attr in dir(self) if '__' not in attr and not inspect.ismethod(getattr(self, attr))]:
+        #     logger.log('RNNCritic\t{0}: {1}'.format(attr, getattr(self, attr)))
+
+        sampling_policy.set_exploration_strategy(exploration_strategy)
+
+        self._sampler = RNNCriticSampler(
+            env=env,
+            policy=sampling_policy,
+            rollouts_per_sample=self._train_every_n_rollouts,
+            max_path_length=self._max_path_length,
+            render=render
+        )
+
+
+    # TODO: async and sync training
+
 
 class RNNCritic(RLAlgorithm):
 
