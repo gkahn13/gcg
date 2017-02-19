@@ -10,9 +10,11 @@ import tensorflow as tf
 from rllab.sampler.utils import rollout
 import rllab.misc.logger as logger
 
+from sandbox.gkahn.rnn_critic.sampler.rnn_critic_vectorized_sampler import RNNCriticVectorizedSampler
+
 class RNNCriticSampler(object):
 
-    def __init__(self, env, policy, rollouts_per_sample, max_path_length, render=False):
+    def __init__(self, env, policy, rollouts_per_sample, max_path_length, n_envs=1, render=False):
         self._env = env
         self._policy = policy
         self._rollouts_per_sample = rollouts_per_sample
@@ -31,6 +33,17 @@ class RNNCriticSampler(object):
         self._update_lock = threading.RLock()
         ### for logging
         self._logger_stats = defaultdict(int)
+
+        self._vectorized_sampler = None
+        if n_envs > 1:
+            self._vectorized_sampler = RNNCriticVectorizedSampler(
+                env=env,
+                policy=policy,
+                n_envs=n_envs,
+                max_path_length=max_path_length,
+                rollouts_per_sample=rollouts_per_sample
+            )
+            self._vectorized_sampler.start_worker()
 
     ##################
     ### Statistics ###
@@ -95,22 +108,28 @@ class RNNCriticSampler(object):
     def sample_rollouts(self):
         start_time = time.time()
 
-        paths = []
-        for _ in range(self._rollouts_per_sample):
-            with self._policy_lock:
-                paths.append(rollout(self._env, self._policy, max_path_length=self._max_path_length))
+        if self._vectorized_sampler:
+            paths, logger_stats = self._vectorized_sampler.obtain_samples()
+        else:
+            paths = []
+            for _ in range(self._rollouts_per_sample):
+                with self._policy_lock:
+                    paths.append(rollout(self._env, self._policy, max_path_length=self._max_path_length))
+            logger_stats = dict()
 
-        with self._update_lock:
-            self._save_tfrecord(paths)
-            self._paths = paths
-            self._update_statistics(paths)
-            self._logger_stats = {
+        logger_stats.update({
                 'FinalRewardMean': np.mean([path['rewards'][-1] for path in paths]),
                 'FinalRewardStd': np.std([path['rewards'][-1] for path in paths]),
                 'AvgRewardMean': np.mean([np.mean(path['rewards']) for path in paths]),
                 'AvgRewardStd': np.std([np.mean(path['rewards']) for path in paths]),
                 'RolloutTime': time.time() - start_time
-            }
+            })
+
+        with self._update_lock:
+            self._save_tfrecord(paths)
+            self._paths = paths
+            self._update_statistics(paths)
+            self._logger_stats = logger_stats
 
     #######################
     ### Policy training ###

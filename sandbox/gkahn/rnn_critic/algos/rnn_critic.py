@@ -15,6 +15,7 @@ class RNNCritic(RLAlgorithm):
                  max_path_length,
                  exploration_strategy,
                  train_every_n_rollouts,
+                 n_envs=1,
                  render=False,
                  is_async=False):
         """
@@ -46,6 +47,7 @@ class RNNCritic(RLAlgorithm):
             policy=sampling_policy,
             rollouts_per_sample=self._train_every_n_rollouts,
             max_path_length=self._max_path_length,
+            n_envs=n_envs,
             render=render
         )
 
@@ -56,7 +58,7 @@ class RNNCritic(RLAlgorithm):
 
     def _sync_train(self):
         for itr in range(self._n_rollouts // self._train_every_n_rollouts):
-            with logger.prefix('itr #{0:d} |'.format(itr)):
+            with logger.prefix('itr #{0:d} | '.format(itr)):
                 ### sample rollouts
                 logger.log('Sampling rollouts...')
                 self._sampler.sample_rollouts()
@@ -78,7 +80,10 @@ class RNNCritic(RLAlgorithm):
                     logger.save_itr_params(itr, itr_params)
 
                 ### log
-                for k in ('FinalRewardMean', 'FinalRewardStd', 'AvgRewardMean', 'AvgRewardStd', 'RolloutTime'):
+                keys = ('FinalRewardMean', 'FinalRewardStd', 'AvgRewardMean', 'AvgRewardStd', 'RolloutTime')
+                for k in keys:
+                    logger.record_tabular(k, sampler_log[k])
+                for k in [k for k in sampler_log.keys() if k not in keys]:
                     logger.record_tabular(k, sampler_log[k])
                 logger.record_tabular('InitialTrainCost', train_log['cost'][0])
                 logger.record_tabular('FinalTrainCost', train_log['cost'][-1])

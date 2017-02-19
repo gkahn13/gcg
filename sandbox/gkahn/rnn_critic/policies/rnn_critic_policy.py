@@ -167,15 +167,25 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
         tf_actions_whitened = tf.matmul(tf_actions_ph - d_preprocess['actions_mean_var'],
                                         d_preprocess['actions_orth_var'])
 
+        num_obs = tf.shape(tf_obs_whitened)[0]
+        num_action = tf.shape(tf_actions_whitened)[0]
+
+        def tf_repeat_2d(x, reps):
+            """ Repeats x on axis=0 reps times """
+            x_shape = tf.shape(x)
+            x_repeat = tf.reshape(tf.tile(x, [1, reps]), (x_shape[0] * reps, x_shape[1]))
+            x_repeat.set_shape((None, x.get_shape()[1]))
+            return x_repeat
+
         ### replicate observation for each action
         def replicate_observation():
-            batch_size = tf.shape(tf_actions_whitened)[0]
-            tf_obs_whitened_tiled = tf.tile(tf_obs_whitened, tf.pack([batch_size, 1]))
-            tf_obs_whitened_tiled.set_shape([None, tf_obs_whitened.get_shape()[1]])
-            return tf_obs_whitened_tiled
+            tf_obs_whitened_rep = tf_repeat_2d(tf_obs_whitened, num_action // num_obs)
+            # tf_obs_whitened_tiled = tf.tile(tf_obs_whitened, tf.pack([batch_size, 1]))
+            # tf_obs_whitened_tiled.set_shape([None, tf_obs_whitened.get_shape()[1]])
+            return tf_obs_whitened_rep
 
-        num_obs = tf.shape(tf_obs_whitened)[0]
-        tf_obs_whitened_cond = tf.cond(tf.equal(num_obs, 1), replicate_observation, lambda: tf_obs_whitened)
+        # assumes num_action is a multiple of num_obs
+        tf_obs_whitened_cond = tf.cond(tf.not_equal(num_obs, num_action), replicate_observation, lambda: tf_obs_whitened)
 
         return tf_obs_whitened_cond, tf_actions_whitened
 
@@ -319,7 +329,6 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
     def get_action(self, observation):
         assert(not self._is_train)
 
-        # randomly sample, then evaluate
         action_lower, action_upper = self._env_spec.action_space.bounds
 
         if self._get_action_params['type'] == 'random':
@@ -344,6 +353,37 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
             chosen_action = self._exploration_strategy.get_action(0, observation, exploration_func)
 
         return chosen_action, dict()
+
+    def get_actions(self, observations):
+        assert(not self._is_train)
+
+        num_obs = len(observations)
+        action_lower, action_upper = self._env_spec.action_space.bounds
+
+        if self._get_action_params['type'] == 'random':
+            N = self._get_action_params['N']
+            actions = np.random.uniform(action_lower.tolist(), action_upper.tolist(),
+                                        size=(N * num_obs, self._H, self._env_spec.action_space.flat_dim))
+            actions = actions.reshape(N * num_obs, self._H * self._env_spec.action_space.flat_dim)
+        else:
+            raise NotImplementedError('get_actions type {0} not implemented'.format(self._get_action_params['type']))
+
+        pred_rewards = self._tf_sess.run([self._tf_rewards],
+                                         feed_dict={self._tf_obs_ph: observations,
+                                                    self._tf_actions_ph: actions})[0]
+
+        chosen_actions = []
+        for observation_i, pred_rewards_i, actions_i in zip(observations,
+                                                           np.split(pred_rewards, num_obs, axis=0),
+                                                           np.split(actions, num_obs, axis=0)):
+            chosen_action_i = actions_i[pred_rewards_i.sum(axis=1).argmax()][:self._env_spec.action_space.flat_dim]
+            if self._exploration_strategy is not None:
+                exploration_func = lambda: None
+                exploration_func.get_action = lambda _: (chosen_action_i, dict())
+                chosen_action_i = self._exploration_strategy.get_action(0, observation_i, exploration_func)
+            chosen_actions.append(chosen_action_i)
+
+        return chosen_actions, dict()
 
     @property
     def recurrent(self):

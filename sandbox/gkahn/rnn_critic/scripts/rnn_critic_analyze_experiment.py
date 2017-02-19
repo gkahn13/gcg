@@ -13,6 +13,7 @@ from rllab.sampler.utils import rollout as rollout_policy
 
 from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
 from sandbox.gkahn.rnn_critic.policies.rnn_critic_policy import RNNCriticPolicy
+from sandbox.gkahn.rnn_critic.sampler.rnn_critic_vectorized_sampler import RNNCriticVectorizedSampler
 
 class AnalyzeRNNCritic(object):
     def __init__(self, folder):
@@ -80,10 +81,16 @@ class AnalyzeRNNCritic(object):
                 env = env_itrs[itr]
                 policy = self._load_itr_policy(itr)
 
-                rollouts = []
-                for _ in range(50):
-                    path = rollout_policy(env, policy, max_path_length=env.horizon)
-                    rollouts.append(path)
+                sampler = RNNCriticVectorizedSampler(
+                    env=env,
+                    policy=policy,
+                    n_envs=8,
+                    max_path_length=env.horizon,
+                    rollouts_per_sample=50
+                )
+                sampler.start_worker()
+                rollouts, _ = sampler.obtain_samples()
+                sampler.shutdown_worker()
 
             rollouts_itrs.append(rollouts)
             itr += 1

@@ -67,6 +67,7 @@ def run_task(*_):
         max_path_length=env.horizon,
         exploration_strategy=GaussianStrategy(env.spec, max_sigma=0.5, min_sigma=0.01),
         train_every_n_rollouts=200,
+        n_envs=8,
         render=False,
         is_async=False
     )
@@ -88,6 +89,6 @@ run_experiment_lite(
     # will be used
     seed=seed,
     # plot=True,
-    exp_name='exp20',
+    exp_name='exp21',
     exp_prefix='rnn_critic'
 )
