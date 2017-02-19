@@ -1,4 +1,6 @@
 import inspect
+import time
+import os
 from collections import defaultdict
 import itertools
 
@@ -66,6 +68,10 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
     @property
     def H(self):
         return self._H
+
+    @property
+    def session(self):
+        return self._tf_sess
 
     ###########################
     ### TF graph operations ###
@@ -185,16 +191,23 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
 
     def _graph_setup(self):
         tf_graph = tf.Graph()
-        tf_sess = tf.Session(graph=tf_graph)
+        os.environ["CUDA_VISIBLE_DEVICES"] = '0'
+        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.3)
+        config = tf.ConfigProto(gpu_options=gpu_options,
+                                log_device_placement=False,
+                                allow_soft_placement=True)
+        tf_sess = tf.Session(graph=tf_graph, config=config)
 
         with tf_graph.as_default():
             if self._is_train:
                 tf_obs_ph, tf_actions_ph, tf_rewards_ph, d_queue = self._graph_inputs_outputs_from_files()
             else:
                 tf_obs_ph, tf_actions_ph, tf_rewards_ph, d_queue = self._graph_inputs_outputs_from_placeholders()
+            pre_variables = tf.all_variables()
             d_preprocess = self._graph_preprocess_from_placeholders()
             tf_rewards = self._graph_inference(tf_obs_ph, tf_actions_ph, d_preprocess)
-            for v in tf.all_variables():
+            post_variables = tf.all_variables()
+            for v in set(post_variables).difference(pre_variables):
                 tf.add_to_collection('params_internal', v)
             if self._is_train:
                 tf_cost, tf_mse = self._graph_cost(tf_rewards_ph, tf_rewards)
@@ -239,13 +252,19 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
         :type replay_pool: RNNCriticReplayPool
         """
         assert(self._is_train)
+        start_time = time.time()
 
-        with self._tf_graph.as_default():
+        with self._tf_graph.as_default(), self._tf_sess.as_default():
             if self._reset_every_train:
-                self._graph_init_vars(self._tf_sess)
+                self._graph_init_vars(self._tf_sess, self._d_queue)
 
             self._graph_set_preprocess(preprocess_stats)
             self._tf_sess.run([tf.assign(self._d_queue['var'], tfrecords, validate_shape=False)])
+
+            if not hasattr(self, '_tf_coord'):
+                assert (not hasattr(self, '_tf_threads'))
+                self._tf_coord = tf.train.Coordinator()
+                self._tf_threads = tf.train.start_queue_runners(sess=self._tf_sess, coord=self._tf_coord)
 
             train_log = defaultdict(list)
 
@@ -253,6 +272,7 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
                 cost, _ = self._tf_sess.run([self._tf_cost, self._tf_opt])
                 train_log['cost'].append(cost)
 
+        train_log['TrainTime'] = time.time() - start_time
         return train_log
 
     ######################

@@ -33,6 +33,7 @@ class RNNCritic(RLAlgorithm):
         :param render: show env
         :param is_async: asynchronous sampling/training
         """
+        self._env = env
         self._sampling_policy = sampling_policy
         self._training_policy = training_policy
         self._n_rollouts = n_rollouts
@@ -53,11 +54,43 @@ class RNNCritic(RLAlgorithm):
             render=render
         )
 
+    @overrides
+    def train(self):
+        assert(not self._is_async)
+        self._sync_train()
 
-    # TODO: async and sync training
+    def _sync_train(self):
+        for itr in range(self._n_rollouts // self._train_every_n_rollouts):
+            with logger.prefix('itr #{0:d} |'.format(itr)):
+                ### sample rollouts
+                logger.log('Sampling rollouts...')
+                self._sampler.sample_rollouts()
+                tfrecords, preprocess_stats, sampler_log = self._sampler.get_tfrecords_and_statistics()
+                ### train
+                logger.log('Training policy...')
+                train_log = self._training_policy.train(tfrecords, preprocess_stats)
+                self._sampler.update_policy(self._training_policy)
+
+                ### save pkl
+                with self._sampling_policy.session.as_default():
+                    itr_params = dict(
+                        itr=itr,
+                        policy=self._sampling_policy,
+                        env=self._env,
+                        train_log=train_log
+                    )
+                    logger.save_itr_params(itr, itr_params)
+
+                ### log
+                for k in ('FinalRewardMean', 'FinalRewardStd', 'AvgRewardMean', 'AvgRewardStd', 'RolloutTime'):
+                    logger.record_tabular(k, sampler_log[k])
+                logger.record_tabular('InitialTrainCost', train_log['cost'][0])
+                logger.record_tabular('FinalTrainCost', train_log['cost'][-1])
+                logger.record_tabular('TrainTime', train_log['TrainTime'])
+                logger.dump_tabular(with_prefix=False)
 
 
-class RNNCritic(RLAlgorithm):
+class RNNCriticOLD(RLAlgorithm):
 
     def __init__(self,
                  env,

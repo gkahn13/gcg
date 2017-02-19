@@ -1,3 +1,5 @@
+import os
+import time
 from collections import defaultdict
 import copy
 import threading
@@ -6,6 +8,7 @@ import numpy as np
 import tensorflow as tf
 
 from rllab.sampler.utils import rollout
+import rllab.misc.logger as logger
 
 class RNNCriticSampler(object):
 
@@ -24,6 +27,8 @@ class RNNCriticSampler(object):
         self._policy_lock = threading.RLock()
         ### both
         self._update_lock = threading.RLock()
+        ### for logging
+        self._logger_stats = defaultdict(int)
 
     ##################
     ### Statistics ###
@@ -54,9 +59,13 @@ class RNNCriticSampler(object):
     ### Files ###
     #############
 
-    # TODO
     def _tfrecord_fname(self, file_num):
-        pass
+        assert(logger.get_snapshot_dir() is not None)
+        tfrecords_dir = os.path.join(logger.get_snapshot_dir(), 'tfrecords')
+        if not os.path.exists(tfrecords_dir):
+            os.makedirs(tfrecords_dir)
+        return os.path.join(tfrecords_dir, '{0}_tfrecords_itr{1}.tfrecords'.format(
+            os.path.basename(logger.get_snapshot_dir()), file_num))
 
     def _save_tfrecord(self, paths):
         def _floatlist_feature(value):
@@ -73,7 +82,7 @@ class RNNCriticSampler(object):
                     'actions': _floatlist_feature(path['actions'][t:t+self._policy.H]),
                     'rewards': _floatlist_feature(path['rewards'][t:t+self._policy.H])
                 }
-                example = tf.train.Example(feature=tf.train.Features(feature=feature))
+                example = tf.train.Example(features=tf.train.Features(feature=feature))
                 writer.write(example.SerializeToString())
         writer.close()
 
@@ -82,6 +91,8 @@ class RNNCriticSampler(object):
     ################
 
     def sample_rollouts(self):
+        start_time = time.time()
+
         paths = []
         for _ in range(self._rollouts_per_sample):
             with self._policy_lock:
@@ -90,6 +101,13 @@ class RNNCriticSampler(object):
         with self._update_lock:
             self._update_statistics(paths)
             self._save_tfrecord(paths)
+            self._logger_stats = {
+                'FinalRewardMean': np.mean([path['rewards'][-1] for path in paths]),
+                'FinalRewardStd': np.std([path['rewards'][-1] for path in paths]),
+                'AvgRewardMean': np.mean([np.mean(path['rewards']) for path in paths]),
+                'AvgRewardStd': np.std([np.mean(path['rewards']) for path in paths]),
+                'RolloutTime': time.time() - start_time
+            }
 
     #######################
     ### Policy training ###
@@ -99,7 +117,8 @@ class RNNCriticSampler(object):
         with self._update_lock:
             tfrecords = [self._tfrecord_fname(i) for i in range(self._curr_file_num)]
             statistics = copy.deepcopy(self._stats)
-        return tfrecords, statistics
+            logger_stats = copy.deepcopy(self._logger_stats)
+        return tfrecords, statistics, logger_stats
 
     def update_policy(self, training_policy):
         with self._update_lock:
