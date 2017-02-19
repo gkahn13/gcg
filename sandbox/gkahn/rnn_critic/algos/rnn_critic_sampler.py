@@ -25,6 +25,8 @@ class RNNCriticSampler(object):
         ### files
         self._curr_file_num = 0
         self._policy_lock = threading.RLock()
+        ### data
+        self._paths = []
         ### both
         self._update_lock = threading.RLock()
         ### for logging
@@ -99,8 +101,9 @@ class RNNCriticSampler(object):
                 paths.append(rollout(self._env, self._policy, max_path_length=self._max_path_length))
 
         with self._update_lock:
-            self._update_statistics(paths)
             self._save_tfrecord(paths)
+            self._paths = paths
+            self._update_statistics(paths)
             self._logger_stats = {
                 'FinalRewardMean': np.mean([path['rewards'][-1] for path in paths]),
                 'FinalRewardStd': np.std([path['rewards'][-1] for path in paths]),
@@ -113,12 +116,13 @@ class RNNCriticSampler(object):
     ### Policy training ###
     #######################
 
-    def get_tfrecords_and_statistics(self):
+    def get_tfrecords_paths_and_statistics(self):
         with self._update_lock:
             tfrecords = [self._tfrecord_fname(i) for i in range(self._curr_file_num)]
+            paths = self._paths
             statistics = copy.deepcopy(self._stats)
-            logger_stats = copy.deepcopy(self._logger_stats)
-        return tfrecords, statistics, logger_stats
+            logger_stats = self._logger_stats
+        return tfrecords, paths, statistics, logger_stats
 
     def update_policy(self, training_policy):
         with self._update_lock:

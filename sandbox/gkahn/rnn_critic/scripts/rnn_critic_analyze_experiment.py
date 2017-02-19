@@ -12,7 +12,7 @@ from rllab.envs.gym_env import GymEnv
 from rllab.sampler.utils import rollout as rollout_policy
 
 from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
-from sandbox.gkahn.rnn_critic.algos.rnn_util import Rollout
+from sandbox.gkahn.rnn_critic.policies.rnn_critic_policy import RNNCriticPolicy
 
 class AnalyzeRNNCritic(object):
     def __init__(self, folder):
@@ -44,15 +44,13 @@ class AnalyzeRNNCritic(object):
         return d['policy']
 
     def _load_itr(self, itr):
-        graph = tf.Graph()
-        with graph.as_default():
-            sess = tf.Session(graph=graph)
-            with sess.as_default():
-                d = joblib.load(self._itr_file(itr))
-                train_log = d['train_log']
-                rollouts = d['rollouts']
-                env = d['env']
-                d['policy'].terminate()
+        sess, graph = RNNCriticPolicy.create_session_and_graph()
+        with graph.as_default(), sess.as_default():
+            d = joblib.load(self._itr_file(itr))
+            train_log = d['train_log']
+            rollouts = d['rollouts']
+            env = d['env']
+            d['policy'].terminate()
 
         return train_log, rollouts, env
 
@@ -77,20 +75,15 @@ class AnalyzeRNNCritic(object):
 
         itr = 0
         while os.path.exists(self._itr_file(itr)):
-            graph = tf.Graph()
-            with graph.as_default():
-                sess = tf.Session(graph=graph)
-                with sess.as_default():
-                    env = env_itrs[itr]
-                    policy = self._load_itr_policy(itr)
+            sess, graph = RNNCriticPolicy.create_session_and_graph()
+            with graph.as_default(), sess.as_default():
+                env = env_itrs[itr]
+                policy = self._load_itr_policy(itr)
 
-                    rollouts = []
-                    for _ in range(50):
-                        path = rollout_policy(env, policy, max_path_length=env.horizon)
-                        rollout = Rollout()
-                        for obs, action, reward in zip(path['observations'], path['actions'], path['rewards']):
-                            rollout.add(obs, action, reward, False)
-                        rollouts.append(rollout)
+                rollouts = []
+                for _ in range(50):
+                    path = rollout_policy(env, policy, max_path_length=env.horizon)
+                    rollouts.append(path)
 
             rollouts_itrs.append(rollouts)
             itr += 1
@@ -148,13 +141,13 @@ class AnalyzeRNNCritic(object):
 
         ### plot train final reward
         ax = axes[1]
-        rewards = [[rollout.rewards[-1] for rollout in rollouts] for rollouts in train_rollouts_itrs]
+        rewards = [[rollout['rewards'][-1] for rollout in rollouts] for rollouts in train_rollouts_itrs]
         plot_reward(ax, rewards)
         ax.set_ylabel('Train final reward')
 
         ### plot eval final reward
         ax = axes[2]
-        rewards = [[rollout.rewards[-1] for rollout in rollouts] for rollouts in eval_rollouts_itrs]
+        rewards = [[rollout['rewards'][-1] for rollout in rollouts] for rollouts in eval_rollouts_itrs]
         plot_reward(ax, rewards)
         ax.set_ylabel('Eval final reward')
 
@@ -179,26 +172,26 @@ class AnalyzeRNNCritic(object):
         for itr, rollouts in enumerate(rollouts_itrs):
 
             N_rollouts = 25
-            rollouts = sorted(rollouts, key=lambda r: r.rewards[-1], reverse=True)
+            rollouts = sorted(rollouts, key=lambda r: r['rewards'][-1], reverse=True)
             if len(rollouts) > N_rollouts:
                 rollouts = rollouts[::int(np.ceil(len(rollouts)) / float(N_rollouts))]
 
             nrows = ncols = int(np.ceil(np.sqrt(len(rollouts))))
             f, axes = plt.subplots(nrows, ncols, figsize=(10, 10))
 
-            all_positions = np.vstack([np.array(rollout.observations) for rollout in rollouts])
+            all_positions = np.vstack([np.array(rollout['observations']) for rollout in rollouts])
             xlim = ylim = (all_positions.min(), all_positions.max())
 
-            for ax, rollout in zip(axes.ravel(), sorted(rollouts, key=lambda r: r.rewards[-1], reverse=True)):
+            for ax, rollout in zip(axes.ravel(), sorted(rollouts, key=lambda r: r['rewards'][-1], reverse=True)):
                 # plot all prior rollouts
                 if plot_prior:
                     for train_rollout in itertools.chain(*train_rollouts_itrs[:itr + 1]):
-                        train_positions = np.array(train_rollout.observations)
+                        train_positions = np.array(train_rollout['observations'])
                         ax.plot(train_positions[:, 0], train_positions[:, 1], color='b', marker='', linestyle='-',
                                 alpha=0.2)
 
                 # plot this rollout
-                positions = np.array(rollout.observations)
+                positions = np.array(rollout['observations'])
                 ax.plot(positions[:, 0], positions[:, 1], color='k', marker='o', linestyle='-', markersize=0.2)
                 ax.plot([0], [0], color='r', marker='x', markersize=5.)
                 ax.plot([positions[0, 0]], [positions[0, 1]], color='g', marker='o', markersize=5.)
@@ -206,7 +199,7 @@ class AnalyzeRNNCritic(object):
 
                 ax.set_xlim(xlim)
                 ax.set_ylim(ylim)
-                ax.set_title('{0:.2f}'.format(rollout.rewards[-1]))
+                ax.set_title('{0:.2f}'.format(rollout['rewards'][-1]))
 
             f.tight_layout()
 

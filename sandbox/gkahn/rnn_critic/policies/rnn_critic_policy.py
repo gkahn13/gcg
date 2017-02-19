@@ -77,6 +77,17 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
     ### TF graph operations ###
     ###########################
 
+    @staticmethod
+    def create_session_and_graph():
+        tf_graph = tf.Graph()
+        os.environ["CUDA_VISIBLE_DEVICES"] = '0'
+        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.3)
+        config = tf.ConfigProto(gpu_options=gpu_options,
+                                log_device_placement=False,
+                                allow_soft_placement=True)
+        tf_sess = tf.Session(graph=tf_graph, config=config)
+        return tf_sess, tf_graph
+
     def _graph_inputs_outputs_from_placeholders(self):
         with tf.variable_scope('feed_input'):
             tf_obs_ph = tf.placeholder('float', [None, self._env_spec.observation_space.flat_dim])
@@ -119,7 +130,8 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
 
             d_queue = {
                 'ph': queue_ph,
-                'var': queue_var
+                'var': queue_var,
+                'queue': filename_queue
             }
 
         return tf_obs_ph, tf_actions_ph, tf_rewards_ph, d_queue
@@ -190,13 +202,11 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
         tf_sess.run([tf.initialize_all_variables()], feed_dict=feed_dict)
 
     def _graph_setup(self):
-        tf_graph = tf.Graph()
-        os.environ["CUDA_VISIBLE_DEVICES"] = '0'
-        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.3)
-        config = tf.ConfigProto(gpu_options=gpu_options,
-                                log_device_placement=False,
-                                allow_soft_placement=True)
-        tf_sess = tf.Session(graph=tf_graph, config=config)
+        tf_sess = tf.get_default_session()
+        if tf_sess is None:
+            tf_sess, tf_graph = RNNCriticPolicy.create_session_and_graph()
+        else:
+            tf_graph = tf_sess.graph
 
         with tf_graph.as_default():
             if self._is_train:
@@ -247,6 +257,13 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
               self._d_preprocess['rewards_orth_ph']: scipy.linalg.block_diag(*([rewards_orth] * self._H))
           })
 
+    def _graph_reset_queue(self, tfrecords, flush=True):
+        # new file inputs
+        self._tf_sess.run([tf.assign(self._d_queue['var'], tfrecords, validate_shape=False)])
+        # flush out old ones
+        if flush:
+            self._tf_sess.run(self._d_queue['queue'].dequeue_many(2000 + 3 * self._batch_size)) # TODO: hard coded
+
     def train(self, tfrecords, preprocess_stats):
         """
         :type replay_pool: RNNCriticReplayPool
@@ -258,13 +275,14 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
             if self._reset_every_train:
                 self._graph_init_vars(self._tf_sess, self._d_queue)
 
-            self._graph_set_preprocess(preprocess_stats)
-            self._tf_sess.run([tf.assign(self._d_queue['var'], tfrecords, validate_shape=False)])
-
             if not hasattr(self, '_tf_coord'):
                 assert (not hasattr(self, '_tf_threads'))
+                self._graph_reset_queue(tfrecords, flush=False)
                 self._tf_coord = tf.train.Coordinator()
                 self._tf_threads = tf.train.start_queue_runners(sess=self._tf_sess, coord=self._tf_coord)
+
+            self._graph_set_preprocess(preprocess_stats)
+            self._graph_reset_queue(tfrecords)
 
             train_log = defaultdict(list)
 
