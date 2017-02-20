@@ -11,12 +11,12 @@ class RNNCriticMLPPolicy(RNNCriticPolicy, Serializable):
                  **kwargs):
         """
         :param hidden_layers: list of layer sizes
-        :param activation: e.g. relu
+        :param activation: str to be evaluated (e.g. 'tf.nn.relu')
         """
         Serializable.quick_init(self, locals())
 
         self._hidden_layers = list(hidden_layers)
-        self._activation = activation
+        self._activation = eval(activation)
 
         RNNCriticPolicy.__init__(self, **kwargs)
 

@@ -27,7 +27,8 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
                  batch_size,
                  get_action_params,
                  gpu_device=None,
-                 gpu_frac=None):
+                 gpu_frac=None,
+                 **kwargs):
         """
         :param is_train: if True file placeholders, else feed placeholders
         :param H: critic horizon length
