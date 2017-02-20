@@ -215,7 +215,7 @@ class AnalyzeRNNCritic(object):
 
     def _plot_rollouts_Reacher(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train, plot_prior):
         def get_rollout_positions(rollout):
-            observations = np.array(rollout.observations)
+            observations = np.array(rollout['observations'])
             goal_pos = observations[0, 4:6]
             positions = observations[:, -3:-1] + goal_pos
             return positions, goal_pos
@@ -225,7 +225,7 @@ class AnalyzeRNNCritic(object):
         for itr, rollouts in enumerate(rollouts_itrs):
 
             N_rollouts = 25
-            rollouts = sorted(rollouts, key=lambda r: r.rewards[-1], reverse=True)
+            rollouts = sorted(rollouts, key=lambda r: r['rewards'][-1], reverse=True)
             if len(rollouts) > N_rollouts:
                 rollouts = rollouts[::int(np.ceil(len(rollouts)) / float(N_rollouts))]
 
@@ -233,7 +233,7 @@ class AnalyzeRNNCritic(object):
             f, axes = plt.subplots(nrows, ncols, figsize=(10, 10))
             xlim = ylim = (-0.25, 0.25)
 
-            for ax, rollout in zip(axes.ravel(), sorted(rollouts, key=lambda r: r.rewards[-1], reverse=True)):
+            for ax, rollout in zip(axes.ravel(), sorted(rollouts, key=lambda r: r['rewards'][-1], reverse=True)):
                 # plot all prior rollouts
                 if plot_prior:
                     for train_rollout in itertools.chain(*train_rollouts_itrs[:itr + 1]):
@@ -250,7 +250,7 @@ class AnalyzeRNNCritic(object):
 
                 ax.set_xlim(xlim)
                 ax.set_ylim(ylim)
-                ax.set_title('{0:.2f}'.format(rollout.rewards[-1]))
+                ax.set_title('{0:.2f}'.format(rollout['rewards'][-1]))
 
             f.tight_layout()
 

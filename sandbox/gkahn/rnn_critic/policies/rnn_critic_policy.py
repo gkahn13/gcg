@@ -25,7 +25,9 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
                  reset_every_train,
                  train_steps,
                  batch_size,
-                 get_action_params):
+                 get_action_params,
+                 gpu_device=None,
+                 gpu_frac=None):
         """
         :param is_train: if True file placeholders, else feed placeholders
         :param H: critic horizon length
@@ -47,6 +49,8 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
         self._train_steps = train_steps
         self._batch_size = batch_size
         self._get_action_params = get_action_params
+        self._gpu_device = gpu_device
+        self._gpu_frac = gpu_frac
         self._exploration_strategy = None # don't set in init b/c will then be Serialized
 
         # for attr in [attr for attr in dir(self) if '__' not in attr and not inspect.ismethod(getattr(self, attr))]:
@@ -78,10 +82,15 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
     ###########################
 
     @staticmethod
-    def create_session_and_graph():
+    def create_session_and_graph(gpu_device=None, gpu_frac=None):
+        if gpu_device is None:
+            gpu_device = 0
+        if gpu_frac is None:
+            gpu_frac = 0.3
+
         tf_graph = tf.Graph()
-        os.environ["CUDA_VISIBLE_DEVICES"] = '0'
-        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.3)
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_device)
+        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
         config = tf.ConfigProto(gpu_options=gpu_options,
                                 log_device_placement=False,
                                 allow_soft_placement=True)
@@ -98,7 +107,7 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
 
     def _graph_inputs_outputs_from_files(self):
         obs_dim = self._env_spec.observation_space.flat_dim
-        action_dim = self._env_spec.observation_space.flat_dim
+        action_dim = self._env_spec.action_space.flat_dim
 
         with tf.name_scope('file_input'):
             queue_ph = tf.placeholder(tf.string)
@@ -214,7 +223,8 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
     def _graph_setup(self):
         tf_sess = tf.get_default_session()
         if tf_sess is None:
-            tf_sess, tf_graph = RNNCriticPolicy.create_session_and_graph()
+            tf_sess, tf_graph = RNNCriticPolicy.create_session_and_graph(gpu_device=self._gpu_device,
+                                                                         gpu_frac=self._gpu_frac)
         else:
             tf_graph = tf_sess.graph
 

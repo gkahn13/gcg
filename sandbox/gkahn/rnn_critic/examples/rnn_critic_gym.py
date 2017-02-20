@@ -14,8 +14,8 @@ from sandbox.rocky.tf.envs.base import TfEnv
 import tensorflow as tf
 
 def run_task(*_):
-    # env = TfEnv(normalize(GymEnv("Reacher-v1")))
-    env = TfEnv(normalize(PointEnv()))
+    env = TfEnv(normalize(GymEnv("Reacher-v1", record_video=False)))
+    # env = TfEnv(normalize(PointEnv()))
 
     def create_policy(is_train):
         lattice_get_action_params = {
@@ -30,13 +30,15 @@ def run_task(*_):
         rnn_critic_policy_params = dict(
             is_train=is_train,
             env_spec=env.spec,
-            H=2,
+            H=4,
             weight_decay=0.,
             learning_rate=0.001,
             reset_every_train=True,
             train_steps=1000,
             batch_size=16,
             get_action_params=random_get_action_params,
+            gpu_device=0,
+            gpu_frac=0.2
         )
 
 
@@ -89,6 +91,6 @@ run_experiment_lite(
     # will be used
     seed=seed,
     # plot=True,
-    exp_name='exp21',
+    exp_name='exp29',
     exp_prefix='rnn_critic'
 )
