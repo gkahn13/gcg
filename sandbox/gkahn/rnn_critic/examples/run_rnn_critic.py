@@ -9,8 +9,8 @@ from rllab.envs.normalized_env import normalize
 from rllab.exploration_strategies.gaussian_strategy import GaussianStrategy
 ### RNN critic
 from sandbox.gkahn.rnn_critic.algos.rnn_critic import RNNCritic
-from sandbox.gkahn.rnn_critic.policies.rnn_critic_mlp_policy import RNNCriticMLPPolicy
-from sandbox.gkahn.rnn_critic.policies.rnn_critic_rnn_policy import RNNCriticRNNPolicy
+from sandbox.gkahn.rnn_critic.policies.mlp_policy import RNNCriticMLPPolicy
+from sandbox.gkahn.rnn_critic.policies.rnn_policy import RNNCriticRNNPolicy
 
 ### parameters loaded from yaml
 params = dict()

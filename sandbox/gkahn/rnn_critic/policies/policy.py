@@ -28,6 +28,7 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
                  get_action_params,
                  gpu_device=None,
                  gpu_frac=None,
+                 log_history_len=100,
                  **kwargs):
         """
         :param is_train: if True file placeholders, else feed placeholders
@@ -52,16 +53,20 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
         self._get_action_params = get_action_params
         self._gpu_device = gpu_device
         self._gpu_frac = gpu_frac
+        self._log_history_len = log_history_len
         self._exploration_strategy = None # don't set in init b/c will then be Serialized
 
         # for attr in [attr for attr in dir(self) if '__' not in attr and not inspect.ismethod(getattr(self, attr))]:
         #     logger.log('RNNCriticPolicy\t{0}: {1}'.format(attr, getattr(self, attr)))
 
         self._tf_graph, self._tf_sess, \
-            self._tf_obs_ph, self._tf_actions_ph, self._tf_rewards_ph, self._d_queue, self._d_preprocess, \
+            self._tf_obs_ph, self._tf_actions_ph, self._tf_rewards_ph, self._d_preprocess, \
             self._tf_rewards, self._tf_cost, self._tf_opt = self._graph_setup()
 
         self._get_action_preprocess = self._get_action_setup()
+
+        ### logging
+        self._log_stats = defaultdict(list)
 
         Policy.__init__(self, env_spec)
         Parameterized.__init__(self, sess=self._tf_sess)
@@ -105,46 +110,6 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
             tf_rewards_ph = tf.placeholder('float', [None, self._H])
 
         return tf_obs_ph, tf_actions_ph, tf_rewards_ph, dict()
-
-    def _graph_inputs_outputs_from_files(self):
-        obs_dim = self._env_spec.observation_space.flat_dim
-        action_dim = self._env_spec.action_space.flat_dim
-
-        with tf.name_scope('file_input'):
-            queue_ph = tf.placeholder(tf.string)
-            queue_var = tf.get_variable('fnames', initializer=queue_ph, validate_shape=False, trainable=False)
-
-            ### create file queue
-            filename_queue = tf.train.string_input_producer(queue_var, num_epochs=None, shuffle=True)
-
-            ### read and decode
-            reader = tf.TFRecordReader()
-            _, serialized_example = reader.read(filename_queue)
-            features = {
-                'observation': tf.FixedLenFeature([obs_dim], tf.float32),
-                'actions': tf.FixedLenFeature([action_dim * self._H], tf.float32),
-                'rewards': tf.FixedLenFeature([self._H], tf.float32)
-            }
-            parsed_example = tf.parse_single_example(serialized_example, features=features)
-
-            single_observation = parsed_example['observation']
-            single_actions = parsed_example['actions']
-            single_rewards = parsed_example['rewards']
-
-            ### shuffle and put into batches
-            tf_obs_ph, tf_actions_ph, tf_rewards_ph = tf.train.shuffle_batch(
-                [single_observation, single_actions, single_rewards], batch_size=self._batch_size, num_threads=2,
-                capacity=1000 + 3 * self._batch_size,
-                # Ensures a minimum amount of shuffling of examples.
-                min_after_dequeue=1000)
-
-            d_queue = {
-                'ph': queue_ph,
-                'var': queue_var,
-                'queue': filename_queue
-            }
-
-        return tf_obs_ph, tf_actions_ph, tf_rewards_ph, d_queue
 
     def _graph_preprocess_from_placeholders(self):
         d_preprocess = dict()
@@ -216,10 +181,7 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
         return tf.train.AdamOptimizer(learning_rate=self._learning_rate).minimize(tf_cost)
 
     def _graph_init_vars(self, tf_sess, d_queue):
-        feed_dict = dict()
-        if 'ph' in d_queue:
-            feed_dict[d_queue['ph']] = []
-        tf_sess.run([tf.initialize_all_variables()], feed_dict=feed_dict)
+        tf_sess.run([tf.initialize_all_variables()])
 
     def _graph_setup(self):
         tf_sess = tf.get_default_session()
@@ -230,28 +192,22 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
             tf_graph = tf_sess.graph
 
         with tf_graph.as_default():
-            if self._is_train:
-                tf_obs_ph, tf_actions_ph, tf_rewards_ph, d_queue = self._graph_inputs_outputs_from_files()
-            else:
-                tf_obs_ph, tf_actions_ph, tf_rewards_ph, d_queue = self._graph_inputs_outputs_from_placeholders()
-            pre_variables = tf.all_variables()
+            tf_obs_ph, tf_actions_ph, tf_rewards_ph = self._graph_inputs_outputs_from_placeholders()
             d_preprocess = self._graph_preprocess_from_placeholders()
             tf_rewards = self._graph_inference(tf_obs_ph, tf_actions_ph, d_preprocess)
-            post_variables = tf.all_variables()
-            for v in set(post_variables).difference(pre_variables):
-                tf.add_to_collection('params_internal', v)
+            tf.add_to_collection('params_internal', tf.all_variables())
             if self._is_train:
                 tf_cost, tf_mse = self._graph_cost(tf_rewards_ph, tf_rewards)
                 tf_opt = self._graph_optimize(tf_cost)
             else:
                 tf_cost, tf_mse, tf_opt = None, None, None
 
-            self._graph_init_vars(tf_sess, d_queue)
+            self._graph_init_vars(tf_sess)
 
             # merged = tf.merge_all_summaries()
             # writer = tf.train.SummaryWriter('/tmp', graph_def=tf_sess.graph_def)
 
-        return tf_graph, tf_sess, tf_obs_ph, tf_actions_ph, tf_rewards_ph, d_queue, d_preprocess, tf_rewards, tf_cost, tf_opt
+        return tf_graph, tf_sess, tf_obs_ph, tf_actions_ph, tf_rewards_ph, d_preprocess, tf_rewards, tf_cost, tf_opt
 
     def _graph_set_preprocess(self, preprocess_stats):
         obs_mean, obs_orth, actions_mean, actions_orth, rewards_mean, rewards_orth = \
@@ -285,34 +241,24 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
         if flush:
             self._tf_sess.run(self._d_queue['queue'].dequeue_many(2000 + 3 * self._batch_size)) # TODO: hard coded
 
-    def train(self, tfrecords, preprocess_stats):
-        """
-        :type replay_pool: RNNCriticReplayPool
-        """
+    def train_step(self, observations, actions, rewards):
         assert(self._is_train)
-        start_time = time.time()
 
-        with self._tf_graph.as_default(), self._tf_sess.as_default():
-            if self._reset_every_train:
-                self._graph_init_vars(self._tf_sess, self._d_queue)
+        cost, _ = self._tf_sess.run([self._tf_cost, self._tf_opt],
+                                    feed_dict={
+                                        self._tf_obs_ph: observations,
+                                        self._tf_actions_ph: actions,
+                                        self._tf_rewards_ph: rewards
+                                    })
 
-            if not hasattr(self, '_tf_coord'):
-                assert (not hasattr(self, '_tf_threads'))
-                self._graph_reset_queue(tfrecords, flush=False)
-                self._tf_coord = tf.train.Coordinator()
-                self._tf_threads = tf.train.start_queue_runners(sess=self._tf_sess, coord=self._tf_coord)
+        self._log_stats['cost'].append(cost)
+        for k, v in self._log_stats:
+            if len(v) > self._log_history_len:
+                self._log_stats[k] = v[1:]
 
-            self._graph_set_preprocess(preprocess_stats)
-            self._graph_reset_queue(tfrecords)
+        return cost
 
-            train_log = defaultdict(list)
-
-            for step in range(self._train_steps):
-                cost, _ = self._tf_sess.run([self._tf_cost, self._tf_opt])
-                train_log['cost'].append(cost)
-
-        train_log['TrainTime'] = time.time() - start_time
-        return train_log
+    # TODO update preprocess
 
     ######################
     ### Policy methods ###
@@ -426,3 +372,11 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
         ### evaluate other params and set self params
         other_params_values = other_policy._tf_sess.run(other_params)
         self._tf_sess.run([tf.assign(p, v) for p, v in zip(self_params, other_params_values)])
+
+    ###############
+    ### Logging ###
+    ###############
+
+    def log(self):
+        for k in sorted(self._log_stats.keys()):
+            logger.record_tabular(k, np.mean(self._log_stats[k]))

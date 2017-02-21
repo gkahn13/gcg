@@ -2,7 +2,7 @@ import tensorflow as tf
 
 from rllab.misc.overrides import overrides
 from rllab.core.serializable import Serializable
-from sandbox.gkahn.rnn_critic.policies.rnn_critic_policy import RNNCriticPolicy
+from sandbox.gkahn.rnn_critic.policies.policy import RNNCriticPolicy
 
 class RNNCriticRNNPolicy(RNNCriticPolicy, Serializable):
     def __init__(self,

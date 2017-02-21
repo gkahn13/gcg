@@ -12,8 +12,8 @@ from rllab.envs.gym_env import GymEnv
 from rllab.sampler.utils import rollout as rollout_policy
 
 from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
-from sandbox.gkahn.rnn_critic.policies.rnn_critic_policy import RNNCriticPolicy
-from sandbox.gkahn.rnn_critic.sampler.rnn_critic_vectorized_sampler import RNNCriticVectorizedSampler
+from sandbox.gkahn.rnn_critic.policies.policy import RNNCriticPolicy
+from sandbox.gkahn.rnn_critic.sampler.vectorized_sampler import RNNCriticVectorizedSampler
 
 class AnalyzeRNNCritic(object):
     def __init__(self, folder, skip_itr=1, max_itr=sys.maxsize):

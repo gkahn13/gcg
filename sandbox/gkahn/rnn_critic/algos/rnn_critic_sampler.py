@@ -10,7 +10,7 @@ import tensorflow as tf
 from rllab.sampler.utils import rollout
 import rllab.misc.logger as logger
 
-from sandbox.gkahn.rnn_critic.sampler.rnn_critic_vectorized_sampler import RNNCriticVectorizedSampler
+from sandbox.gkahn.rnn_critic.sampler.vectorized_sampler import RNNCriticVectorizedSampler
 
 class RNNCriticSampler(object):
 
