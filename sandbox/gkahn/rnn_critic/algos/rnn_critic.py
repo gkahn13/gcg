@@ -1,5 +1,3 @@
-import inspect
-
 from rllab.algos.base import RLAlgorithm
 from rllab.misc.overrides import overrides
 import rllab.misc.logger as logger
@@ -52,9 +50,6 @@ class RNNCritic(RLAlgorithm):
         self._log_every_n_steps = log_every_n_steps
         self._batch_size = batch_size
 
-        # for attr in [attr for attr in dir(self) if '__' not in attr and not inspect.ismethod(getattr(self, attr))]:
-        #     logger.log('RNNCritic\t{0}: {1}'.format(attr, getattr(self, attr)))
-
         policy.set_exploration_strategy(exploration_strategy)
 
         self._sampler = RNNCriticSampler(
@@ -99,40 +94,3 @@ class RNNCritic(RLAlgorithm):
                         )
                         logger.save_itr_params(save_itr, itr_params)
                     save_itr += 1
-
-
-
-    @overrides
-    def train_OLD(self):
-        for itr in range(self._n_rollouts // self._train_every_n_rollouts):
-            with logger.prefix('itr #{0:d} | '.format(itr)):
-                ### sample rollouts
-                logger.log('Sampling rollouts...')
-                self._sampler.sample_rollouts()
-                tfrecords, paths, preprocess_stats, sampler_log = self._sampler.get_tfrecords_paths_and_statistics()
-                ### train
-                logger.log('Training policy...')
-                train_log = self._training_policy.train(tfrecords, preprocess_stats)
-                self._sampler.update_policy(self._training_policy)
-
-                ### save pkl
-                with self._sampling_policy.session.as_default():
-                    itr_params = dict(
-                        itr=itr,
-                        policy=self._sampling_policy,
-                        env=self._env,
-                        train_log=train_log,
-                        rollouts=paths
-                    )
-                    logger.save_itr_params(itr, itr_params)
-
-                ### log
-                keys = ('FinalRewardMean', 'FinalRewardStd', 'AvgRewardMean', 'AvgRewardStd', 'RolloutTime')
-                for k in keys:
-                    logger.record_tabular(k, sampler_log[k])
-                for k in [k for k in sampler_log.keys() if k not in keys]:
-                    logger.record_tabular(k, sampler_log[k])
-                logger.record_tabular('InitialTrainCost', train_log['cost'][0])
-                logger.record_tabular('FinalTrainCost', train_log['cost'][-1])
-                logger.record_tabular('TrainTime', train_log['TrainTime'])
-                logger.dump_tabular(with_prefix=False)

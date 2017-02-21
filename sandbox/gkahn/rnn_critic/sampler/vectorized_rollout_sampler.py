@@ -9,7 +9,7 @@ from rllab.misc import tensor_utils
 
 from sandbox.rocky.tf.envs.vec_env_executor import VecEnvExecutor
 
-class RNNCriticVectorizedSampler(Sampler):
+class RNNCriticVectorizedRolloutSampler(Sampler):
 
     def __init__(self, env, policy, n_envs, max_path_length, rollouts_per_sample):
         self._env = env

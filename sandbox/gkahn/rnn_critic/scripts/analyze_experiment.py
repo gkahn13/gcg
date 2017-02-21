@@ -7,6 +7,7 @@ import pandas
 import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib import ticker
 from sklearn.utils.extmath import cartesian
 
 from rllab.envs.gym_env import GymEnv
@@ -14,7 +15,7 @@ from rllab.sampler.utils import rollout as rollout_policy
 
 from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
 from sandbox.gkahn.rnn_critic.policies.policy import RNNCriticPolicy
-from sandbox.gkahn.rnn_critic.sampler.vectorized_sampler import RNNCriticVectorizedSampler
+from sandbox.gkahn.rnn_critic.sampler.vectorized_rollout_sampler import RNNCriticVectorizedRolloutSampler
 
 class AnalyzeRNNCritic(object):
     def __init__(self, folder, skip_itr=1, max_itr=sys.maxsize):
@@ -93,7 +94,7 @@ class AnalyzeRNNCritic(object):
                 env = env_itrs[itr // self._skip_itr]
                 policy = self._load_itr_policy(itr)
 
-                sampler = RNNCriticVectorizedSampler(
+                sampler = RNNCriticVectorizedRolloutSampler(
                     env=env,
                     policy=policy,
                     n_envs=8,
@@ -178,6 +179,9 @@ class AnalyzeRNNCritic(object):
         plot_reward(ax, rewards)
         ax.set_ylabel('Eval final reward')
         ax.set_xlabel('Steps')
+        xfmt = ticker.ScalarFormatter()
+        xfmt.set_powerlimits((0, 0))
+        ax.xaxis.set_major_formatter(xfmt)
 
         ### for all
         for ax in axes:

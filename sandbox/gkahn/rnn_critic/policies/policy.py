@@ -1,5 +1,3 @@
-import inspect
-import time
 import os
 from collections import defaultdict
 import itertools
@@ -49,9 +47,6 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
         self._gpu_frac = gpu_frac
         self._log_history_len = log_history_len
         self._exploration_strategy = None # don't set in init b/c will then be Serialized
-
-        # for attr in [attr for attr in dir(self) if '__' not in attr and not inspect.ismethod(getattr(self, attr))]:
-        #     logger.log('RNNCriticPolicy\t{0}: {1}'.format(attr, getattr(self, attr)))
 
         self._tf_graph, self._tf_sess, \
             self._tf_obs_ph, self._tf_actions_ph, self._tf_rewards_ph, self._d_preprocess, \
