@@ -1,5 +1,5 @@
 import argparse
-import os
+import os, sys
 import joblib
 import itertools
 
@@ -16,8 +16,10 @@ from sandbox.gkahn.rnn_critic.policies.rnn_critic_policy import RNNCriticPolicy
 from sandbox.gkahn.rnn_critic.sampler.rnn_critic_vectorized_sampler import RNNCriticVectorizedSampler
 
 class AnalyzeRNNCritic(object):
-    def __init__(self, folder):
+    def __init__(self, folder, skip_itr=1, max_itr=sys.maxsize):
         self._folder = folder
+        self._skip_itr = skip_itr
+        self._max_itr = max_itr
 
     #############
     ### Files ###
@@ -61,13 +63,13 @@ class AnalyzeRNNCritic(object):
         env_itrs = []
 
         itr = 0
-        while os.path.exists(self._itr_file(itr)):
+        while os.path.exists(self._itr_file(itr)) and itr < self._max_itr:
             train_log, rollouts, env = self._load_itr(itr)
             train_log_itrs.append(train_log)
             train_rollouts_itrs.append(rollouts)
             env_itrs.append(env)
 
-            itr += 1
+            itr += self._skip_itr
 
         return train_log_itrs, train_rollouts_itrs, env_itrs
 
@@ -75,10 +77,10 @@ class AnalyzeRNNCritic(object):
         rollouts_itrs = []
 
         itr = 0
-        while os.path.exists(self._itr_file(itr)):
+        while os.path.exists(self._itr_file(itr)) and itr < self._max_itr:
             sess, graph = RNNCriticPolicy.create_session_and_graph()
             with graph.as_default(), sess.as_default():
-                env = env_itrs[itr]
+                env = env_itrs[itr // self._skip_itr]
                 policy = self._load_itr_policy(itr)
 
                 sampler = RNNCriticVectorizedSampler(
@@ -93,7 +95,7 @@ class AnalyzeRNNCritic(object):
                 sampler.shutdown_worker()
 
             rollouts_itrs.append(rollouts)
-            itr += 1
+            itr += self._skip_itr
 
         return rollouts_itrs
 
@@ -102,9 +104,9 @@ class AnalyzeRNNCritic(object):
     ################
 
     def _plot_analyze(self, train_log_itrs, train_rollouts_itrs, eval_rollouts_itrs):
-        max_itr = len(train_log_itrs)
+        max_itr = len(train_log_itrs) * self._skip_itr
 
-        f, axes = plt.subplots(3, 1, figsize=(3 * max_itr, 7.5))
+        f, axes = plt.subplots(3, 1, figsize=(2 * len(train_log_itrs), 7.5), sharex=True)
         f.tight_layout()
 
         ### plot training cost
@@ -119,29 +121,36 @@ class AnalyzeRNNCritic(object):
         def plot_reward(ax, rewards):
             color = 'k'
             bp = ax.boxplot(rewards,
-                            positions=np.arange(max_itr),
-                            widths=0.25)
+                            positions=np.r_[0:max_itr:self._skip_itr],
+                            widths=0.4 * self._skip_itr)
             for key in ('boxes', 'medians', 'whiskers', 'fliers', 'caps'):
                 plt.setp(bp[key], color=color)
-            for line in bp['medians']:
-                # get position data for median line
-                x, y = line.get_xydata()[1]  # top of median line
-                # overlay median value
-                ax.text(x, y, '%.2f' % y,
-                        horizontalalignment='left',
-                        verticalalignment='center',
+            for cap_line, median_line in zip(bp['caps'][1::2], bp['medians']):
+                cx, cy = cap_line.get_xydata()[1]  # top of median line
+                mx, my = median_line.get_xydata()[1]
+                ax.text(cx, cy, '%.2f' % my,
+                        horizontalalignment='right',
+                        verticalalignment='bottom',
                         color='r')  # draw above, centered
-            for line in bp['boxes']:
-                x, y = line.get_xydata()[0]  # bottom of left line
-                ax.text(x, y, '%.2f' % y,
-                        horizontalalignment='right',  # centered
-                        verticalalignment='center',
-                        color='k', alpha=0.5)  # below
-                x, y = line.get_xydata()[3]  # bottom of right line
-                ax.text(x, y, '%.2f' % y,
-                        horizontalalignment='right',  # centered
-                        verticalalignment='center',
-                        color='k', alpha=0.5)  # below
+            # for line in bp['medians']:
+            #     # get position data for median line
+            #     x, y = line.get_xydata()[1]  # top of median line
+            #     # overlay median value
+            #     ax.text(x, y, '%.2f' % y,
+            #             horizontalalignment='left',
+            #             verticalalignment='center',
+            #             color='r')  # draw above, centered
+            # for line in bp['boxes']:
+            #     x, y = line.get_xydata()[0]  # bottom of left line
+            #     ax.text(x, y, '%.2f' % y,
+            #             horizontalalignment='right',  # centered
+            #             verticalalignment='center',
+            #             color='k', alpha=0.5)  # below
+            #     x, y = line.get_xydata()[3]  # bottom of right line
+            #     ax.text(x, y, '%.2f' % y,
+            #             horizontalalignment='right',  # centered
+            #             verticalalignment='center',
+            #             color='k', alpha=0.5)  # below
             plt.setp(bp['fliers'], marker='_')
             plt.setp(bp['fliers'], markeredgecolor=color)
             ax.set_xlabel('Iteration')
@@ -157,6 +166,11 @@ class AnalyzeRNNCritic(object):
         rewards = [[rollout['rewards'][-1] for rollout in rollouts] for rollouts in eval_rollouts_itrs]
         plot_reward(ax, rewards)
         ax.set_ylabel('Eval final reward')
+
+        ### for all
+        for ax in axes:
+            ax.set_xlim((-self._skip_itr/2., max_itr))
+            ax.set_xticks(np.r_[0:max_itr:self._skip_itr])
 
         f.savefig(self._analyze_img_file, bbox_inches='tight')
         plt.close(f)
@@ -176,7 +190,10 @@ class AnalyzeRNNCritic(object):
     def _plot_rollouts_PointEnv(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train, plot_prior):
         rollouts_itrs = train_rollouts_itrs if is_train else eval_rollouts_itrs
 
-        for itr, rollouts in enumerate(rollouts_itrs):
+        max_itr = len(rollouts_itrs) * self._skip_itr
+        itrs = np.r_[0:max_itr:self._skip_itr]
+
+        for itr, rollouts in zip(itrs, rollouts_itrs):
 
             N_rollouts = 25
             rollouts = sorted(rollouts, key=lambda r: r['rewards'][-1], reverse=True)
@@ -222,7 +239,10 @@ class AnalyzeRNNCritic(object):
 
         rollouts_itrs = train_rollouts_itrs if is_train else eval_rollouts_itrs
 
-        for itr, rollouts in enumerate(rollouts_itrs):
+        max_itr = len(rollouts_itrs) * self._skip_itr
+        itrs = np.r_[0:max_itr:self._skip_itr]
+
+        for itr, rollouts in zip(itrs, rollouts_itrs):
 
             N_rollouts = 25
             rollouts = sorted(rollouts, key=lambda r: r['rewards'][-1], reverse=True)
@@ -302,7 +322,11 @@ class AnalyzeRNNCritic(object):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('folder', type=str)
+    parser.add_argument('--skip_itr', type=int, default=1)
+    parser.add_argument('--max_itr', type=int, default=sys.maxsize)
     args = parser.parse_args()
 
-    analyze = AnalyzeRNNCritic(os.path.join('/home/gkahn/code/rllab/data/local/rnn-critic/', args.folder))
+    analyze = AnalyzeRNNCritic(os.path.join('/home/gkahn/code/rllab/data/local/rnn-critic/', args.folder),
+                               skip_itr=args.skip_itr,
+                               max_itr=args.max_itr)
     analyze.run()

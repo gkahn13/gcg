@@ -248,8 +248,8 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
 
             self._graph_init_vars(tf_sess, d_queue)
 
-            merged = tf.merge_all_summaries()
-            writer = tf.train.SummaryWriter('/tmp', graph_def=tf_sess.graph_def)
+            # merged = tf.merge_all_summaries()
+            # writer = tf.train.SummaryWriter('/tmp', graph_def=tf_sess.graph_def)
 
         return tf_graph, tf_sess, tf_obs_ph, tf_actions_ph, tf_rewards_ph, d_queue, d_preprocess, tf_rewards, tf_cost, tf_opt
 
