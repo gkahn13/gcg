@@ -128,6 +128,10 @@ class RNNCriticReplayPool(object):
             actions.append(self._actions[start_index:start_index + self._H])
             rewards.append(self._rewards[start_index:start_index + self._H])
 
+        observations = np.vstack(observations)
+        actions = np.vstack(actions)
+        rewards = np.vstack(rewards)
+
         return observations, actions, rewards
 
     @staticmethod
@@ -150,10 +154,14 @@ class RNNCriticReplayPool(object):
             if batch_sizes[i] == 0:
                 continue
 
-            observations_i, actions_i, rewards_i = replay_pool.sample()
-            observations += observations_i
-            actions += actions_i
-            rewards += rewards_i
+            observations_i, actions_i, rewards_i = replay_pool.sample(batch_sizes[i])
+            observations.append(observations_i)
+            actions.append(actions_i)
+            rewards.append(rewards_i)
+
+        observations = np.vstack(observations)
+        actions = np.vstack(actions)
+        rewards = np.vstack(rewards)
 
         for arr in (observations, actions, rewards):
             assert(len(arr) == batch_size)
@@ -206,4 +214,4 @@ class RNNCriticReplayPool(object):
 
     @staticmethod
     def get_recent_paths_pools(replay_pools):
-        return list(itertools.chain(*[rp.get_recent_paths for rp in replay_pools]))
+        return list(itertools.chain(*[rp.get_recent_paths() for rp in replay_pools]))

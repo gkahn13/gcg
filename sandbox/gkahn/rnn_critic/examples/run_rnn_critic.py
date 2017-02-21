@@ -1,7 +1,8 @@
-import os, argparse, yaml
+import os, argparse, yaml, shutil
 import tensorflow as tf
 
 from rllab.misc.instrument import run_experiment_lite
+import rllab.misc.logger as logger
 ### environments
 from sandbox.rocky.tf.envs.base import TfEnv
 from rllab.envs.normalized_env import normalize
@@ -16,6 +17,9 @@ from sandbox.gkahn.rnn_critic.policies.rnn_policy import RNNCriticRNNPolicy
 params = dict()
 
 def run_task(*_):
+    # copy yaml for posterity
+    shutil.copy(params['yaml_path'], os.path.join(logger.get_snapshot_dir(), os.path.basename(params['yaml_path'])))
+
     from rllab.envs.gym_env import GymEnv
     from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
     env = TfEnv(normalize(eval(params['alg'].pop('env'))))
@@ -39,8 +43,7 @@ def run_task(*_):
             **params['policy']
         )
 
-    sampling_policy = create_policy(is_train=False)
-    training_policy = create_policy(is_train=True)
+    policy = create_policy(is_train=True)
 
     es_params = params['alg'].pop('exploration_strategy')
     es_type = es_params['type']
@@ -53,8 +56,7 @@ def run_task(*_):
 
     algo = RNNCritic(
         env=env,
-        sampling_policy=sampling_policy,
-        training_policy=training_policy,
+        policy=policy,
         exploration_strategy=exploration_strategy,
         max_path_length=env.horizon,
         **params['alg']
@@ -82,5 +84,6 @@ if __name__ == '__main__':
     assert(os.path.exists(args.yaml))
     with open(args.yaml, 'r') as f:
         params.update(yaml.load(f))
+    params['yaml_path'] = args.yaml
 
     main()

@@ -10,7 +10,6 @@ class RNNCritic(RLAlgorithm):
     def __init__(self,
                  env,
                  policy,
-                 n_rollouts,
                  max_path_length,
                  exploration_strategy,
                  total_steps,
@@ -26,7 +25,6 @@ class RNNCritic(RLAlgorithm):
         """
         :param env: Environment
         :param policy: RNNCriticPolicy
-        :param n_rollouts: maximum number of rollouts to train with
         :param max_path_length: maximum length of a single rollout
         :param exploration_strategy: how actions are modified
         :param total_steps: how many steps to take in total
@@ -37,7 +35,6 @@ class RNNCritic(RLAlgorithm):
         :param log_every_n_steps: log every n steps
         :param batch_size: batch size per gradient step
         :param render: show env
-        :param is_async: asynchronous sampling/training
         """
         assert(learn_after_n_steps % n_envs == 0)
         assert(train_every_n_steps % n_envs == 0)
@@ -46,7 +43,6 @@ class RNNCritic(RLAlgorithm):
 
         self._env = env
         self._policy = policy
-        self._n_rollouts = n_rollouts
         self._max_path_length = max_path_length
         self._total_steps = total_steps
         self._learn_after_n_steps = learn_after_n_steps
@@ -66,7 +62,7 @@ class RNNCritic(RLAlgorithm):
             env=env,
             n_envs=n_envs,
             replay_pool_size=replay_pool_size,
-            max_path_length=max_path_length
+            max_path_length=max_path_length,
         )
 
     @overrides
@@ -82,16 +78,19 @@ class RNNCritic(RLAlgorithm):
 
                 ### update target network
                 if step % self._update_target_every_n_steps == 0:
-                    pass # TODO
+                    self._policy.update_preprocess(self._sampler.statistics)
+                    # TODO: update target
 
                 if step % self._log_every_n_steps == 0:
+                    logger.log('step %.1e | ' % step)
+                    logger.record_tabular('Step', step)
                     self._sampler.log()
                     self._policy.log()
                     logger.dump_tabular(with_prefix=False)
 
                 ### save model
                 if step % self._save_every_n_steps == 0:
-                    with self._policy.session.as_default():
+                    with self._policy.session.as_default(), self._policy.session.graph.as_default():
                         itr_params = dict(
                             itr=save_itr,
                             policy=self._policy,

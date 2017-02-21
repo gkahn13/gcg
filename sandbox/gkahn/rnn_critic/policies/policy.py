@@ -22,9 +22,6 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
                  H,
                  weight_decay,
                  learning_rate,
-                 reset_every_train,
-                 train_steps,
-                 batch_size,
                  get_action_params,
                  gpu_device=None,
                  gpu_frac=None,
@@ -47,9 +44,6 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
         self._H = H
         self._weight_decay = weight_decay
         self._learning_rate = learning_rate
-        self._reset_every_train = reset_every_train
-        self._train_steps = train_steps
-        self._batch_size = batch_size
         self._get_action_params = get_action_params
         self._gpu_device = gpu_device
         self._gpu_frac = gpu_frac
@@ -105,11 +99,11 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
 
     def _graph_inputs_outputs_from_placeholders(self):
         with tf.variable_scope('feed_input'):
-            tf_obs_ph = tf.placeholder('float', [None, self._env_spec.observation_space.flat_dim])
-            tf_actions_ph = tf.placeholder('float', [None, self._env_spec.action_space.flat_dim * self._H])
-            tf_rewards_ph = tf.placeholder('float', [None, self._H])
+            tf_obs_ph = tf.placeholder('float', [None, self._env_spec.observation_space.flat_dim], name='tf_obs_ph')
+            tf_actions_ph = tf.placeholder('float', [None, self._env_spec.action_space.flat_dim * self._H], name='tf_actions_ph')
+            tf_rewards_ph = tf.placeholder('float', [None, self._H], name='tf_rewards_ph')
 
-        return tf_obs_ph, tf_actions_ph, tf_rewards_ph, dict()
+        return tf_obs_ph, tf_actions_ph, tf_rewards_ph
 
     def _graph_preprocess_from_placeholders(self):
         d_preprocess = dict()
@@ -118,14 +112,14 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
             for name, dim in (('observations', self._env_spec.observation_space.flat_dim),
                               ('actions', self._env_spec.action_space.flat_dim * self._H),
                               ('rewards', self._H)):
-                d_preprocess[name+'_mean_ph'] = tf.placeholder(tf.float32, shape=(1, dim))
+                d_preprocess[name+'_mean_ph'] = tf.placeholder(tf.float32, shape=(1, dim), name=name+'_mean_ph')
                 d_preprocess[name+'_mean_var'] = tf.get_variable(name+'_mean_var', shape=[1, dim],
                                                                  trainable=False, dtype=tf.float32,
                                                                  initializer=tf.constant_initializer(np.zeros((1, dim))))
                 d_preprocess[name+'_mean_assign'] = tf.assign(d_preprocess[name+'_mean_var'],
                                                               d_preprocess[name+'_mean_ph'])
 
-                d_preprocess[name+'_orth_ph'] = tf.placeholder(tf.float32, shape=(dim, dim))
+                d_preprocess[name+'_orth_ph'] = tf.placeholder(tf.float32, shape=(dim, dim), name=name+'_orth_ph')
                 d_preprocess[name+'_orth_var'] = tf.get_variable(name+'_orth_var',
                                                                  shape=(dim, dim),
                                                                  trainable=False, dtype=tf.float32,
@@ -180,7 +174,7 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
     def _graph_optimize(self, tf_cost):
         return tf.train.AdamOptimizer(learning_rate=self._learning_rate).minimize(tf_cost)
 
-    def _graph_init_vars(self, tf_sess, d_queue):
+    def _graph_init_vars(self, tf_sess):
         tf_sess.run([tf.initialize_all_variables()])
 
     def _graph_setup(self):
@@ -191,11 +185,12 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
         else:
             tf_graph = tf_sess.graph
 
-        with tf_graph.as_default():
+        with tf_sess.as_default(), tf_graph.as_default():
             tf_obs_ph, tf_actions_ph, tf_rewards_ph = self._graph_inputs_outputs_from_placeholders()
             d_preprocess = self._graph_preprocess_from_placeholders()
             tf_rewards = self._graph_inference(tf_obs_ph, tf_actions_ph, d_preprocess)
-            tf.add_to_collection('params_internal', tf.all_variables())
+            for v in tf.all_variables():
+                tf.add_to_collection('params_internal', v)
             if self._is_train:
                 tf_cost, tf_mse = self._graph_cost(tf_rewards_ph, tf_rewards)
                 tf_opt = self._graph_optimize(tf_cost)
@@ -209,7 +204,7 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
 
         return tf_graph, tf_sess, tf_obs_ph, tf_actions_ph, tf_rewards_ph, d_preprocess, tf_rewards, tf_cost, tf_opt
 
-    def _graph_set_preprocess(self, preprocess_stats):
+    def update_preprocess(self, preprocess_stats):
         obs_mean, obs_orth, actions_mean, actions_orth, rewards_mean, rewards_orth = \
             preprocess_stats['observations_mean'], \
             preprocess_stats['observations_orth'], \
@@ -226,20 +221,13 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
             # self._d_preprocess['rewards_orth_assign']
         ],
           feed_dict={
-              self._d_preprocess['observations_mean_ph']: np.expand_dims(obs_mean, 0),
+              self._d_preprocess['observations_mean_ph']: obs_mean,
               self._d_preprocess['observations_orth_ph']: obs_orth,
-              self._d_preprocess['actions_mean_ph']: np.expand_dims(np.tile(actions_mean, self._H), 0),
+              self._d_preprocess['actions_mean_ph']: np.tile(actions_mean, self._H),
               self._d_preprocess['actions_orth_ph']: scipy.linalg.block_diag(*([actions_orth] * self._H)),
               self._d_preprocess['rewards_mean_ph']: np.expand_dims(np.tile(rewards_mean, self._H), 0),
               self._d_preprocess['rewards_orth_ph']: scipy.linalg.block_diag(*([rewards_orth] * self._H))
           })
-
-    def _graph_reset_queue(self, tfrecords, flush=True):
-        # new file inputs
-        self._tf_sess.run([tf.assign(self._d_queue['var'], tfrecords, validate_shape=False)])
-        # flush out old ones
-        if flush:
-            self._tf_sess.run(self._d_queue['queue'].dequeue_many(2000 + 3 * self._batch_size)) # TODO: hard coded
 
     def train_step(self, observations, actions, rewards):
         assert(self._is_train)
@@ -251,8 +239,8 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
                                         self._tf_rewards_ph: rewards
                                     })
 
-        self._log_stats['cost'].append(cost)
-        for k, v in self._log_stats:
+        self._log_stats['Cost'].append(cost)
+        for k, v in self._log_stats.items():
             if len(v) > self._log_history_len:
                 self._log_stats[k] = v[1:]
 
@@ -284,8 +272,6 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
         self._exploration_strategy = exploration_strategy
 
     def get_action(self, observation):
-        assert(not self._is_train)
-
         action_lower, action_upper = self._env_spec.action_space.bounds
 
         if self._get_action_params['type'] == 'random':
@@ -312,8 +298,6 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
         return chosen_action, dict()
 
     def get_actions(self, observations):
-        assert(not self._is_train)
-
         num_obs = len(observations)
         action_lower, action_upper = self._env_spec.action_space.bounds
 

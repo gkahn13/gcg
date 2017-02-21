@@ -10,9 +10,13 @@ class RNNCriticSampler(object):
         self._policy = policy
         self._n_envs = n_envs
 
-        self._replay_pools = [RNNCriticReplayPool(env.spec, policy.H, replay_pool_size // n_envs) for _ in range(n_envs)]
+        self._replay_pools = [RNNCriticReplayPool(env.spec,
+                                                  policy.H,
+                                                  replay_pool_size // n_envs,
+                                                  log_history_len=(10 * max_path_length) // n_envs)
+                              for _ in range(n_envs)]
         self._vec_env = VecEnvExecutor(
-            envs=[pickle.loads(pickle.dumps(self._env)) for _ in range(self._n_envs)],
+            envs=[pickle.loads(pickle.dumps(env)) for _ in range(self._n_envs)],
             max_path_length=max_path_length
         )
         self._curr_observations = self._vec_env.reset()

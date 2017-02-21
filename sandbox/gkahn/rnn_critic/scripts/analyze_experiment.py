@@ -1,7 +1,8 @@
-import argparse
-import os, sys
+import argparse, os, sys
+import yaml
 import joblib
 import itertools
+import pandas
 
 import tensorflow as tf
 import numpy as np
@@ -21,12 +22,24 @@ class AnalyzeRNNCritic(object):
         self._skip_itr = skip_itr
         self._max_itr = max_itr
 
+        with open(self._params_file, 'r') as f:
+            self._params = yaml.load(f)
+        self._progress = pandas.read_csv(self._progress_file)
+
     #############
     ### Files ###
     #############
 
     def _itr_file(self, itr):
         return os.path.join(self._folder, 'itr_{0:d}.pkl'.format(itr))
+
+    @property
+    def _progress_file(self):
+        return os.path.join(self._folder, 'progress.csv')
+
+    @property
+    def _params_file(self):
+        return os.path.join(self._folder, os.path.basename(self._folder)+'.yaml')
 
     @property
     def _analyze_img_file(self):
@@ -50,28 +63,25 @@ class AnalyzeRNNCritic(object):
         sess, graph = RNNCriticPolicy.create_session_and_graph()
         with graph.as_default(), sess.as_default():
             d = joblib.load(self._itr_file(itr))
-            train_log = d['train_log']
             rollouts = d['rollouts']
             env = d['env']
             d['policy'].terminate()
 
-        return train_log, rollouts, env
+        return rollouts, env
 
     def _load_all_itrs(self):
-        train_log_itrs = []
         train_rollouts_itrs = []
         env_itrs = []
 
         itr = 0
         while os.path.exists(self._itr_file(itr)) and itr < self._max_itr:
-            train_log, rollouts, env = self._load_itr(itr)
-            train_log_itrs.append(train_log)
+            rollouts, env = self._load_itr(itr)
             train_rollouts_itrs.append(rollouts)
             env_itrs.append(env)
 
             itr += self._skip_itr
 
-        return train_log_itrs, train_rollouts_itrs, env_itrs
+        return train_rollouts_itrs, env_itrs
 
     def _eval_all_policies(self, env_itrs):
         rollouts_itrs = []
@@ -103,26 +113,28 @@ class AnalyzeRNNCritic(object):
     ### Plotting ###
     ################
 
-    def _plot_analyze(self, train_log_itrs, train_rollouts_itrs, eval_rollouts_itrs):
-        max_itr = len(train_log_itrs) * self._skip_itr
-
-        f, axes = plt.subplots(3, 1, figsize=(2 * len(train_log_itrs), 7.5), sharex=True)
+    def _plot_analyze(self, train_rollouts_itrs, eval_rollouts_itrs):
+        f, axes = plt.subplots(3, 1, figsize=(2 * len(train_rollouts_itrs), 7.5), sharex=True)
         f.tight_layout()
 
         ### plot training cost
         ax = axes[0]
-        costs = list(itertools.chain(*[train_log['cost'] for train_log in train_log_itrs]))
-        costs = np.convolve(costs, (1 / 10.) * np.ones(10), mode='valid')
-        itrs = np.linspace(0, max_itr, len(costs))
-        ax.plot(itrs, costs, 'k-')
-        ax.set_xlabel('Iteration')
+        costs = self._progress['Cost'][1:]
+        steps = self._progress['Step'][1:]
+        ax.plot(steps, costs, 'k-')
         ax.set_ylabel('Cost')
+
+        start_step = self._params['alg']['learn_after_n_steps']
+        end_step = self._params['alg']['total_steps']
+        save_step = self._params['alg']['save_every_n_steps']
+        first_save_step = save_step * np.ceil(start_step / float(save_step))
+        itr_steps = np.r_[first_save_step:end_step:save_step]
 
         def plot_reward(ax, rewards):
             color = 'k'
             bp = ax.boxplot(rewards,
-                            positions=np.r_[0:max_itr:self._skip_itr],
-                            widths=0.4 * self._skip_itr)
+                            positions=itr_steps,
+                            widths=0.4 * self._skip_itr * save_step)
             for key in ('boxes', 'medians', 'whiskers', 'fliers', 'caps'):
                 plt.setp(bp[key], color=color)
             for cap_line, median_line in zip(bp['caps'][1::2], bp['medians']):
@@ -153,7 +165,6 @@ class AnalyzeRNNCritic(object):
             #             color='k', alpha=0.5)  # below
             plt.setp(bp['fliers'], marker='_')
             plt.setp(bp['fliers'], markeredgecolor=color)
-            ax.set_xlabel('Iteration')
 
         ### plot train final reward
         ax = axes[1]
@@ -166,11 +177,12 @@ class AnalyzeRNNCritic(object):
         rewards = [[rollout['rewards'][-1] for rollout in rollouts] for rollouts in eval_rollouts_itrs]
         plot_reward(ax, rewards)
         ax.set_ylabel('Eval final reward')
+        ax.set_xlabel('Steps')
 
         ### for all
         for ax in axes:
-            ax.set_xlim((-self._skip_itr/2., max_itr))
-            ax.set_xticks(np.r_[0:max_itr:self._skip_itr])
+            ax.set_xlim((-save_step/2., end_step))
+            ax.set_xticks(itr_steps)
 
         f.savefig(self._analyze_img_file, bbox_inches='tight')
         plt.close(f)
@@ -192,6 +204,12 @@ class AnalyzeRNNCritic(object):
 
         max_itr = len(rollouts_itrs) * self._skip_itr
         itrs = np.r_[0:max_itr:self._skip_itr]
+
+        start_step = self._params['alg']['learn_after_n_steps']
+        end_step = self._params['alg']['total_steps']
+        save_step = self._params['alg']['save_every_n_steps']
+        first_save_step = save_step * np.ceil(start_step / float(save_step))
+        itr_steps = np.r_[first_save_step:end_step:save_step]
 
         for itr, rollouts in zip(itrs, rollouts_itrs):
 
@@ -225,9 +243,11 @@ class AnalyzeRNNCritic(object):
                 ax.set_ylim(ylim)
                 ax.set_title('{0:.2f}'.format(rollout['rewards'][-1]))
 
+            suptitle = f.suptitle('Step %.2e' % itr_steps[itr], y=1.05)
             f.tight_layout()
 
-            f.savefig(self._analyze_rollout_img_file(itr, is_train), bbox_inches='tight', dpi=200.)
+            f.savefig(self._analyze_rollout_img_file(itr, is_train), bbox_inches='tight', dpi=200.,
+                      bbox_extra_artsist=(suptitle,))
             plt.close(f)
 
     def _plot_rollouts_Reacher(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train, plot_prior):
@@ -312,12 +332,12 @@ class AnalyzeRNNCritic(object):
     ###########
 
     def run(self):
-        train_log_itrs, train_rollouts_itrs, env_itrs = self._load_all_itrs()
+        train_rollouts_itrs, env_itrs = self._load_all_itrs()
         eval_rollouts_itrs = self._eval_all_policies(env_itrs)
-        self._plot_analyze(train_log_itrs, train_rollouts_itrs, eval_rollouts_itrs)
+        self._plot_analyze(train_rollouts_itrs, eval_rollouts_itrs)
         self._plot_rollouts(train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train=False, plot_prior=False)
         self._plot_rollouts(train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train=True, plot_prior=False)
-        self._plot_policies(train_rollouts_itrs, env_itrs)
+        # self._plot_policies(train_rollouts_itrs, env_itrs)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
