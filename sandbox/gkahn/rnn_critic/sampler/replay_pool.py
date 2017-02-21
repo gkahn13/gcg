@@ -100,11 +100,9 @@ class RNNCriticReplayPool(object):
         # every time I add something, go back H steps ago in the buffer and mark as acceptable
         # for get_batch if there is no done in between
         prev_index = (self._index - self._H) % self._size
-        if prev_index >= 0:
-            dones = self._dones[prev_index:self._index]
-        else:
-            dones = self._dones[prev_index:self._size].tolist() + self._dones[:self._H-self._index].tolist()
-        self._start_indices[prev_index] = not np.any(dones)
+        prev_indices = self._get_indices(prev_index, self._index)
+        dones = self._dones[prev_indices]
+        self._start_indices[prev_index] = not np.any(dones) and (np.array(prev_indices) < self._curr_size).all()
 
         ### update log stats
         self._update_log_stats(observation, action, reward, done)
@@ -124,15 +122,12 @@ class RNNCriticReplayPool(object):
 
         start_indices = np.random.choice(self._start_indices.nonzero()[0], size=(batch_size,), replace=True)
         for start_index in start_indices:
-            observations.append(self._observations[start_index:start_index + self._H])
-            actions.append(self._actions[start_index:start_index + self._H])
-            rewards.append(self._rewards[start_index:start_index + self._H])
+            indices = self._get_indices(start_index, (start_index + self._H) % self._size)
+            observations.append(self._observations[indices].tolist())
+            actions.append(self._actions[indices].tolist())
+            rewards.append(self._rewards[indices].tolist())
 
-        observations = np.vstack(observations)
-        actions = np.vstack(actions)
-        rewards = np.vstack(rewards)
-
-        return observations, actions, rewards
+        return np.array(observations), np.array(actions), np.array(rewards)
 
     @staticmethod
     def sample_pools(replay_pools, batch_size):

@@ -199,6 +199,10 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
 
         return tf_graph, tf_sess, tf_obs_ph, tf_actions_ph, tf_rewards_ph, d_preprocess, tf_rewards, tf_cost, tf_opt
 
+    ################
+    ### Training ###
+    ################
+
     def update_preprocess(self, preprocess_stats):
         obs_mean, obs_orth, actions_mean, actions_orth, rewards_mean, rewards_orth = \
             preprocess_stats['observations_mean'], \
@@ -224,13 +228,16 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
               self._d_preprocess['rewards_orth_ph']: scipy.linalg.block_diag(*([rewards_orth] * self._H))
           })
 
+
     def train_step(self, observations, actions, rewards):
         assert(self._is_train)
+        batch_size = len(observations)
+        action_dim = self._env_spec.action_space.flat_dim
 
         cost, _ = self._tf_sess.run([self._tf_cost, self._tf_opt],
                                     feed_dict={
-                                        self._tf_obs_ph: observations,
-                                        self._tf_actions_ph: actions,
+                                        self._tf_obs_ph: observations[:, 0, :],
+                                        self._tf_actions_ph: actions.reshape((batch_size, self._H * action_dim)),
                                         self._tf_rewards_ph: rewards
                                     })
 

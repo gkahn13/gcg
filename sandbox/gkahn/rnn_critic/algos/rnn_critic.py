@@ -77,7 +77,7 @@ class RNNCritic(RLAlgorithm):
                     # TODO: update target
 
                 if step % self._log_every_n_steps == 0:
-                    logger.log('step %.1e | ' % step)
+                    logger.log('step %.3e' % step)
                     logger.record_tabular('Step', step)
                     self._sampler.log()
                     self._policy.log()
