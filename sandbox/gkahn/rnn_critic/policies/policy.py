@@ -15,6 +15,7 @@ from sandbox.gkahn.tf.core.parameterized import Parameterized
 
 class RNNCriticPolicy(Policy, Parameterized, Serializable):
     def __init__(self,
+                 name,
                  is_train,
                  env_spec,
                  H,
@@ -26,6 +27,7 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
                  log_history_len=100,
                  **kwargs):
         """
+        :param name: to prevent variable name crashing
         :param is_train: if True file placeholders, else feed placeholders
         :param H: critic horizon length
         :param weight_decay
@@ -37,6 +39,7 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
         """
         Serializable.quick_init(self, locals())
 
+        self._name = name
         self._is_train = is_train
         self._env_spec = env_spec
         self._H = H
@@ -54,6 +57,9 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
 
         self._get_action_preprocess = self._get_action_setup()
 
+        ### saving/loading
+        self._match_dict = dict()
+
         ### logging
         self._log_stats = defaultdict(list)
 
@@ -63,6 +69,10 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
     ##################
     ### Properties ###
     ##################
+
+    @property
+    def name(self):
+        return self._name
 
     @property
     def H(self):
@@ -181,11 +191,10 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
             tf_graph = tf_sess.graph
 
         with tf_sess.as_default(), tf_graph.as_default():
-            tf_obs_ph, tf_actions_ph, tf_rewards_ph = self._graph_inputs_outputs_from_placeholders()
-            d_preprocess = self._graph_preprocess_from_placeholders()
-            tf_rewards = self._graph_inference(tf_obs_ph, tf_actions_ph, d_preprocess)
-            for v in tf.all_variables():
-                tf.add_to_collection('params_internal', v)
+            with tf.variable_scope(self._name):
+                tf_obs_ph, tf_actions_ph, tf_rewards_ph = self._graph_inputs_outputs_from_placeholders()
+                d_preprocess = self._graph_preprocess_from_placeholders()
+                tf_rewards = self._graph_inference(tf_obs_ph, tf_actions_ph, d_preprocess)
             if self._is_train:
                 tf_cost, tf_mse = self._graph_cost(tf_rewards_ph, tf_rewards)
                 tf_opt = self._graph_optimize(tf_cost)
@@ -227,7 +236,6 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
               self._d_preprocess['rewards_mean_ph']: np.expand_dims(np.tile(rewards_mean, self._H), 0),
               self._d_preprocess['rewards_orth_ph']: scipy.linalg.block_diag(*([rewards_orth] * self._H))
           })
-
 
     def train_step(self, observations, actions, rewards):
         assert(self._is_train)
@@ -340,24 +348,30 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
     ######################
 
     def get_params_internal(self, **tags):
-        return sorted(self._tf_graph.get_collection('params_internal'), key=lambda v: v.name)
+        with self._tf_graph.as_default():
+            return sorted(tf.get_collection(tf.GraphKeys.VARIABLES, scope=self._name), key=lambda v: v.name)
 
     def match(self, other_policy):
         """ Update self to match the other policy """
         assert(type(self) == type(other_policy))
 
-        ### get params
-        self_params = self.get_params_internal()
-        other_params = other_policy.get_params_internal()
+        if other_policy not in self._match_dict:
+            ### get params
+            self_params = {p.name.replace(self.name, ''): p for p in self.get_params_internal()}
+            other_params = {p.name.replace(other_policy.name, ''): p for p in other_policy.get_params_internal()}
 
-        ### make sure params are the same
-        self_params_names = [p.name for p in self_params]
-        other_params_names = [p.name for p in other_params]
-        assert(self_params_names == other_params_names)
+            update_target_fn = []
+            for self_param_name in self_params.keys():
+                assert(self_param_name in other_params) # make sure params are the same
+                update_target_fn.append(self_params[self_param_name].assign(other_params[self_param_name]))
+            self._match_dict[other_policy] = tf.group(*update_target_fn)
 
-        ### evaluate other params and set self params
-        other_params_values = other_policy._tf_sess.run(other_params)
-        self._tf_sess.run([tf.assign(p, v) for p, v in zip(self_params, other_params_values)])
+        update_target_fn = self._match_dict[other_policy]
+        self._tf_sess.run(update_target_fn)
+
+        # ### evaluate other params and set self params
+        # other_params_values = other_policy._tf_sess.run(other_params)
+        # self._tf_sess.run([tf.assign(p, v) for p, v in zip(self_params, other_params_values)])
 
     ###############
     ### Logging ###

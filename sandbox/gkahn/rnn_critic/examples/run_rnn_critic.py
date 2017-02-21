@@ -24,7 +24,7 @@ def run_task(*_):
     from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
     env = TfEnv(normalize(eval(params['alg'].pop('env'))))
 
-    def create_policy(is_train):
+    def create_policy(name, is_train):
         policy_type = params['policy']['type']
         get_action_type = params['get_action']['type']
 
@@ -36,6 +36,7 @@ def run_task(*_):
             raise Exception('Policy {0} not valid'.format(policy_type))
 
         return PolicyClass(
+            name=name,
             is_train=is_train,
             env_spec=env.spec,
             get_action_params=params['get_action'][get_action_type],
@@ -43,7 +44,9 @@ def run_task(*_):
             **params['policy']
         )
 
-    policy = create_policy(is_train=True)
+    policy = create_policy(name='policy', is_train=True)
+    with policy.session.as_default(), policy.session.graph.as_default():
+        target_network = create_policy(name='target_network', is_train=False)
 
     es_params = params['alg'].pop('exploration_strategy')
     es_type = es_params['type']
@@ -57,6 +60,7 @@ def run_task(*_):
     algo = RNNCritic(
         env=env,
         policy=policy,
+        target_network=target_network,
         exploration_strategy=exploration_strategy,
         max_path_length=env.horizon,
         **params['alg']

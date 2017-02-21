@@ -8,6 +8,7 @@ class RNNCritic(RLAlgorithm):
     def __init__(self,
                  env,
                  policy,
+                 target_network,
                  max_path_length,
                  exploration_strategy,
                  total_steps,
@@ -23,6 +24,7 @@ class RNNCritic(RLAlgorithm):
         """
         :param env: Environment
         :param policy: RNNCriticPolicy
+        :param target_network: RNNCriticPolicy
         :param max_path_length: maximum length of a single rollout
         :param exploration_strategy: how actions are modified
         :param total_steps: how many steps to take in total
@@ -41,6 +43,7 @@ class RNNCritic(RLAlgorithm):
 
         self._env = env
         self._policy = policy
+        self._target_network = target_network
         self._max_path_length = max_path_length
         self._total_steps = total_steps
         self._learn_after_n_steps = learn_after_n_steps
@@ -73,8 +76,9 @@ class RNNCritic(RLAlgorithm):
 
                 ### update target network
                 if step % self._update_target_every_n_steps == 0:
+                    logger.log('Updating target network...')
                     self._policy.update_preprocess(self._sampler.statistics)
-                    # TODO: update target
+                    self._target_network.match(self._policy)
 
                 if step % self._log_every_n_steps == 0:
                     logger.log('step %.3e' % step)
@@ -85,6 +89,7 @@ class RNNCritic(RLAlgorithm):
 
                 ### save model
                 if step % self._save_every_n_steps == 0:
+                    logger.log('Saving...')
                     with self._policy.session.as_default(), self._policy.session.graph.as_default():
                         itr_params = dict(
                             itr=save_itr,
