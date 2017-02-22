@@ -10,15 +10,13 @@ from sklearn.utils.extmath import cartesian
 from rllab.core.serializable import Serializable
 import rllab.misc.logger as logger
 
-from sandbox.rocky.tf.policies.base import Policy
-from sandbox.gkahn.tf.core.parameterized import Parameterized
+from sandbox.gkahn.tf.policies.base import Policy
 
-class RNNCriticPolicy(Policy, Parameterized, Serializable):
+class RNNCriticPolicy(Policy, Serializable):
     def __init__(self,
-                 name,
-                 is_train,
                  env_spec,
                  H,
+                 gamma,
                  weight_decay,
                  learning_rate,
                  get_action_params,
@@ -27,9 +25,8 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
                  log_history_len=100,
                  **kwargs):
         """
-        :param name: to prevent variable name crashing
-        :param is_train: if True file placeholders, else feed placeholders
         :param H: critic horizon length
+        :param gamma: reward decay
         :param weight_decay
         :param learning_rate
         :param reset_every_train: reset parameters every time train is called?
@@ -39,10 +36,9 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
         """
         Serializable.quick_init(self, locals())
 
-        self._name = name
-        self._is_train = is_train
         self._env_spec = env_spec
         self._H = H
+        self._gamma = gamma
         self._weight_decay = weight_decay
         self._learning_rate = learning_rate
         self._get_action_params = get_action_params
@@ -51,9 +47,10 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
         self._log_history_len = log_history_len
         self._exploration_strategy = None # don't set in init b/c will then be Serialized
 
-        self._tf_graph, self._tf_sess, \
-            self._tf_obs_ph, self._tf_actions_ph, self._tf_rewards_ph, self._d_preprocess, \
-            self._tf_rewards, self._tf_cost, self._tf_opt = self._graph_setup()
+        self._tf_graph, self._tf_sess, self._d_preprocess, \
+            self._tf_obs_ph, self._tf_actions_ph, self._tf_rewards_ph, self._tf_rewards, self._tf_cost, self._tf_opt, \
+            self._tf_obs_target_ph, self._tf_actions_target_ph, self._tf_target_rewards, self._update_target_fn = \
+            self._graph_setup()
 
         self._get_action_preprocess = self._get_action_setup()
 
@@ -63,16 +60,11 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
         ### logging
         self._log_stats = defaultdict(list)
 
-        Policy.__init__(self, env_spec)
-        Parameterized.__init__(self, sess=self._tf_sess)
+        Policy.__init__(self, env_spec, sess=self._tf_sess)
 
     ##################
     ### Properties ###
     ##################
-
-    @property
-    def name(self):
-        return self._name
 
     @property
     def H(self):
@@ -99,6 +91,9 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
         config = tf.ConfigProto(gpu_options=gpu_options,
                                 log_device_placement=False,
                                 allow_soft_placement=True)
+        # config = tf.ConfigProto(
+        #     device_count={'GPU': 0}
+        # )
         tf_sess = tf.Session(graph=tf_graph, config=config)
         return tf_sess, tf_graph
 
@@ -170,8 +165,27 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
     def _graph_inference(self, tf_obs_ph, tf_actions_ph, d_preprocess):
         raise NotImplementedError
 
-    def _graph_cost(self, tf_rewards_ph, tf_rewards):
-        mse = tf.reduce_mean(tf.square(tf_rewards_ph - tf_rewards))
+    def _graph_calculate_values(self, tf_rewards):
+        gammas = np.power(self._gamma * np.ones(self._H), np.arange(self._H))
+        tf_values = tf.reduce_sum(gammas * tf_rewards, reduction_indices=1)
+        return tf_values
+
+    def _graph_cost(self, tf_rewards_ph, tf_rewards, tf_target_rewards):
+        gammas = np.power(self._gamma * np.ones(self._H), np.arange(self._H))
+
+        # for training, len(tf_obs_ph) == len(tf_actions_ph)
+        # but len(tf_actions_target_ph) == N * len(tf_action_ph),
+        # so need to be selective about what to take the max over
+        tf_target_values = self._graph_calculate_values(tf_target_rewards)
+        batch_size = tf.shape(tf_rewards_ph)[0]
+        tf_target_values_flat = tf.reshape(tf_target_values, (batch_size, -1))
+        tf_target_values_max = tf.reduce_max(tf_target_values_flat, reduction_indices=1)
+
+        tf_rewards_ph_sum = tf.reduce_sum(gammas * tf_rewards_ph, reduction_indices=1)
+        tf_rewards_sum = tf.reduce_sum(gammas * tf_rewards, reduction_indices=1)
+
+        mse = tf.reduce_mean(tf.square(tf_rewards_ph_sum + np.power(self._gamma, self._H)*tf_target_values_max -
+                                       tf_rewards_sum))
         weight_decay = self._weight_decay * tf.add_n(tf.get_collection('weight_decays'))
         cost = mse + weight_decay
         return cost, mse
@@ -180,7 +194,7 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
         return tf.train.AdamOptimizer(learning_rate=self._learning_rate).minimize(tf_cost)
 
     def _graph_init_vars(self, tf_sess):
-        tf_sess.run([tf.initialize_all_variables()])
+        tf_sess.run([tf.global_variables_initializer()])
 
     def _graph_setup(self):
         tf_sess = tf.get_default_session()
@@ -191,22 +205,37 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
             tf_graph = tf_sess.graph
 
         with tf_sess.as_default(), tf_graph.as_default():
-            with tf.variable_scope(self._name):
+            d_preprocess = self._graph_preprocess_from_placeholders()
+
+            ### policy
+            with tf.variable_scope('policy'):
                 tf_obs_ph, tf_actions_ph, tf_rewards_ph = self._graph_inputs_outputs_from_placeholders()
-                d_preprocess = self._graph_preprocess_from_placeholders()
                 tf_rewards = self._graph_inference(tf_obs_ph, tf_actions_ph, d_preprocess)
-            if self._is_train:
-                tf_cost, tf_mse = self._graph_cost(tf_rewards_ph, tf_rewards)
-                tf_opt = self._graph_optimize(tf_cost)
-            else:
-                tf_cost, tf_mse, tf_opt = None, None, None
+
+            ### target network
+            with tf.variable_scope('target_network'):
+                tf_obs_target_ph, tf_actions_target_ph, _ = self._graph_inputs_outputs_from_placeholders()
+                tf_target_rewards = self._graph_inference(tf_obs_target_ph, tf_actions_target_ph, d_preprocess)
+
+            policy_vars = sorted(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='policy'), key=lambda v: v.name)
+            target_network_vars = sorted(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='target_network'), key=lambda v: v.name)
+            update_target_fn = []
+            for var, var_target in zip(policy_vars, target_network_vars):
+                update_target_fn.append(var_target.assign(var))
+            update_target_fn = tf.group(*update_target_fn)
+
+            ### optimization
+            tf_cost, tf_mse = self._graph_cost(tf_rewards_ph, tf_rewards, tf_target_rewards)
+            tf_opt = self._graph_optimize(tf_cost)
 
             self._graph_init_vars(tf_sess)
 
             # merged = tf.merge_all_summaries()
             # writer = tf.train.SummaryWriter('/tmp', graph_def=tf_sess.graph_def)
 
-        return tf_graph, tf_sess, tf_obs_ph, tf_actions_ph, tf_rewards_ph, d_preprocess, tf_rewards, tf_cost, tf_opt
+        return tf_graph, tf_sess, d_preprocess, \
+               tf_obs_ph, tf_actions_ph, tf_rewards_ph, tf_rewards, tf_cost, tf_opt, \
+               tf_obs_target_ph, tf_actions_target_ph, tf_target_rewards, update_target_fn
 
     ################
     ### Training ###
@@ -237,26 +266,45 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
               self._d_preprocess['rewards_orth_ph']: scipy.linalg.block_diag(*([rewards_orth] * self._H))
           })
 
+    def update_target(self):
+        self._tf_sess.run(self._update_target_fn)
+
     def train_step(self, observations, actions, rewards):
-        assert(self._is_train)
         batch_size = len(observations)
         action_dim = self._env_spec.action_space.flat_dim
 
+        action_lower, action_upper = self._env_spec.action_space.bounds
+        if self._get_action_params['type'] == 'random':
+            N = self._get_action_params['N']
+            target_actions = np.random.uniform(action_lower.tolist(), action_upper.tolist(),
+                                               size=(N, self._H, self._env_spec.action_space.flat_dim))
+            target_actions = target_actions.reshape(N, self._H * self._env_spec.action_space.flat_dim)
+        else:
+            raise NotImplementedError('get_action type {0} not implemented'.format(self._get_action_params['type']))
+
         cost, _ = self._tf_sess.run([self._tf_cost, self._tf_opt],
                                     feed_dict={
+                                        ### policy
                                         self._tf_obs_ph: observations[:, 0, :],
                                         self._tf_actions_ph: actions.reshape((batch_size, self._H * action_dim)),
-                                        self._tf_rewards_ph: rewards
+                                        self._tf_rewards_ph: rewards,
+                                        ### target network
+                                        self._tf_obs_target_ph: observations[:, -1, :],
+                                        self._tf_actions_target_ph: np.tile(target_actions, (len(observations), 1)),
                                     })
+
+        # policy_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='policy')
+        # target_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='target_network')
+        # pvars_eval = self._tf_sess.run(policy_vars)
+        # tn_vars_eval = self._tf_sess.run(target_network_vars)
+        # if not np.all([np.isfinite(v).all() for v in pvars_eval + tn_vars_eval]) or not np.isfinite(cost):
+        #     import IPython; IPython.embed()
+        assert(np.isfinite(cost))
 
         self._log_stats['Cost'].append(cost)
         for k, v in self._log_stats.items():
             if len(v) > self._log_history_len:
                 self._log_stats[k] = v[1:]
-
-        return cost
-
-    # TODO update preprocess
 
     ######################
     ### Policy methods ###
@@ -349,29 +397,14 @@ class RNNCriticPolicy(Policy, Parameterized, Serializable):
 
     def get_params_internal(self, **tags):
         with self._tf_graph.as_default():
-            return sorted(tf.get_collection(tf.GraphKeys.VARIABLES, scope=self._name), key=lambda v: v.name)
+            # vars = sorted(tf.all_variables(), key=lambda v: v.name)
+            # for v in vars:
+            #     print(v.name)
+            #     print(v.get_shape())
+            #     if len(v.get_shape()) == 0:
+            #         import IPython; IPython.embed()
 
-    def match(self, other_policy):
-        """ Update self to match the other policy """
-        assert(type(self) == type(other_policy))
-
-        if other_policy not in self._match_dict:
-            ### get params
-            self_params = {p.name.replace(self.name, ''): p for p in self.get_params_internal()}
-            other_params = {p.name.replace(other_policy.name, ''): p for p in other_policy.get_params_internal()}
-
-            update_target_fn = []
-            for self_param_name in self_params.keys():
-                assert(self_param_name in other_params) # make sure params are the same
-                update_target_fn.append(self_params[self_param_name].assign(other_params[self_param_name]))
-            self._match_dict[other_policy] = tf.group(*update_target_fn)
-
-        update_target_fn = self._match_dict[other_policy]
-        self._tf_sess.run(update_target_fn)
-
-        # ### evaluate other params and set self params
-        # other_params_values = other_policy._tf_sess.run(other_params)
-        # self._tf_sess.run([tf.assign(p, v) for p, v in zip(self_params, other_params_values)])
+            return sorted(tf.global_variables(), key=lambda v: v.name)
 
     ###############
     ### Logging ###

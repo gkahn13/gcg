@@ -24,29 +24,30 @@ def run_task(*_):
     from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
     env = TfEnv(normalize(eval(params['alg'].pop('env'))))
 
-    def create_policy(name, is_train):
-        policy_type = params['policy']['type']
-        get_action_type = params['get_action']['type']
+    #####################
+    ### Create policy ###
+    #####################
 
-        if policy_type == 'mlp':
-            PolicyClass = RNNCriticMLPPolicy
-        elif policy_type == 'rnn':
-            PolicyClass = RNNCriticRNNPolicy
-        else:
-            raise Exception('Policy {0} not valid'.format(policy_type))
+    policy_type = params['policy']['type']
+    get_action_type = params['get_action']['type']
 
-        return PolicyClass(
-            name=name,
-            is_train=is_train,
-            env_spec=env.spec,
-            get_action_params=params['get_action'][get_action_type],
-            **params['policy'][policy_type],
-            **params['policy']
-        )
+    if policy_type == 'mlp':
+        PolicyClass = RNNCriticMLPPolicy
+    elif policy_type == 'rnn':
+        PolicyClass = RNNCriticRNNPolicy
+    else:
+        raise Exception('Policy {0} not valid'.format(policy_type))
 
-    policy = create_policy(name='policy', is_train=True)
-    with policy.session.as_default(), policy.session.graph.as_default():
-        target_network = create_policy(name='target_network', is_train=False)
+    policy = PolicyClass(
+        env_spec=env.spec,
+        get_action_params=params['get_action'][get_action_type],
+        **params['policy'][policy_type],
+        **params['policy']
+    )
+
+    ###################################
+    ### Create exploration strategy ###
+    ###################################
 
     es_params = params['alg'].pop('exploration_strategy')
     es_type = es_params['type']
@@ -57,10 +58,13 @@ def run_task(*_):
 
     exploration_strategy = ESClass(env_spec=env.spec, **es_params[es_type])
 
+    ########################
+    ### Create algorithm ###
+    ########################
+
     algo = RNNCritic(
         env=env,
         policy=policy,
-        target_network=target_network,
         exploration_strategy=exploration_strategy,
         max_path_length=env.horizon,
         **params['alg']

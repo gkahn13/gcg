@@ -1,9 +1,15 @@
 from contextlib import contextmanager
 
+import numpy as np
+
 from rllab.core.serializable import Serializable
-from rllab.misc.tensor_utils import flatten_tensors, unflatten_tensors
+from rllab.misc.tensor_utils import flatten_tensors#, unflatten_tensors
 import tensorflow as tf
 
+def unflatten_tensors(flattened, tensor_shapes):
+    tensor_sizes = np.array(list(map(np.prod, tensor_shapes)), dtype=int)
+    indices = np.cumsum(tensor_sizes)[:-1]
+    return [np.reshape(pair[0], pair[1]) for pair in zip(np.split(flattened, indices), tensor_shapes)]
 
 load_params = True
 
@@ -96,7 +102,7 @@ class Parameterized(object):
         Serializable.__setstate__(self, d)
         global load_params
         if load_params:
-            self._sess.run(tf.initialize_variables(self.get_params()))
+            self._sess.run(tf.variables_initializer(self.get_params()))
             self.set_param_values(d["params"])
 
 
