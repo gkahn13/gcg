@@ -10,6 +10,7 @@ from sklearn.utils.extmath import cartesian
 from rllab.core.serializable import Serializable
 import rllab.misc.logger as logger
 
+from sandbox.rocky.tf.spaces.discrete import Discrete
 from sandbox.gkahn.tf.policies.base import Policy
 
 class RNNCriticPolicy(Policy, Serializable):
@@ -53,6 +54,7 @@ class RNNCriticPolicy(Policy, Serializable):
             self._graph_setup()
 
         self._get_action_preprocess = self._get_action_setup()
+        self._num_get_action = 0 # keep track of how many times get action called
 
         ### saving/loading
         self._match_dict = dict()
@@ -273,12 +275,14 @@ class RNNCriticPolicy(Policy, Serializable):
         batch_size = len(observations)
         action_dim = self._env_spec.action_space.flat_dim
 
-        action_lower, action_upper = self._env_spec.action_space.bounds
         if self._get_action_params['type'] == 'random':
+            action_lower, action_upper = self._env_spec.action_space.bounds
             N = self._get_action_params['N']
             target_actions = np.random.uniform(action_lower.tolist(), action_upper.tolist(),
                                                size=(N, self._H, self._env_spec.action_space.flat_dim))
             target_actions = target_actions.reshape(N, self._H * self._env_spec.action_space.flat_dim)
+        elif self._get_action_params['type'] == 'lattice':
+            target_actions = self._get_action_preprocess['actions']
         else:
             raise NotImplementedError('get_action type {0} not implemented'.format(self._get_action_params['type']))
 
@@ -316,11 +320,19 @@ class RNNCriticPolicy(Policy, Serializable):
         if self._get_action_params['type'] == 'random':
             pass
         elif self._get_action_params['type'] == 'lattice':
-            N = self._get_action_params['N']
-            action_lower, action_upper = self._env_spec.action_space.bounds
-            single_actions = cartesian([np.linspace(l, u, N) for l, u in zip(action_lower, action_upper)])
-            actions = np.asarray(list(itertools.combinations(single_actions, self._H)))
-            get_action_preprocess['actions'] = actions.reshape((len(actions), self._H * self._env_spec.action_space.flat_dim))
+            if isinstance(self._env_spec.action_space, Discrete):
+                action_dim = self._env_spec.action_space.n
+                indices = cartesian([np.arange(action_dim)] * self._H) + np.r_[0:action_dim*self._H:action_dim]
+                actions = np.zeros((len(indices), action_dim * self._H))
+                for i, one_hots in enumerate(indices):
+                    actions[i, one_hots] = 1
+                get_action_preprocess['actions'] = actions
+            else:
+                N = self._get_action_params['N']
+                action_lower, action_upper = self._env_spec.action_space.bounds
+                single_actions = cartesian([np.linspace(l, u, N) for l, u in zip(action_lower, action_upper)])
+                actions = np.asarray(list(itertools.combinations(single_actions, self._H)))
+                get_action_preprocess['actions'] = actions.reshape((len(actions), self._H * self._env_spec.action_space.flat_dim))
         else:
             raise NotImplementedError('get_action type {0} not implemented'.format(self._get_action_params['type']))
 
@@ -330,9 +342,8 @@ class RNNCriticPolicy(Policy, Serializable):
         self._exploration_strategy = exploration_strategy
 
     def get_action(self, observation):
-        action_lower, action_upper = self._env_spec.action_space.bounds
-
         if self._get_action_params['type'] == 'random':
+            action_lower, action_upper = self._env_spec.action_space.bounds
             N = self._get_action_params['N']
             actions = np.random.uniform(action_lower.tolist(), action_upper.tolist(),
                                         size=(N, self._H, self._env_spec.action_space.flat_dim))
@@ -351,19 +362,24 @@ class RNNCriticPolicy(Policy, Serializable):
         if self._exploration_strategy is not None:
             exploration_func = lambda: None
             exploration_func.get_action = lambda _: (chosen_action, dict())
-            chosen_action = self._exploration_strategy.get_action(0, observation, exploration_func)
+            chosen_action = self._exploration_strategy.get_action(self._num_get_action, observation, exploration_func)
+
+        self._num_get_action += 1
 
         return chosen_action, dict()
 
     def get_actions(self, observations):
         num_obs = len(observations)
-        action_lower, action_upper = self._env_spec.action_space.bounds
+        observations = self._env_spec.observation_space.flatten_n(observations)
 
         if self._get_action_params['type'] == 'random':
+            action_lower, action_upper = self._env_spec.action_space.bounds
             N = self._get_action_params['N']
             actions = np.random.uniform(action_lower.tolist(), action_upper.tolist(),
                                         size=(N * num_obs, self._H, self._env_spec.action_space.flat_dim))
             actions = actions.reshape(N * num_obs, self._H * self._env_spec.action_space.flat_dim)
+        elif self._get_action_params['type'] == 'lattice':
+            actions = np.tile(self._get_action_preprocess['actions'], (num_obs, 1))
         else:
             raise NotImplementedError('get_actions type {0} not implemented'.format(self._get_action_params['type']))
 
@@ -372,15 +388,22 @@ class RNNCriticPolicy(Policy, Serializable):
                                                     self._tf_actions_ph: actions})[0]
 
         chosen_actions = []
-        for observation_i, pred_rewards_i, actions_i in zip(observations,
-                                                           np.split(pred_rewards, num_obs, axis=0),
-                                                           np.split(actions, num_obs, axis=0)):
+        for i, (observation_i, pred_rewards_i, actions_i) in enumerate(zip(observations,
+                                                                           np.split(pred_rewards, num_obs, axis=0),
+                                                                           np.split(actions, num_obs, axis=0))):
+            # TODO: gamma
             chosen_action_i = actions_i[pred_rewards_i.sum(axis=1).argmax()][:self._env_spec.action_space.flat_dim]
+            if isinstance(self._env_spec.action_space, Discrete):
+                chosen_action_i = int(chosen_action_i.argmax())
             if self._exploration_strategy is not None:
                 exploration_func = lambda: None
                 exploration_func.get_action = lambda _: (chosen_action_i, dict())
-                chosen_action_i = self._exploration_strategy.get_action(0, observation_i, exploration_func)
+                chosen_action_i = self._exploration_strategy.get_action(self._num_get_action + i,
+                                                                        observation_i,
+                                                                        exploration_func)
             chosen_actions.append(chosen_action_i)
+
+        self._num_get_action += num_obs
 
         return chosen_actions, dict()
 
@@ -397,13 +420,6 @@ class RNNCriticPolicy(Policy, Serializable):
 
     def get_params_internal(self, **tags):
         with self._tf_graph.as_default():
-            # vars = sorted(tf.all_variables(), key=lambda v: v.name)
-            # for v in vars:
-            #     print(v.name)
-            #     print(v.get_shape())
-            #     if len(v.get_shape()) == 0:
-            #         import IPython; IPython.embed()
-
             return sorted(tf.global_variables(), key=lambda v: v.name)
 
     ###############

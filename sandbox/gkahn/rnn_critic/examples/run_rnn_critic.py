@@ -8,6 +8,7 @@ from sandbox.rocky.tf.envs.base import TfEnv
 from rllab.envs.normalized_env import normalize
 ### exploration strategies
 from rllab.exploration_strategies.gaussian_strategy import GaussianStrategy
+from sandbox.gkahn.rnn_critic.exploration_strategies.epsilon_greedy_strategy import EpsilonGreedyStrategy
 ### RNN critic
 from sandbox.gkahn.rnn_critic.algos.rnn_critic import RNNCritic
 from sandbox.gkahn.rnn_critic.policies.mlp_policy import RNNCriticMLPPolicy
@@ -22,6 +23,7 @@ def run_task(*_):
 
     from rllab.envs.gym_env import GymEnv
     from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
+    from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
     env = TfEnv(normalize(eval(params['alg'].pop('env'))))
 
     #####################
@@ -53,6 +55,8 @@ def run_task(*_):
     es_type = es_params['type']
     if es_type == 'gaussian':
         ESClass = GaussianStrategy
+    elif es_type == 'epsilon_greedy':
+        ESClass = EpsilonGreedyStrategy
     else:
         raise Exception('Exploration strategy {0} not valid'.format(es_type))
 

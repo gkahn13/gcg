@@ -13,6 +13,7 @@ class RNNCriticReplayPool(object):
         :param size: size of pool
         :param log_history_len: length of log history
         """
+        self._env_spec = env_spec
         self._H = H
         self._size = size
         self._log_history_len = log_history_len
@@ -90,8 +91,8 @@ class RNNCriticReplayPool(object):
 
     def add(self, observation, action, reward, done):
         next_idx = (self._index + 1) % self._size
-        self._observations[next_idx, :] = observation
-        self._actions[next_idx, :] = action
+        self._observations[next_idx, :] = self._env_spec.observation_space.flatten(observation)
+        self._actions[next_idx, :] = self._env_spec.action_space.flatten(action)
         self._rewards[next_idx] = reward
         self._dones[next_idx] = done
         self._index = next_idx
@@ -172,6 +173,8 @@ class RNNCriticReplayPool(object):
             indices = self._get_indices(self._last_done_index, self._index)
             ### update log
             rewards = self._rewards[indices]
+            # self._log_stats['FinalReward'].append(reward)
+            # self._log_stats['AvgReward'].append(np.mean(rewards.tolist() + [reward]))
             self._log_stats['FinalReward'].append(rewards[-1])
             self._log_stats['AvgReward'].append(np.mean(rewards))
 

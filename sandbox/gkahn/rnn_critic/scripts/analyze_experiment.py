@@ -115,7 +115,7 @@ class AnalyzeRNNCritic(object):
     ################
 
     def _plot_analyze(self, train_rollouts_itrs, eval_rollouts_itrs):
-        f, axes = plt.subplots(3, 1, figsize=(2 * len(train_rollouts_itrs), 7.5), sharex=True)
+        f, axes = plt.subplots(5, 1, figsize=(2 * len(train_rollouts_itrs), 7.5), sharex=True)
         f.tight_layout()
 
         ### plot training cost
@@ -124,6 +124,26 @@ class AnalyzeRNNCritic(object):
         steps = self._progress['Step'][1:]
         ax.plot(steps, costs, 'k-')
         ax.set_ylabel('Cost')
+
+        ### plot avg reward
+        ax = axes[1]
+        avg_reward_means = self._progress['AvgRewardMean']
+        avg_reward_stds = self._progress['AvgRewardStd']
+        steps = self._progress['Step']
+        ax.plot(steps, avg_reward_means, 'k-')
+        ax.fill_between(steps, avg_reward_means - avg_reward_stds, avg_reward_means + avg_reward_stds,
+                        color='k', alpha=0.4)
+        ax.set_ylabel('Average reward')
+
+        ### plot final reward
+        ax = axes[2]
+        final_reward_means = self._progress['FinalRewardMean']
+        final_reward_stds = self._progress['FinalRewardStd']
+        steps = self._progress['Step']
+        ax.plot(steps, final_reward_means, 'k-')
+        ax.fill_between(steps, final_reward_means - final_reward_stds, final_reward_means + final_reward_stds,
+                        color='k', alpha=0.4)
+        ax.set_ylabel('Final reward')
 
         start_step = self._params['alg']['learn_after_n_steps']
         end_step = self._params['alg']['total_steps']
@@ -168,13 +188,13 @@ class AnalyzeRNNCritic(object):
             plt.setp(bp['fliers'], markeredgecolor=color)
 
         ### plot train final reward
-        ax = axes[1]
+        ax = axes[3]
         rewards = [[rollout['rewards'][-1] for rollout in rollouts] for rollouts in train_rollouts_itrs]
         plot_reward(ax, rewards)
         ax.set_ylabel('Train final reward')
 
         ### plot eval final reward
-        ax = axes[2]
+        ax = axes[4]
         rewards = [[rollout['rewards'][-1] for rollout in rollouts] for rollouts in eval_rollouts_itrs]
         plot_reward(ax, rewards)
         ax.set_ylabel('Eval final reward')
