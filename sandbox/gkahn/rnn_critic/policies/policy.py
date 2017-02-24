@@ -9,6 +9,7 @@ from sklearn.utils.extmath import cartesian
 
 from rllab.core.serializable import Serializable
 import rllab.misc.logger as logger
+from rllab.misc import ext
 
 from sandbox.rocky.tf.spaces.discrete import Discrete
 from sandbox.gkahn.tf.policies.base import Policy
@@ -49,8 +50,8 @@ class RNNCriticPolicy(Policy, Serializable):
         self._exploration_strategy = None # don't set in init b/c will then be Serialized
 
         self._tf_graph, self._tf_sess, self._d_preprocess, \
-            self._tf_obs_ph, self._tf_actions_ph, self._tf_rewards_ph, self._tf_rewards, self._tf_cost, self._tf_opt, \
-            self._tf_obs_target_ph, self._tf_actions_target_ph, self._tf_target_rewards, self._update_target_fn = \
+            self._tf_obs_ph, self._tf_actions_ph, self._tf_rewards_ph, self._tf_values, self._tf_cost, self._tf_opt, \
+            self._tf_obs_target_ph, self._tf_actions_target_ph, self._update_target_fn = \
             self._graph_setup()
 
         self._get_action_preprocess = self._get_action_setup()
@@ -93,6 +94,7 @@ class RNNCriticPolicy(Policy, Serializable):
         config = tf.ConfigProto(gpu_options=gpu_options,
                                 log_device_placement=False,
                                 allow_soft_placement=True)
+        # os.environ["CUDA_VISIBLE_DEVICES"] = ''
         # config = tf.ConfigProto(
         #     device_count={'GPU': 0}
         # )
@@ -173,21 +175,19 @@ class RNNCriticPolicy(Policy, Serializable):
         return tf_values
 
     def _graph_cost(self, tf_rewards_ph, tf_rewards, tf_target_rewards):
-        gammas = np.power(self._gamma * np.ones(self._H), np.arange(self._H))
-
         # for training, len(tf_obs_ph) == len(tf_actions_ph)
         # but len(tf_actions_target_ph) == N * len(tf_action_ph),
         # so need to be selective about what to take the max over
         tf_target_values = self._graph_calculate_values(tf_target_rewards)
         batch_size = tf.shape(tf_rewards_ph)[0]
         tf_target_values_flat = tf.reshape(tf_target_values, (batch_size, -1))
-        tf_target_values_max = tf.reduce_max(tf_target_values_flat, reduction_indices=1)
+        tf_target_values_max = 0 # tf.reduce_max(tf_target_values_flat, reduction_indices=1)
 
-        tf_rewards_ph_sum = tf.reduce_sum(gammas * tf_rewards_ph, reduction_indices=1)
-        tf_rewards_sum = tf.reduce_sum(gammas * tf_rewards, reduction_indices=1)
+        tf_values_ph = self._graph_calculate_values(tf_rewards_ph)
+        tf_values = self._graph_calculate_values(tf_rewards)
 
-        mse = tf.reduce_mean(tf.square(tf_rewards_ph_sum + np.power(self._gamma, self._H)*tf_target_values_max -
-                                       tf_rewards_sum))
+        mse = tf.reduce_mean(tf.square(tf_values_ph + np.power(self._gamma, self._H)*tf_target_values_max -
+                                       tf_values))
         weight_decay = self._weight_decay * tf.add_n(tf.get_collection('weight_decays'))
         cost = mse + weight_decay
         return cost, mse
@@ -207,12 +207,15 @@ class RNNCriticPolicy(Policy, Serializable):
             tf_graph = tf_sess.graph
 
         with tf_sess.as_default(), tf_graph.as_default():
+            ext.set_seed(ext.get_seed())
+
             d_preprocess = self._graph_preprocess_from_placeholders()
 
             ### policy
             with tf.variable_scope('policy'):
                 tf_obs_ph, tf_actions_ph, tf_rewards_ph = self._graph_inputs_outputs_from_placeholders()
                 tf_rewards = self._graph_inference(tf_obs_ph, tf_actions_ph, d_preprocess)
+                tf_values = self._graph_calculate_values(tf_rewards)
 
             ### target network
             with tf.variable_scope('target_network'):
@@ -236,8 +239,8 @@ class RNNCriticPolicy(Policy, Serializable):
             # writer = tf.train.SummaryWriter('/tmp', graph_def=tf_sess.graph_def)
 
         return tf_graph, tf_sess, d_preprocess, \
-               tf_obs_ph, tf_actions_ph, tf_rewards_ph, tf_rewards, tf_cost, tf_opt, \
-               tf_obs_target_ph, tf_actions_target_ph, tf_target_rewards, update_target_fn
+               tf_obs_ph, tf_actions_ph, tf_rewards_ph, tf_values, tf_cost, tf_opt, \
+               tf_obs_target_ph, tf_actions_target_ph, update_target_fn
 
     ################
     ### Training ###
@@ -342,31 +345,8 @@ class RNNCriticPolicy(Policy, Serializable):
         self._exploration_strategy = exploration_strategy
 
     def get_action(self, observation):
-        if self._get_action_params['type'] == 'random':
-            action_lower, action_upper = self._env_spec.action_space.bounds
-            N = self._get_action_params['N']
-            actions = np.random.uniform(action_lower.tolist(), action_upper.tolist(),
-                                        size=(N, self._H, self._env_spec.action_space.flat_dim))
-            actions = actions.reshape(N, self._H * self._env_spec.action_space.flat_dim)
-        elif self._get_action_params['type'] == 'lattice':
-            actions = self._get_action_preprocess['actions']
-        else:
-            raise NotImplementedError('get_action type {0} not implemented'.format(self._get_action_params['type']))
-
-        pred_rewards = self._tf_sess.run([self._tf_rewards],
-                                         feed_dict={self._tf_obs_ph: [observation],
-                                                    self._tf_actions_ph: actions})[0]
-
-        chosen_action = actions[pred_rewards.sum(axis=1).argmax()][:self._env_spec.action_space.flat_dim]
-
-        if self._exploration_strategy is not None:
-            exploration_func = lambda: None
-            exploration_func.get_action = lambda _: (chosen_action, dict())
-            chosen_action = self._exploration_strategy.get_action(self._num_get_action, observation, exploration_func)
-
-        self._num_get_action += 1
-
-        return chosen_action, dict()
+        chosen_actions, action_info = self.get_actions([observation])
+        return chosen_actions[0], action_info
 
     def get_actions(self, observations):
         num_obs = len(observations)
@@ -383,16 +363,15 @@ class RNNCriticPolicy(Policy, Serializable):
         else:
             raise NotImplementedError('get_actions type {0} not implemented'.format(self._get_action_params['type']))
 
-        pred_rewards = self._tf_sess.run([self._tf_rewards],
-                                         feed_dict={self._tf_obs_ph: observations,
-                                                    self._tf_actions_ph: actions})[0]
+        pred_values = self._tf_sess.run([self._tf_values],
+                                        feed_dict={self._tf_obs_ph: observations,
+                                                   self._tf_actions_ph: actions})[0]
 
         chosen_actions = []
-        for i, (observation_i, pred_rewards_i, actions_i) in enumerate(zip(observations,
-                                                                           np.split(pred_rewards, num_obs, axis=0),
-                                                                           np.split(actions, num_obs, axis=0))):
-            # TODO: gamma
-            chosen_action_i = actions_i[pred_rewards_i.sum(axis=1).argmax()][:self._env_spec.action_space.flat_dim]
+        for i, (observation_i, pred_values_i, actions_i) in enumerate(zip(observations,
+                                                                          np.split(pred_values, num_obs, axis=0),
+                                                                          np.split(actions, num_obs, axis=0))):
+            chosen_action_i = actions_i[pred_values_i.argmax()][:self._env_spec.action_space.flat_dim]
             if isinstance(self._env_spec.action_space, Discrete):
                 chosen_action_i = int(chosen_action_i.argmax())
             if self._exploration_strategy is not None:

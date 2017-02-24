@@ -1,8 +1,12 @@
 import os, argparse, yaml, shutil
+
+import numpy as np
+import random
 import tensorflow as tf
 
 from rllab.misc.instrument import run_experiment_lite
 import rllab.misc.logger as logger
+from rllab.misc.ext import set_seed
 ### environments
 from sandbox.rocky.tf.envs.base import TfEnv
 from rllab.envs.normalized_env import normalize
@@ -20,6 +24,9 @@ params = dict()
 def run_task(*_):
     # copy yaml for posterity
     shutil.copy(params['yaml_path'], os.path.join(logger.get_snapshot_dir(), os.path.basename(params['yaml_path'])))
+
+    # set seed
+    set_seed(params['seed'])
 
     from rllab.envs.gym_env import GymEnv
     from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
@@ -77,13 +84,9 @@ def run_task(*_):
 
 
 def main():
-    seed = params['seed']
-    tf.set_random_seed(seed)
-
     run_experiment_lite(
         run_task,
         snapshot_mode="all",
-        seed=params['seed'],
         exp_name=params['exp_name'],
         exp_prefix=params['exp_prefix']
     )
