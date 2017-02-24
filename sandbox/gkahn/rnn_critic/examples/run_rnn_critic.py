@@ -26,7 +26,8 @@ def run_task(*_):
     shutil.copy(params['yaml_path'], os.path.join(logger.get_snapshot_dir(), os.path.basename(params['yaml_path'])))
 
     # set seed
-    set_seed(params['seed'])
+    if params['seed'] is not None:
+        set_seed(params['seed'])
 
     from rllab.envs.gym_env import GymEnv
     from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv

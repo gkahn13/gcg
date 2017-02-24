@@ -49,9 +49,10 @@ class RNNCriticPolicy(Policy, Serializable):
         self._log_history_len = log_history_len
         self._exploration_strategy = None # don't set in init b/c will then be Serialized
 
+        self._tf_debug = dict()
         self._tf_graph, self._tf_sess, self._d_preprocess, \
             self._tf_obs_ph, self._tf_actions_ph, self._tf_rewards_ph, self._tf_values, self._tf_cost, self._tf_opt, \
-            self._tf_obs_target_ph, self._tf_actions_target_ph, self._update_target_fn = \
+            self._tf_obs_target_ph, self._tf_actions_target_ph, self._tf_target_mask_ph, self._update_target_fn = \
             self._graph_setup()
 
         self._get_action_preprocess = self._get_action_setup()
@@ -174,19 +175,25 @@ class RNNCriticPolicy(Policy, Serializable):
         tf_values = tf.reduce_sum(gammas * tf_rewards, reduction_indices=1)
         return tf_values
 
-    def _graph_cost(self, tf_rewards_ph, tf_rewards, tf_target_rewards):
+    def _graph_cost(self, tf_rewards_ph, tf_rewards, tf_target_rewards, tf_target_mask_ph):
         # for training, len(tf_obs_ph) == len(tf_actions_ph)
         # but len(tf_actions_target_ph) == N * len(tf_action_ph),
         # so need to be selective about what to take the max over
         tf_target_values = self._graph_calculate_values(tf_target_rewards)
         batch_size = tf.shape(tf_rewards_ph)[0]
         tf_target_values_flat = tf.reshape(tf_target_values, (batch_size, -1))
-        tf_target_values_max = 0 # tf.reduce_max(tf_target_values_flat, reduction_indices=1)
+        tf_target_values_max = tf.reduce_max(tf_target_values_flat, reduction_indices=1)
+
+        # TODO
+        self._tf_debug['tf_target_values'] = tf_target_values
+        self._tf_debug['tf_target_values_flat'] = tf_target_values_flat
+        self._tf_debug['tf_target_values_max'] = tf_target_values_max
 
         tf_values_ph = self._graph_calculate_values(tf_rewards_ph)
         tf_values = self._graph_calculate_values(tf_rewards)
 
-        mse = tf.reduce_mean(tf.square(tf_values_ph + np.power(self._gamma, self._H)*tf_target_values_max -
+        mse = tf.reduce_mean(tf.square(tf_values_ph +
+                                       tf_target_mask_ph * np.power(self._gamma, self._H)*tf_target_values_max -
                                        tf_values))
         weight_decay = self._weight_decay * tf.add_n(tf.get_collection('weight_decays'))
         cost = mse + weight_decay
@@ -207,7 +214,8 @@ class RNNCriticPolicy(Policy, Serializable):
             tf_graph = tf_sess.graph
 
         with tf_sess.as_default(), tf_graph.as_default():
-            ext.set_seed(ext.get_seed())
+            if ext.get_seed() is not None:
+                ext.set_seed(ext.get_seed())
 
             d_preprocess = self._graph_preprocess_from_placeholders()
 
@@ -220,6 +228,7 @@ class RNNCriticPolicy(Policy, Serializable):
             ### target network
             with tf.variable_scope('target_network'):
                 tf_obs_target_ph, tf_actions_target_ph, _ = self._graph_inputs_outputs_from_placeholders()
+                tf_target_mask_ph = tf.placeholder('float', [None], name='tf_target_mask_ph')
                 tf_target_rewards = self._graph_inference(tf_obs_target_ph, tf_actions_target_ph, d_preprocess)
 
             policy_vars = sorted(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='policy'), key=lambda v: v.name)
@@ -230,7 +239,7 @@ class RNNCriticPolicy(Policy, Serializable):
             update_target_fn = tf.group(*update_target_fn)
 
             ### optimization
-            tf_cost, tf_mse = self._graph_cost(tf_rewards_ph, tf_rewards, tf_target_rewards)
+            tf_cost, tf_mse = self._graph_cost(tf_rewards_ph, tf_rewards, tf_target_rewards, tf_target_mask_ph)
             tf_opt = self._graph_optimize(tf_cost)
 
             self._graph_init_vars(tf_sess)
@@ -240,7 +249,7 @@ class RNNCriticPolicy(Policy, Serializable):
 
         return tf_graph, tf_sess, d_preprocess, \
                tf_obs_ph, tf_actions_ph, tf_rewards_ph, tf_values, tf_cost, tf_opt, \
-               tf_obs_target_ph, tf_actions_target_ph, update_target_fn
+               tf_obs_target_ph, tf_actions_target_ph, tf_target_mask_ph, update_target_fn
 
     ################
     ### Training ###
@@ -274,9 +283,14 @@ class RNNCriticPolicy(Policy, Serializable):
     def update_target(self):
         self._tf_sess.run(self._update_target_fn)
 
-    def train_step(self, observations, actions, rewards):
+    def train_step(self, observations, actions, rewards, use_target):
         batch_size = len(observations)
         action_dim = self._env_spec.action_space.flat_dim
+
+        policy_observations = observations[:, 0, :]
+        policy_actions = actions[:, :self._H, :].reshape((batch_size, self._H * action_dim))
+        policy_rewards = rewards[:, :self._H]
+        target_observations = observations[:, self._H, :]
 
         if self._get_action_params['type'] == 'random':
             action_lower, action_upper = self._env_spec.action_space.bounds
@@ -288,17 +302,29 @@ class RNNCriticPolicy(Policy, Serializable):
             target_actions = self._get_action_preprocess['actions']
         else:
             raise NotImplementedError('get_action type {0} not implemented'.format(self._get_action_params['type']))
+        target_actions = np.tile(target_actions, (len(observations), 1))
 
-        cost, _ = self._tf_sess.run([self._tf_cost, self._tf_opt],
-                                    feed_dict={
-                                        ### policy
-                                        self._tf_obs_ph: observations[:, 0, :],
-                                        self._tf_actions_ph: actions.reshape((batch_size, self._H * action_dim)),
-                                        self._tf_rewards_ph: rewards,
-                                        ### target network
-                                        self._tf_obs_target_ph: observations[:, -1, :],
-                                        self._tf_actions_target_ph: np.tile(target_actions, (len(observations), 1)),
-                                    })
+        feed_dict = {
+            ### policy
+            self._tf_obs_ph: policy_observations,
+            self._tf_actions_ph: policy_actions,
+            self._tf_rewards_ph: policy_rewards,
+            ### target network
+            self._tf_obs_target_ph: target_observations,
+            self._tf_actions_target_ph: target_actions,
+            self._tf_target_mask_ph: float(use_target) * np.ones(batch_size, dtype=float)
+        }
+        cost, _ = self._tf_sess.run([self._tf_cost, self._tf_opt], feed_dict=feed_dict)
+
+        # TODO:
+        # if self._num_get_action > 5000:
+        #     targets, targets_flat, targets_max = self._tf_sess.run([self._tf_debug['tf_target_values'],
+        #                                                             self._tf_debug['tf_target_values_flat'],
+        #                                                             self._tf_debug['tf_target_values_max']],
+        #                                                            feed_dict=feed_dict)
+        #     import IPython; IPython.embed()
+        # if policy_rewards[:,0].max() > 0:
+        #     import IPython; IPython.embed()
 
         # policy_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='policy')
         # target_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='target_network')
@@ -366,6 +392,13 @@ class RNNCriticPolicy(Policy, Serializable):
         pred_values = self._tf_sess.run([self._tf_values],
                                         feed_dict={self._tf_obs_ph: observations,
                                                    self._tf_actions_ph: actions})[0]
+
+        # TODO
+        # if self._num_get_action > 2000:
+        #     pred_values = self._tf_sess.run([self._tf_values],
+        #                                     feed_dict={self._tf_obs_ph: [[0, 1.]],
+        #                                                self._tf_actions_ph: actions})[0]
+        #     import IPython; IPython.embed()
 
         chosen_actions = []
         for i, (observation_i, pred_values_i, actions_i) in enumerate(zip(observations,

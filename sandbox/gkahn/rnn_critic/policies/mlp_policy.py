@@ -45,7 +45,7 @@ class RNNCriticMLPPolicy(RNNCriticPolicy, Serializable):
 
             ### weight decays
             for v in weights:
-                tf.add_to_collection('weight_decays', 0.5 * tf.reduce_mean(v ** 2))
+                tf.add_to_collection('weight_decays', 0.5 * tf.reduce_mean(tf.square(v)))
 
             ### fully connected
             layer = input_layer

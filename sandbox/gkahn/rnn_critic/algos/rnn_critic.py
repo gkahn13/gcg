@@ -14,7 +14,9 @@ class RNNCritic(RLAlgorithm):
                  learn_after_n_steps,
                  train_every_n_steps,
                  save_every_n_steps,
+                 update_target_after_n_steps,
                  update_target_every_n_steps,
+                 update_preprocess_every_n_steps,
                  log_every_n_steps,
                  batch_size,
                  n_envs=1,
@@ -29,7 +31,9 @@ class RNNCritic(RLAlgorithm):
         :param learn_after_n_steps: before this many steps, take random actions
         :param train_every_n_steps: train policy every n steps
         :param save_every_n_steps: save policy every n steps
+        :param update_target_after_n_steps:
         :param update_target_every_n_steps: update target every n steps
+        :param update_preprocess_every_n_steps
         :param log_every_n_steps: log every n steps
         :param batch_size: batch size per gradient step
         :param render: show env
@@ -38,6 +42,7 @@ class RNNCritic(RLAlgorithm):
         assert(train_every_n_steps % n_envs == 0)
         assert(save_every_n_steps % n_envs == 0)
         assert(update_target_every_n_steps % n_envs == 0)
+        assert(update_preprocess_every_n_steps % n_envs == 0)
 
         self._env = env
         self._policy = policy
@@ -46,7 +51,9 @@ class RNNCritic(RLAlgorithm):
         self._learn_after_n_steps = learn_after_n_steps
         self._train_every_n_steps = train_every_n_steps
         self._save_every_n_steps = save_every_n_steps
+        self._update_target_after_n_steps = update_target_after_n_steps
         self._update_target_every_n_steps = update_target_every_n_steps
+        self._update_preprocess_every_n_steps = update_preprocess_every_n_steps
         self._log_every_n_steps = log_every_n_steps
         self._batch_size = batch_size
 
@@ -63,19 +70,25 @@ class RNNCritic(RLAlgorithm):
     @overrides
     def train(self):
         save_itr = 0
+        target_updated = False
         for step in range(0, self._total_steps, self._sampler.n_envs):
             self._sampler.step()
 
             if step > self._learn_after_n_steps:
                 ### training step
                 if step % self._train_every_n_steps == 0:
-                    self._policy.train_step(*self._sampler.sample(self._batch_size))
+                    self._policy.train_step(*self._sampler.sample(self._batch_size),
+                                            use_target=target_updated)
 
                 ### update target network
-                if step % self._update_target_every_n_steps == 0:
-                    logger.log('Updating target network...')
-                    self._policy.update_preprocess(self._sampler.statistics)
+                if step > self._update_target_after_n_steps and step % self._update_target_every_n_steps == 0:
+                    # logger.log('Updating target network...')
                     self._policy.update_target()
+                    target_updated = True
+
+                ### update preprocess
+                if step % self._update_preprocess_every_n_steps == 0:
+                    self._policy.update_preprocess(self._sampler.statistics)
 
                 if step % self._log_every_n_steps == 0:
                     logger.log('step %.3e' % step)
@@ -86,7 +99,7 @@ class RNNCritic(RLAlgorithm):
 
                 ### save model
                 if step % self._save_every_n_steps == 0:
-                    logger.log('Saving...')
+                    # logger.log('Saving...')
                     with self._policy.session.as_default(), self._policy.session.graph.as_default():
                         itr_params = dict(
                             itr=save_itr,

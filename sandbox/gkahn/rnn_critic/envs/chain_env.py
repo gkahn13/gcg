@@ -35,7 +35,7 @@ class ChainEnv(Env):
         if done:
             reward = 0.
         else:
-            if (self._state == self._length - 2) and (action == 2):
+            if (self._state == self._length - 2) and action == 2:
                 reward = 1.
             elif action == 1:
                 reward = 0.
