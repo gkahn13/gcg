@@ -37,12 +37,13 @@ class RNNCriticSampler(object):
     ### Add to pools ###
     ####################
 
-    def step(self):
+    def step(self, step):
         """ Takes one step in each simulator and adds to respective replay pools """
         actions, _ = self._policy.get_actions(self._curr_observations)
         next_observations, rewards, dones, _ = self._vec_env.step(actions)
         for i, replay_pool in enumerate(self._replay_pools):
-            replay_pool.add(self._curr_observations[i],
+            replay_pool.add(step + i,
+                            self._curr_observations[i],
                             actions[i],
                             rewards[i],
                             dones[i])

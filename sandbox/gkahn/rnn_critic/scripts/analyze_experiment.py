@@ -14,6 +14,7 @@ from rllab.envs.gym_env import GymEnv
 from rllab.sampler.utils import rollout as rollout_policy
 
 from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
+from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
 from sandbox.gkahn.rnn_critic.policies.policy import RNNCriticPolicy
 from sandbox.gkahn.rnn_critic.sampler.vectorized_rollout_sampler import RNNCriticVectorizedRolloutSampler
 
@@ -114,7 +115,16 @@ class AnalyzeRNNCritic(object):
     ### Plotting ###
     ################
 
-    def _plot_analyze(self, train_rollouts_itrs, eval_rollouts_itrs):
+    def _plot_analyze(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
+        env = env_itrs[0]
+        while hasattr(env, 'wrapped_env'):
+            env = env.wrapped_env
+        if type(env) == ChainEnv:
+            self._plot_analyze_ChainEnv(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
+        else:
+            self._plot_analyze_general(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
+
+    def _plot_analyze_general(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
         f, axes = plt.subplots(5, 1, figsize=(2 * len(train_rollouts_itrs), 7.5), sharex=True)
         f.tight_layout()
 
@@ -207,6 +217,53 @@ class AnalyzeRNNCritic(object):
         for ax in axes:
             ax.set_xlim((-save_step/2., end_step))
             ax.set_xticks(itr_steps)
+
+        f.savefig(self._analyze_img_file, bbox_inches='tight')
+        plt.close(f)
+
+    def _plot_analyze_ChainEnv(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
+        num_steps = sum([len(r['observations']) for r in itertools.chain(*train_rollouts_itrs)])
+        f, axes = plt.subplots(3, 1, figsize=(2. * num_steps / 500., 7.5), sharex=True)
+        f.tight_layout()
+
+        ### plot training cost
+        ax = axes[0]
+        costs = self._progress['Cost'][1:]
+        steps = self._progress['Step'][1:]
+        ax.plot(steps, costs, 'k-')
+        ax.set_ylabel('Cost')
+
+        ### plot training rollout length vs step
+        ax = axes[1]
+        rollouts = list(itertools.chain(*train_rollouts_itrs))
+        rollout_lens = [len(r['observations']) for r in rollouts]
+        steps = [r['steps'][-1] for r in rollouts]
+        ax.plot(steps, rollout_lens, color='k', marker='|', linestyle='', markersize=10.)
+        ax.vlines(self._params['alg']['learn_after_n_steps'], 0, ax.get_ylim()[1], colors='g', linestyles='dashed')
+        ax.hlines(env_itrs[0].spec.observation_space.n, steps[0], steps[-1], colors='r', linestyles='dashed')
+        ax.set_ylabel('Rollout length')
+
+        ### plot training rollout length vs step smoothed
+        ax = axes[2]
+        def moving_avg_std(idxs, data, window):
+            means, stds = [], []
+            for i in range(window, len(data)):
+                means.append(np.mean(data[i-window:i]))
+                stds.append(np.std(data[i - window:i]))
+            return idxs[:-window], np.asarray(means), np.asarray(stds)
+        moving_steps, rollout_lens_mean, rollout_lens_std = moving_avg_std(steps, rollout_lens, 5)
+        ax.plot(moving_steps, rollout_lens_mean, 'k-')
+        ax.fill_between(moving_steps, rollout_lens_mean - rollout_lens_std, rollout_lens_mean + rollout_lens_std,
+                        color='k', alpha=0.4)
+        ax.vlines(self._params['alg']['learn_after_n_steps'], 0, ax.get_ylim()[1], colors='g', linestyles='dashed')
+        ax.hlines(env_itrs[0].spec.observation_space.n, steps[0], steps[-1], colors='r', linestyles='dashed')
+        ax.set_ylabel('Rollout length')
+
+        ### for all plots
+        ax.set_xlabel('Steps')
+        xfmt = ticker.ScalarFormatter()
+        xfmt.set_powerlimits((0, 0))
+        ax.xaxis.set_major_formatter(xfmt)
 
         f.savefig(self._analyze_img_file, bbox_inches='tight')
         plt.close(f)
@@ -358,7 +415,7 @@ class AnalyzeRNNCritic(object):
     def run(self):
         train_rollouts_itrs, env_itrs = self._load_all_itrs()
         eval_rollouts_itrs = self._eval_all_policies(env_itrs)
-        self._plot_analyze(train_rollouts_itrs, eval_rollouts_itrs)
+        self._plot_analyze(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
         self._plot_rollouts(train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train=False, plot_prior=False)
         self._plot_rollouts(train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train=True, plot_prior=False)
         # self._plot_policies(train_rollouts_itrs, env_itrs)

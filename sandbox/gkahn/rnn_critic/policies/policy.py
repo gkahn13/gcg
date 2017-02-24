@@ -283,7 +283,7 @@ class RNNCriticPolicy(Policy, Serializable):
     def update_target(self):
         self._tf_sess.run(self._update_target_fn)
 
-    def train_step(self, observations, actions, rewards, use_target):
+    def train_step(self, observations, actions, rewards, dones, use_target):
         batch_size = len(observations)
         action_dim = self._env_spec.action_space.flat_dim
 
@@ -312,7 +312,7 @@ class RNNCriticPolicy(Policy, Serializable):
             ### target network
             self._tf_obs_target_ph: target_observations,
             self._tf_actions_target_ph: target_actions,
-            self._tf_target_mask_ph: float(use_target) * np.ones(batch_size, dtype=float)
+            self._tf_target_mask_ph: float(use_target) * (1 - dones[:, self._H].astype(float))
         }
         cost, _ = self._tf_sess.run([self._tf_cost, self._tf_opt], feed_dict=feed_dict)
 

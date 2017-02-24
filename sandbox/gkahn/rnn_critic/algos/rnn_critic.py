@@ -67,12 +67,22 @@ class RNNCritic(RLAlgorithm):
             max_path_length=max_path_length,
         )
 
+    def _save_params(self, itr):
+        with self._policy.session.as_default(), self._policy.session.graph.as_default():
+            itr_params = dict(
+                itr=itr,
+                policy=self._policy,
+                env=self._env,
+                rollouts=self._sampler.get_recent_paths()
+            )
+            logger.save_itr_params(itr, itr_params)
+
     @overrides
     def train(self):
         save_itr = 0
         target_updated = False
         for step in range(0, self._total_steps, self._sampler.n_envs):
-            self._sampler.step()
+            self._sampler.step(step)
 
             if step > self._learn_after_n_steps:
                 ### training step
@@ -100,12 +110,8 @@ class RNNCritic(RLAlgorithm):
                 ### save model
                 if step % self._save_every_n_steps == 0:
                     # logger.log('Saving...')
-                    with self._policy.session.as_default(), self._policy.session.graph.as_default():
-                        itr_params = dict(
-                            itr=save_itr,
-                            policy=self._policy,
-                            env=self._env,
-                            rollouts=self._sampler.get_recent_paths()
-                        )
-                        logger.save_itr_params(save_itr, itr_params)
+                    self._save_params(save_itr)
                     save_itr += 1
+
+        self._save_params(save_itr)
+

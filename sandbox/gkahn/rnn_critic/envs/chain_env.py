@@ -33,7 +33,7 @@ class ChainEnv(Env):
     def step(self, action):
         done = (self._state == self._length - 1)
         if done:
-            reward = 0.
+            reward = 1.
         else:
             if (self._state == self._length - 2) and action == 2:
                 reward = 1.
