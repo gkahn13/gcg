@@ -1,10 +1,9 @@
 import argparse, os, sys
-import yaml
+import yaml, pickle
 import joblib
 import itertools
 import pandas
 
-import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import ticker
@@ -19,14 +18,28 @@ from sandbox.gkahn.rnn_critic.policies.policy import RNNCriticPolicy
 from sandbox.gkahn.rnn_critic.sampler.vectorized_rollout_sampler import RNNCriticVectorizedRolloutSampler
 
 class AnalyzeRNNCritic(object):
-    def __init__(self, folder, skip_itr=1, max_itr=sys.maxsize):
+    def __init__(self, folder, skip_itr=1, max_itr=sys.maxsize, plot=dict()):
+        """
+        :param kwargs: holds random extra properties
+        """
         self._folder = folder
         self._skip_itr = skip_itr
         self._max_itr = max_itr
 
+        ### load data
+        self.name = os.path.basename(self._folder)
+        self.plot = plot
         with open(self._params_file, 'r') as f:
-            self._params = yaml.load(f)
-        self._progress = pandas.read_csv(self._progress_file)
+            self.params = yaml.load(f)
+        self.progress = pandas.read_csv(self._progress_file)
+
+        self.train_rollouts_itrs, self.env_itrs = self._load_all_itrs()
+        if not os.path.exists(self._eval_rollouts_itrs_file):
+            eval_rollouts_itrs = self._eval_all_policies(self.env_itrs)
+            with open(self._eval_rollouts_itrs_file, 'wb') as f:
+                pickle.dump(eval_rollouts_itrs, f)
+        with open(self._eval_rollouts_itrs_file, 'rb') as f:
+            self.eval_rollouts_itrs = pickle.load(f)
 
     #############
     ### Files ###
@@ -38,6 +51,10 @@ class AnalyzeRNNCritic(object):
     @property
     def _progress_file(self):
         return os.path.join(self._folder, 'progress.csv')
+
+    @property
+    def _eval_rollouts_itrs_file(self):
+        return os.path.join(self._folder, 'eval_rollouts_itrs.pkl')
 
     @property
     def _params_file(self):
@@ -130,16 +147,16 @@ class AnalyzeRNNCritic(object):
 
         ### plot training cost
         ax = axes[0]
-        costs = self._progress['Cost'][1:]
-        steps = self._progress['Step'][1:]
+        costs = self.progress['Cost'][1:]
+        steps = self.progress['Step'][1:]
         ax.plot(steps, costs, 'k-')
         ax.set_ylabel('Cost')
 
         ### plot avg reward
         ax = axes[1]
-        avg_reward_means = self._progress['AvgRewardMean']
-        avg_reward_stds = self._progress['AvgRewardStd']
-        steps = self._progress['Step']
+        avg_reward_means = self.progress['AvgRewardMean']
+        avg_reward_stds = self.progress['AvgRewardStd']
+        steps = self.progress['Step']
         ax.plot(steps, avg_reward_means, 'k-')
         ax.fill_between(steps, avg_reward_means - avg_reward_stds, avg_reward_means + avg_reward_stds,
                         color='k', alpha=0.4)
@@ -147,17 +164,17 @@ class AnalyzeRNNCritic(object):
 
         ### plot final reward
         ax = axes[2]
-        final_reward_means = self._progress['FinalRewardMean']
-        final_reward_stds = self._progress['FinalRewardStd']
-        steps = self._progress['Step']
+        final_reward_means = self.progress['FinalRewardMean']
+        final_reward_stds = self.progress['FinalRewardStd']
+        steps = self.progress['Step']
         ax.plot(steps, final_reward_means, 'k-')
         ax.fill_between(steps, final_reward_means - final_reward_stds, final_reward_means + final_reward_stds,
                         color='k', alpha=0.4)
         ax.set_ylabel('Final reward')
 
-        start_step = self._params['alg']['learn_after_n_steps']
-        end_step = self._params['alg']['total_steps']
-        save_step = self._params['alg']['save_every_n_steps']
+        start_step = self.params['alg']['learn_after_n_steps']
+        end_step = self.params['alg']['total_steps']
+        save_step = self.params['alg']['save_every_n_steps']
         first_save_step = save_step * np.ceil(start_step / float(save_step))
         itr_steps = np.r_[first_save_step:end_step:save_step]
 
@@ -228,8 +245,8 @@ class AnalyzeRNNCritic(object):
 
         ### plot training cost
         ax = axes[0]
-        costs = self._progress['Cost'][1:]
-        steps = self._progress['Step'][1:]
+        costs = self.progress['Cost'][1:]
+        steps = self.progress['Step'][1:]
         ax.plot(steps, costs, 'k-')
         ax.set_ylabel('Cost')
 
@@ -239,7 +256,7 @@ class AnalyzeRNNCritic(object):
         rollout_lens = [len(r['observations']) for r in rollouts]
         steps = [r['steps'][-1] for r in rollouts]
         ax.plot(steps, rollout_lens, color='k', marker='|', linestyle='', markersize=10.)
-        ax.vlines(self._params['alg']['learn_after_n_steps'], 0, ax.get_ylim()[1], colors='g', linestyles='dashed')
+        ax.vlines(self.params['alg']['learn_after_n_steps'], 0, ax.get_ylim()[1], colors='g', linestyles='dashed')
         ax.hlines(env_itrs[0].spec.observation_space.n, steps[0], steps[-1], colors='r', linestyles='dashed')
         ax.set_ylabel('Rollout length')
 
@@ -255,7 +272,7 @@ class AnalyzeRNNCritic(object):
         ax.plot(moving_steps, rollout_lens_mean, 'k-')
         ax.fill_between(moving_steps, rollout_lens_mean - rollout_lens_std, rollout_lens_mean + rollout_lens_std,
                         color='k', alpha=0.4)
-        ax.vlines(self._params['alg']['learn_after_n_steps'], 0, ax.get_ylim()[1], colors='g', linestyles='dashed')
+        ax.vlines(self.params['alg']['learn_after_n_steps'], 0, ax.get_ylim()[1], colors='g', linestyles='dashed')
         ax.hlines(env_itrs[0].spec.observation_space.n, steps[0], steps[-1], colors='r', linestyles='dashed')
         ax.set_ylabel('Rollout length')
 
@@ -286,9 +303,9 @@ class AnalyzeRNNCritic(object):
         max_itr = len(rollouts_itrs) * self._skip_itr
         itrs = np.r_[0:max_itr:self._skip_itr]
 
-        start_step = self._params['alg']['learn_after_n_steps']
-        end_step = self._params['alg']['total_steps']
-        save_step = self._params['alg']['save_every_n_steps']
+        start_step = self.params['alg']['learn_after_n_steps']
+        end_step = self.params['alg']['total_steps']
+        save_step = self.params['alg']['save_every_n_steps']
         first_save_step = save_step * np.ceil(start_step / float(save_step))
         itr_steps = np.r_[first_save_step:end_step:save_step]
 
@@ -413,12 +430,16 @@ class AnalyzeRNNCritic(object):
     ###########
 
     def run(self):
-        train_rollouts_itrs, env_itrs = self._load_all_itrs()
-        eval_rollouts_itrs = self._eval_all_policies(env_itrs)
-        self._plot_analyze(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
-        self._plot_rollouts(train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train=False, plot_prior=False)
-        self._plot_rollouts(train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train=True, plot_prior=False)
+        self._plot_analyze(self.train_rollouts_itrs, self.eval_rollouts_itrs, self.env_itrs)
+        self._plot_rollouts(self.train_rollouts_itrs, self.eval_rollouts_itrs, self.env_itrs,
+                            is_train=False, plot_prior=False)
+        self._plot_rollouts(self.train_rollouts_itrs, self.eval_rollouts_itrs, self.env_itrs,
+                            is_train=True, plot_prior=False)
         # self._plot_policies(train_rollouts_itrs, env_itrs)
+
+    #############
+    ### Files ###
+    #############
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
