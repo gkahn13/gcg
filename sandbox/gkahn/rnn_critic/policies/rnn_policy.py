@@ -17,7 +17,7 @@ class RNNCriticRNNPolicy(RNNCriticPolicy, Serializable):
         :param action_hidden_layers: layer sizes for preprocessing the action
         :param reward_hidden_layers: layer sizes for processing the reward
         :param rnn_state_dim: dimension of the hidden state
-        :param activation: e.g. relu
+        :param activation: string, e.g. 'tf.nn.relu'
         """
         Serializable.quick_init(self, locals())
 
@@ -25,7 +25,7 @@ class RNNCriticRNNPolicy(RNNCriticPolicy, Serializable):
         self._action_hidden_layers = list(action_hidden_layers)
         self._reward_hidden_layers = list(reward_hidden_layers)
         self._rnn_state_dim = rnn_state_dim
-        self._activation = activation
+        self._activation = eval(activation)
 
         RNNCriticPolicy.__init__(self, **kwargs)
 

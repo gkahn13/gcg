@@ -150,7 +150,7 @@ if __name__ == '__main__':
     analyze_groups = []
     ### H = 1
     analyze_group = []
-    for i in range(50, 55):
+    for i in range(80, 85):
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'H = 1',
@@ -159,7 +159,7 @@ if __name__ == '__main__':
     analyze_groups.append(analyze_group)
     ### H = 2
     analyze_group = []
-    for i in range(55, 60):
+    for i in range(85, 90):
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'H = 2',
@@ -168,7 +168,7 @@ if __name__ == '__main__':
     analyze_groups.append(analyze_group)
     ### H = 3
     analyze_group = []
-    for i in range(60, 65):
+    for i in range(90, 95):
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'H = 3',
@@ -177,7 +177,7 @@ if __name__ == '__main__':
     analyze_groups.append(analyze_group)
     ### H = 4
     analyze_group = []
-    for i in range(65, 70):
+    for i in range(95, 100):
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'H = 4',
@@ -186,7 +186,7 @@ if __name__ == '__main__':
     analyze_groups.append(analyze_group)
     ### H = 5
     analyze_group = []
-    for i in range(70, 75):
+    for i in range(100, 104):
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'H = 5',
@@ -194,6 +194,6 @@ if __name__ == '__main__':
                                               }))
     analyze_groups.append(analyze_group)
 
-    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'chain', analyze_groups)
+    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'chain_rnn', analyze_groups)
     plotter.run()
 
