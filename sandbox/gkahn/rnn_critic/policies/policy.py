@@ -343,6 +343,10 @@ class RNNCriticPolicy(Policy, Serializable):
     ### Policy methods ###
     ######################
 
+    def update_action_params(self, get_action_params):
+        self._get_action_params = get_action_params
+        self._get_action_preprocess = self._get_action_setup()
+
     def _get_action_setup(self):
         get_action_preprocess = dict()
 
@@ -370,11 +374,11 @@ class RNNCriticPolicy(Policy, Serializable):
     def set_exploration_strategy(self, exploration_strategy):
         self._exploration_strategy = exploration_strategy
 
-    def get_action(self, observation):
-        chosen_actions, action_info = self.get_actions([observation])
+    def get_action(self, observation, return_action_info=False):
+        chosen_actions, action_info = self.get_actions([observation], return_action_info=return_action_info)
         return chosen_actions[0], action_info
 
-    def get_actions(self, observations):
+    def get_actions(self, observations, return_action_info=False):
         num_obs = len(observations)
         observations = self._env_spec.observation_space.flatten_n(observations)
 
@@ -417,7 +421,15 @@ class RNNCriticPolicy(Policy, Serializable):
 
         self._num_get_action += num_obs
 
-        return chosen_actions, dict()
+        if return_action_info:
+            action_info = {
+                'actions': np.split(actions, num_obs, axis=0),
+                'values': np.split(pred_values, num_obs, axis=0)
+            }
+        else:
+            action_info = dict()
+
+        return chosen_actions, action_info
 
     @property
     def recurrent(self):

@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from matplotlib import ticker
 
 from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
+from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
 
 from analyze_experiment import AnalyzeRNNCritic
 
@@ -72,6 +73,8 @@ class PlotAnalyzeRNNCritic(object):
     def _plot_analyze(self):
         if self._env_type == ChainEnv:
             self._plot_analyze_ChainEnv()
+        elif self._env_type == PointEnv:
+            self._plot_analyze_PointEnv()
         else:
             pass
 
@@ -137,6 +140,74 @@ class PlotAnalyzeRNNCritic(object):
         f.savefig(self._analyze_img_file, bbox_inches='tight')
         plt.close(f)
 
+    def _plot_analyze_PointEnv(self):
+        f, axes = plt.subplots(1 + len(self._analyze_groups), 1, figsize=(15, 5 * len(self._analyze_groups)),
+                               sharex=True)
+
+        ### plot training cost
+        ax = axes[0]
+        for analyze_group in self._analyze_groups:
+            data_interp = DataAverageInterpolation()
+            for analyze in analyze_group:
+                steps = analyze.progress['Step'][1:]
+                costs = analyze.progress['Cost'][1:]
+                data_interp.add_data(steps, costs)
+
+            steps = np.r_[np.min(np.hstack(data_interp.xs)):np.max(np.hstack(data_interp.xs)):0.01]
+            costs_mean, costs_std = data_interp.eval(steps)
+
+            ax.plot(steps, costs_mean, color=analyze.plot['color'], label=analyze.plot['label'])
+            ax.fill_between(steps, costs_mean - costs_std, costs_mean + costs_std,
+                            color=analyze.plot['color'], alpha=0.4)
+        ax.set_ylabel('Training cost')
+        ax.legend(loc='upper right')
+
+        ### plot training rollout length vs step
+        for ax, analyze_group in zip(axes[1:], self._analyze_groups):
+            data_interp = DataAverageInterpolation()
+            min_step = max_step = None
+            for analyze in analyze_group:
+                rollouts = list(itertools.chain(*analyze.train_rollouts_itrs))
+                final_rewards = [r['rewards'][-1] for r in rollouts]
+                steps = [r['steps'][-1] for r in rollouts]
+
+                data_interp.add_data(steps, final_rewards)
+                if min_step is None:
+                    min_step = steps[0]
+                if max_step is None:
+                    max_step = steps[-1]
+                min_step = max(min_step, steps[0])
+                max_step = min(max_step, steps[-1])
+            steps = np.r_[min_step:max_step:0.01]
+            final_rewards_mean, final_rewards_std = data_interp.eval(steps)
+
+            ax.plot(steps, final_rewards_mean, color=analyze.plot['color'], label=analyze.plot['label'])
+            ax.fill_between(steps, final_rewards_mean - final_rewards_std, final_rewards_mean + final_rewards_std,
+                            color=analyze.plot['color'], alpha=0.4)
+            ax.vlines(analyze.params['alg']['learn_after_n_steps'], ax.get_ylim()[0], 0, colors='k',
+                      linestyles='dashed')
+            ax.hlines(0, steps[0], steps[-1], colors='k',
+                      linestyles='dashed')
+            for step in ax.get_xticks():
+                step = np.clip(step, min_step, max_step)
+                ax.text(step, 0, '%.2f'%data_interp.eval([step])[0][0],
+                        horizontalalignment='center',
+                        verticalalignment='bottom',
+                        color='k', alpha=0.8)
+            ax.set_ylabel('Final reward')
+            ax.set_ylim((ax.get_ylim()[0], 1.))
+
+        ### for all plots
+        ax.set_xlabel('Steps')
+        xfmt = ticker.ScalarFormatter()
+        xfmt.set_powerlimits((0, 0))
+        ax.xaxis.set_major_formatter(xfmt)
+
+        f.savefig(self._analyze_img_file, bbox_inches='tight')
+        plt.close(f)
+
+
+
     ###########
     ### Run ###
     ###########
@@ -150,7 +221,7 @@ if __name__ == '__main__':
     analyze_groups = []
     ### H = 1
     analyze_group = []
-    for i in range(80, 85):
+    for i in range(171, 175):
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'H = 1',
@@ -159,7 +230,7 @@ if __name__ == '__main__':
     analyze_groups.append(analyze_group)
     ### H = 2
     analyze_group = []
-    for i in range(85, 90):
+    for i in range(175, 180):
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'H = 2',
@@ -168,7 +239,7 @@ if __name__ == '__main__':
     analyze_groups.append(analyze_group)
     ### H = 3
     analyze_group = []
-    for i in range(90, 95):
+    for i in range(180, 185):
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'H = 3',
@@ -177,7 +248,7 @@ if __name__ == '__main__':
     analyze_groups.append(analyze_group)
     ### H = 4
     analyze_group = []
-    for i in range(95, 100):
+    for i in range(185, 190):
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'H = 4',
@@ -186,7 +257,7 @@ if __name__ == '__main__':
     analyze_groups.append(analyze_group)
     ### H = 5
     analyze_group = []
-    for i in range(100, 104):
+    for i in range(190, 195):
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'H = 5',
@@ -194,6 +265,6 @@ if __name__ == '__main__':
                                               }))
     analyze_groups.append(analyze_group)
 
-    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'chain_rnn', analyze_groups)
+    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'point_rnn_gamma_0_5', analyze_groups)
     plotter.run()
 

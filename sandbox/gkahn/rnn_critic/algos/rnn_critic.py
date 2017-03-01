@@ -39,7 +39,8 @@ class RNNCritic(RLAlgorithm):
         :param render: show env
         """
         assert(learn_after_n_steps % n_envs == 0)
-        assert(train_every_n_steps % n_envs == 0)
+        if train_every_n_steps >= 1:
+            assert(train_every_n_steps % n_envs == 0)
         assert(save_every_n_steps % n_envs == 0)
         assert(update_target_every_n_steps % n_envs == 0)
         assert(update_preprocess_every_n_steps % n_envs == 0)
@@ -86,9 +87,14 @@ class RNNCritic(RLAlgorithm):
 
             if step > self._learn_after_n_steps:
                 ### training step
-                if step % self._train_every_n_steps == 0:
-                    self._policy.train_step(*self._sampler.sample(self._batch_size),
-                                            use_target=target_updated)
+                if self._train_every_n_steps >= 1:
+                    if step % self._train_every_n_steps == 0:
+                        self._policy.train_step(*self._sampler.sample(self._batch_size),
+                                                use_target=target_updated)
+                else:
+                    for _ in range(int(1. / self._train_every_n_steps)):
+                        self._policy.train_step(*self._sampler.sample(self._batch_size),
+                                                use_target=target_updated)
 
                 ### update target network
                 if step > self._update_target_after_n_steps and step % self._update_target_every_n_steps == 0:

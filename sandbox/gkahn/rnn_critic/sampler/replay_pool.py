@@ -226,6 +226,7 @@ class RNNCriticReplayPool(object):
             rewards = self._rewards[indices]
             self._log_stats['FinalReward'].append(rewards[-1])
             self._log_stats['AvgReward'].append(np.mean(rewards))
+            self._log_stats['CumReward'].append(np.sum(rewards))
 
             for k, v in self._log_stats.items():
                 if len(v) > self._log_history_len:
@@ -254,6 +255,8 @@ class RNNCriticReplayPool(object):
             'FinalRewardStd': np.std(self._log_stats['FinalReward']),
             'AvgRewardMean': np.mean(self._log_stats['AvgReward']),
             'AvgRewardStd': np.std(self._log_stats['AvgReward']),
+            'CumRewardMean': np.mean(self._log_stats['CumReward']),
+            'CumRewardStd': np.std(self._log_stats['CumReward'])
         }
 
     def get_recent_paths(self):

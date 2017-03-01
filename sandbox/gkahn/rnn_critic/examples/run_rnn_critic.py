@@ -18,10 +18,8 @@ from sandbox.gkahn.rnn_critic.algos.rnn_critic import RNNCritic
 from sandbox.gkahn.rnn_critic.policies.mlp_policy import RNNCriticMLPPolicy
 from sandbox.gkahn.rnn_critic.policies.rnn_policy import RNNCriticRNNPolicy
 
-### parameters loaded from yaml
-params = dict()
 
-def run_task(*_):
+def run_task(params):
     # copy yaml for posterity
     shutil.copy(params['yaml_path'], os.path.join(logger.get_snapshot_dir(), os.path.basename(params['yaml_path'])))
 
@@ -84,9 +82,14 @@ def run_task(*_):
     algo.train()
 
 
-def main():
+def main(yaml_file):
+    assert (os.path.exists(yaml_file))
+    with open(yaml_file, 'r') as f:
+        params = yaml.load(f)
+    params['yaml_path'] = yaml_file
+
     run_experiment_lite(
-        run_task,
+        lambda x: run_task(params), # HACK
         snapshot_mode="all",
         exp_name=params['exp_name'],
         exp_prefix=params['exp_prefix']
@@ -97,9 +100,4 @@ if __name__ == '__main__':
     parser.add_argument('yaml', type=str)
     args = parser.parse_args()
 
-    assert(os.path.exists(args.yaml))
-    with open(args.yaml, 'r') as f:
-        params.update(yaml.load(f))
-    params['yaml_path'] = args.yaml
-
-    main()
+    main(args.yaml)

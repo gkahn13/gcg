@@ -38,3 +38,11 @@ class PointEnv(Env):
 
     def set_param_values(self, params):
         pass
+
+    ################################
+    ### FOR DEBUGGING/EVALUATING ###
+    ################################
+
+    def set_state(self, state):
+        self._state = np.copy(state)
+
