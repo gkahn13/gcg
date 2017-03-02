@@ -126,6 +126,9 @@ class AnalyzeRNNCritic(object):
     def _analyze_value_function_img_file(self):
         return os.path.join(self._folder, 'analyze_value_function.png')
 
+    def _analyze_Q_function_img_file(self, itr):
+        return os.path.join(self._folder, 'analyze_Q_function_itr{0:d}.png'.format(itr))
+
     ####################
     ### Data loading ###
     ####################
@@ -133,12 +136,7 @@ class AnalyzeRNNCritic(object):
     def _load_itr_policy(self, itr):
         d = joblib.load(self._itr_file(itr))
         policy = d['policy']
-        policy._get_action_params = { # TODO
-            'type': 'random',
-            'N': 10000
-        }
-        policy._get_action_preprocess = policy._get_action_setup()
-        return d['policy']
+        return policy
 
     def _load_itr(self, itr):
         sess, graph = RNNCriticPolicy.create_session_and_graph(gpu_device=self._gpu_device)
@@ -706,18 +704,100 @@ class AnalyzeRNNCritic(object):
         f.savefig(self._analyze_value_function_img_file, bbox_inches='tight', dpi=200.)
         plt.close(f)
 
+    def _plot_Q_function(self, env_itrs):
+        env = env_itrs[0]
+        while hasattr(env, 'wrapped_env'):
+            env = env.wrapped_env
+        if type(env) == PointEnv:
+            self._plot_Q_function_PointEnv(env_itrs)
+        else:
+            pass
+
+    def _plot_Q_function_PointEnv(self, env_itrs):
+        ### get original env so can set state
+        tf_env = TfEnv(normalize(PointEnv()))
+        env = tf_env
+        while hasattr(env, 'wrapped_env'):
+            env = env.wrapped_env
+
+        N_start = 9
+        xgrid, ygrid = np.meshgrid(np.linspace(-1., 1., N_start), np.linspace(-1., 1., N_start))
+        start_states = [(x, y) for x, y in zip(xgrid.ravel(), ygrid.ravel())]
+
+        N_action = 10
+        axgrid, aygrid = np.meshgrid(np.linspace(-1., 1., N_action), np.linspace(-1., 1., N_action))
+        actions = np.array([(ax, ay) for ax, ay in zip(axgrid.ravel(), aygrid.ravel())])
+
+        next_states = [] # index by [state][action]
+        for start_state in start_states:
+            ### get next states
+            next_states_i = []
+            for action in actions:
+                tf_env.reset()
+                env.set_state(start_state)
+                next_state, _, _, _ = tf_env.step(action)
+                next_states_i.append(next_state)
+
+            next_states.append(np.array(next_states_i))
+
+        q_values = []
+        itr = 0
+        while os.path.exists(self._itr_file(itr)):
+            sess, graph = RNNCriticPolicy.create_session_and_graph(gpu_device=self._gpu_device)
+            with graph.as_default(), sess.as_default():
+                policy = self._load_itr_policy(itr)
+
+                q_values_itr = []
+                for start_state in start_states:
+                    q_values_itr.append(policy.eval_Q_values([start_state] * len(actions), actions))
+                q_values.append(q_values_itr)
+
+            itr += 1
+
+        for itr, q_values_itr in enumerate(q_values):
+            # N = int(np.ceil(np.sqrt(len(q_values_itr))))
+            # f, axes = plt.subplots(N, N, figsize=(10, 10))
+            f, ax = plt.subplots(1, 1, figsize=(10, 10))
+
+            for i, (start_state, next_states_i, q_values_i) in enumerate(zip(start_states, next_states, q_values_itr)):
+                # ax = np.flipud(axes).ravel()[i]
+                ax.set_axis_bgcolor(matplotlib.cm.Greys(0.5))
+
+                q_min = np.min(q_values_i)
+                q_max = np.max(q_values_i)
+                q_values_norm_i = (q_values_i - q_min) / (q_max - q_min)
+                colors = [matplotlib.cm.plasma(q) for q in q_values_norm_i]
+
+                ax.scatter(next_states_i[:, 0], next_states_i[:, 1], s=20. / float(N_action), c=colors)
+                ax.plot([start_state[0]], [start_state[1]], 'kx', markersize=20. / float(N_action))
+                ax.plot([next_states_i[q_values_i.argmax(), 0]], [next_states_i[q_values_i.argmax(), 1]],
+                        color=colors[q_values_i.argmax()], marker='D', markersize=20. / float(N_action))
+
+            # for ax in axes.ravel():
+            ax.set_xlim((np.min(next_states) - 0.1, np.max(next_states) + 0.1))
+            ax.set_ylim((np.min(next_states) - 0.1, np.max(next_states) + 0.1))
+
+            suptitle = f.suptitle('Itr {0}'.format(itr), y=1.02)
+            f.tight_layout()
+            f.savefig(self._analyze_Q_function_img_file(itr), bbox_inches='tight', dpi=200.,
+                      bbox_extra_artists=(suptitle,))
+            plt.close(f)
+
+
+
     ###########
     ### Run ###
     ###########
 
     def run(self):
-        # self._plot_analyze(self.train_rollouts_itrs, self.eval_rollouts_itrs, self.env_itrs)
-        # self._plot_rollouts(self.train_rollouts_itrs, self.eval_rollouts_itrs, self.env_itrs,
-        #                     is_train=False, plot_prior=False)
-        # self._plot_rollouts(self.train_rollouts_itrs, self.eval_rollouts_itrs, self.env_itrs,
-        #                     is_train=True, plot_prior=False)
-        self._plot_policies(self.train_rollouts_itrs, self.env_itrs)
+        self._plot_analyze(self.train_rollouts_itrs, self.eval_rollouts_itrs, self.env_itrs)
+        self._plot_rollouts(self.train_rollouts_itrs, self.eval_rollouts_itrs, self.env_itrs,
+                            is_train=False, plot_prior=False)
+        self._plot_rollouts(self.train_rollouts_itrs, self.eval_rollouts_itrs, self.env_itrs,
+                            is_train=True, plot_prior=False)
+        # self._plot_policies(self.train_rollouts_itrs, self.env_itrs)
         # self._plot_value_function(self.env_itrs)
+        self._plot_Q_function(self.env_itrs)
 
 
 def main(folder, skip_itr, max_itr, gpu_device=None):

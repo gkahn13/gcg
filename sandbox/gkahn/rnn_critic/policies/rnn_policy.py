@@ -31,6 +31,8 @@ class RNNCriticRNNPolicy(RNNCriticPolicy, Serializable):
 
     @overrides
     def _graph_inference(self, tf_obs_ph, tf_actions_ph, d_preprocess):
+        is_lstm = False # TODO
+
         obs_dim = self._env_spec.observation_space.flat_dim
         action_dim = self._env_spec.action_space.flat_dim
 
@@ -47,7 +49,10 @@ class RNNCriticRNNPolicy(RNNCriticPolicy, Serializable):
                 obs_biases = []
 
                 curr_layer = obs_dim
-                for i, next_layer in enumerate(self._obs_hidden_layers + [self._rnn_state_dim]):
+                obs_to_hidden_layers = self._obs_hidden_layers + [self._rnn_state_dim]
+                if is_lstm:
+                    obs_to_hidden_layers[-1] *= 2
+                for i, next_layer in enumerate(obs_to_hidden_layers):
                     obs_weights.append(tf.get_variable('w_obs_hidden_{0}'.format(i), [curr_layer, next_layer],
                                                        initializer=tf.contrib.layers.xavier_initializer()))
                     obs_biases.append(tf.get_variable('b_obs_hidden_{0}'.format(i), [next_layer],
@@ -109,7 +114,12 @@ class RNNCriticRNNPolicy(RNNCriticPolicy, Serializable):
             ### create rnn
             with tf.name_scope('rnn'):
                 with tf.variable_scope('rnn_vars'):
-                    rnn_cell = tf.nn.rnn_cell.BasicRNNCell(self._rnn_state_dim, activation=self._activation)
+                    if is_lstm:
+                        rnn_cell = tf.nn.rnn_cell.BasicLSTMCell(self._rnn_state_dim,
+                                                                state_is_tuple=False,
+                                                                activation=self._activation)
+                    else:
+                        rnn_cell = tf.nn.rnn_cell.BasicRNNCell(self._rnn_state_dim, activation=self._activation)
                     rnn_outputs, rnn_states = tf.nn.dynamic_rnn(rnn_cell, rnn_inputs, initial_state=istate)
 
             ### internal states --> rewards

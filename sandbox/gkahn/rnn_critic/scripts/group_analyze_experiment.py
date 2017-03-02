@@ -221,7 +221,7 @@ if __name__ == '__main__':
     analyze_groups = []
     ### H = 1
     analyze_group = []
-    for i in range(171, 175):
+    for i in range(260, 265):
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'H = 1',
@@ -230,7 +230,7 @@ if __name__ == '__main__':
     analyze_groups.append(analyze_group)
     ### H = 2
     analyze_group = []
-    for i in range(175, 180):
+    for i in range(265, 270):
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'H = 2',
@@ -239,32 +239,32 @@ if __name__ == '__main__':
     analyze_groups.append(analyze_group)
     ### H = 3
     analyze_group = []
-    for i in range(180, 185):
+    for i in range(270, 275):
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'H = 3',
                                                   'color': 'b'
                                               }))
     analyze_groups.append(analyze_group)
-    ### H = 4
-    analyze_group = []
-    for i in range(185, 190):
-        analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
-                                              plot={
-                                                  'label': 'H = 4',
-                                                  'color': 'y'
-                                              }))
-    analyze_groups.append(analyze_group)
-    ### H = 5
-    analyze_group = []
-    for i in range(190, 195):
-        analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
-                                              plot={
-                                                  'label': 'H = 5',
-                                                  'color': 'c'
-                                              }))
-    analyze_groups.append(analyze_group)
+    # ### H = 4
+    # analyze_group = []
+    # for i in range(275, 280):
+    #     analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
+    #                                           plot={
+    #                                               'label': 'H = 4',
+    #                                               'color': 'y'
+    #                                           }))
+    # analyze_groups.append(analyze_group)
+    # ### H = 5
+    # analyze_group = []
+    # for i in range(280, 285):
+    #     analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
+    #                                           plot={
+    #                                               'label': 'H = 5',
+    #                                               'color': 'c'
+    #                                           }))
+    # analyze_groups.append(analyze_group)
 
-    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'point_rnn_gamma_0_5', analyze_groups)
+    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'point_rnn_gamma_1_0_260_284', analyze_groups)
     plotter.run()
 

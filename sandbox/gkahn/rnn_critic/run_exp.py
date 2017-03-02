@@ -10,13 +10,13 @@ if __name__ == '__main__':
     # exps = args.exps.split()
 
     gpu_device = 1
-    # exps = ['exp{0}'.format(i) for i in range(200, 225)]
-    exps = ['exp113']
+    exps = ['exp{0}'.format(i) for i in range(260, 285)]
+    # exps = ['exp251']
 
     for exp in exps:
         try:
-            # print('Running {0}'.format(exp))
-            # run_main(os.path.abspath('examples/yamls/{0}.yaml'.format(exp)))
+            print('Running {0}'.format(exp))
+            run_main(os.path.abspath('examples/yamls/{0}.yaml'.format(exp)))
             print('Analyzing {0}'.format(exp))
             analyze_main(exp, skip_itr=1, max_itr=int(1e4), gpu_device=gpu_device)
         except:

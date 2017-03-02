@@ -344,6 +344,7 @@ class RNNCriticPolicy(Policy, Serializable):
     ######################
 
     def update_action_params(self, get_action_params):
+        """ In case you want to switch how you do action selection (e.g. more random samples) """
         self._get_action_params = get_action_params
         self._get_action_preprocess = self._get_action_setup()
 
@@ -437,6 +438,16 @@ class RNNCriticPolicy(Policy, Serializable):
 
     def terminate(self):
         self._tf_sess.close()
+
+    ##################
+    ### Evaluation ###
+    ##################
+
+    def eval_Q_values(self, observations, actions):
+        Q_values = self._tf_sess.run(self._tf_values,
+                                     feed_dict={self._tf_obs_ph: observations,
+                                                self._tf_actions_ph: actions})
+        return Q_values
 
     ######################
     ### Saving/loading ###
