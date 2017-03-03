@@ -19,6 +19,7 @@ from rllab.misc.ext import set_seed
 from sandbox.rocky.tf.misc import tensor_utils
 
 from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
+from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
 from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
 from sandbox.gkahn.rnn_critic.policies.policy import RNNCriticPolicy
 from sandbox.gkahn.rnn_critic.sampler.vectorized_rollout_sampler import RNNCriticVectorizedRolloutSampler
@@ -200,9 +201,9 @@ class AnalyzeRNNCritic(object):
         env = env_itrs[0]
         while hasattr(env, 'wrapped_env'):
             env = env.wrapped_env
-        if type(env) == ChainEnv:
+        if isinstance(env, ChainEnv):
             self._plot_analyze_ChainEnv(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
-        elif type(env) == PointEnv:
+        elif isinstance(env, SparsePointEnv):
             self._plot_analyze_PointEnv(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
         else:
             self._plot_analyze_general(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
@@ -448,9 +449,9 @@ class AnalyzeRNNCritic(object):
         env = env_itrs[0]
         while hasattr(env, 'wrapped_env'):
             env = env.wrapped_env
-        if type(env) == PointEnv:
+        if isinstance(env, SparsePointEnv):
             self._plot_rollouts_PointEnv(train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train, plot_prior)
-        elif type(env) == GymEnv:
+        elif isinstance(env, GymEnv):
             if 'Reacher' in env.env_id:
                 self._plot_rollouts_Reacher(train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train, plot_prior)
         else:
@@ -558,7 +559,7 @@ class AnalyzeRNNCritic(object):
         env = env_itrs[0]
         while hasattr(env, 'wrapped_env'):
             env = env.wrapped_env
-        if type(env) == PointEnv:
+        if isinstance(env, PointEnv):
             self._plot_policies_PointEnv(rollouts_itrs, env_itrs)
         else:
             pass
@@ -572,7 +573,7 @@ class AnalyzeRNNCritic(object):
             if self.params['seed'] is not None:
                 set_seed(self.params['seed'])
 
-            tf_env = TfEnv(normalize(PointEnv()))
+            tf_env = env_itrs[itr]
             env = tf_env
             while hasattr(env, 'wrapped_env'):
                 env = env.wrapped_env
@@ -650,7 +651,7 @@ class AnalyzeRNNCritic(object):
         env = env_itrs[0]
         while hasattr(env, 'wrapped_env'):
             env = env.wrapped_env
-        if type(env) == PointEnv:
+        if isinstance(env, PointEnv):
             self._plot_value_function_PointEnv(env_itrs)
         else:
             pass
@@ -683,8 +684,6 @@ class AnalyzeRNNCritic(object):
         min_value = np.min(values_itrs)
         max_value = np.max(values_itrs)
 
-        import IPython; IPython.embed()
-
         ### plot
         f, axes = plt.subplots(1, len(values_itrs) + 1, figsize=(10, 10))
         for itr, values in enumerate(values_itrs):
@@ -708,14 +707,14 @@ class AnalyzeRNNCritic(object):
         env = env_itrs[0]
         while hasattr(env, 'wrapped_env'):
             env = env.wrapped_env
-        if type(env) == PointEnv:
+        if isinstance(env, PointEnv):
             self._plot_Q_function_PointEnv(env_itrs)
         else:
             pass
 
     def _plot_Q_function_PointEnv(self, env_itrs):
         ### get original env so can set state
-        tf_env = TfEnv(normalize(PointEnv()))
+        tf_env = env_itrs[0]
         env = tf_env
         while hasattr(env, 'wrapped_env'):
             env = env.wrapped_env
@@ -782,8 +781,6 @@ class AnalyzeRNNCritic(object):
             f.savefig(self._analyze_Q_function_img_file(itr), bbox_inches='tight', dpi=200.,
                       bbox_extra_artists=(suptitle,))
             plt.close(f)
-
-
 
     ###########
     ### Run ###

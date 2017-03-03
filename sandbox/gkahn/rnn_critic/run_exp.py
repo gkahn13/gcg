@@ -10,8 +10,8 @@ if __name__ == '__main__':
     # exps = args.exps.split()
 
     gpu_device = 1
-    exps = ['exp{0}'.format(i) for i in range(260, 285)]
-    # exps = ['exp251']
+    exps = ['exp{0}'.format(i) for i in range(291, 315)]
+    # exps = ['test']
 
     for exp in exps:
         try:

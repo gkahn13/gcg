@@ -184,11 +184,6 @@ class RNNCriticPolicy(Policy, Serializable):
         tf_target_values_flat = tf.reshape(tf_target_values, (batch_size, -1))
         tf_target_values_max = tf.reduce_max(tf_target_values_flat, reduction_indices=1)
 
-        # TODO
-        self._tf_debug['tf_target_values'] = tf_target_values
-        self._tf_debug['tf_target_values_flat'] = tf_target_values_flat
-        self._tf_debug['tf_target_values_max'] = tf_target_values_max
-
         tf_values_ph = self._graph_calculate_values(tf_rewards_ph)
         tf_values = self._graph_calculate_values(tf_rewards)
 
@@ -316,22 +311,6 @@ class RNNCriticPolicy(Policy, Serializable):
         }
         cost, _ = self._tf_sess.run([self._tf_cost, self._tf_opt], feed_dict=feed_dict)
 
-        # TODO:
-        # if self._num_get_action > 5000:
-        #     targets, targets_flat, targets_max = self._tf_sess.run([self._tf_debug['tf_target_values'],
-        #                                                             self._tf_debug['tf_target_values_flat'],
-        #                                                             self._tf_debug['tf_target_values_max']],
-        #                                                            feed_dict=feed_dict)
-        #     import IPython; IPython.embed()
-        # if policy_rewards[:,0].max() > 0:
-        #     import IPython; IPython.embed()
-
-        # policy_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='policy')
-        # target_network_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='target_network')
-        # pvars_eval = self._tf_sess.run(policy_vars)
-        # tn_vars_eval = self._tf_sess.run(target_network_vars)
-        # if not np.all([np.isfinite(v).all() for v in pvars_eval + tn_vars_eval]) or not np.isfinite(cost):
-        #     import IPython; IPython.embed()
         assert(np.isfinite(cost))
 
         self._log_stats['Cost'].append(cost)

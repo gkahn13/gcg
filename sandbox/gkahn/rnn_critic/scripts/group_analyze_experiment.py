@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from matplotlib import ticker
 
 from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
+from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
 from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
 
 from analyze_experiment import AnalyzeRNNCritic
@@ -49,7 +50,7 @@ class PlotAnalyzeRNNCritic(object):
         env = analyze_groups[0][0].env_itrs[0]
         while hasattr(env, 'wrapped_env'):
             env = env.wrapped_env
-        self._env_type = type(env)
+        self._env = env
 
     #############
     ### Files ###
@@ -71,10 +72,12 @@ class PlotAnalyzeRNNCritic(object):
     ################
 
     def _plot_analyze(self):
-        if self._env_type == ChainEnv:
+        if isinstance(self._env, ChainEnv):
             self._plot_analyze_ChainEnv()
-        elif self._env_type == PointEnv:
+        elif isinstance(self._env, PointEnv):
             self._plot_analyze_PointEnv()
+        elif isinstance(self._env, SparsePointEnv):
+            self._plot_analyze_SparsePointEnv()
         else:
             pass
 
@@ -162,7 +165,7 @@ class PlotAnalyzeRNNCritic(object):
         ax.set_ylabel('Training cost')
         ax.legend(loc='upper right')
 
-        ### plot training rollout length vs step
+        ### plot training rollout final reward vs step
         for ax, analyze_group in zip(axes[1:], self._analyze_groups):
             data_interp = DataAverageInterpolation()
             min_step = max_step = None
@@ -195,7 +198,6 @@ class PlotAnalyzeRNNCritic(object):
                         verticalalignment='bottom',
                         color='k', alpha=0.8)
             ax.set_ylabel('Final reward')
-            ax.set_ylim((ax.get_ylim()[0], 1.))
 
         ### for all plots
         ax.set_xlabel('Steps')
@@ -203,10 +205,93 @@ class PlotAnalyzeRNNCritic(object):
         xfmt.set_powerlimits((0, 0))
         ax.xaxis.set_major_formatter(xfmt)
 
+        y_min = min([ax.get_ylim()[0] for ax in axes[1:].ravel()])
+        for ax in axes[1:].ravel():
+            ax.set_ylim((y_min, 1.))
+
         f.savefig(self._analyze_img_file, bbox_inches='tight')
         plt.close(f)
 
+    def _plot_analyze_SparsePointEnv(self):
+        import IPython; IPython.embed()
 
+        f, axes = plt.subplots(1, 2, figsize=(10, 5))
+
+        ### plot training cost
+        ax = axes.ravel()[0]
+        for analyze_group in self._analyze_groups:
+            data_interp = DataAverageInterpolation()
+            for analyze in analyze_group:
+                steps = analyze.progress['Step'][1:]
+                costs = analyze.progress['Cost'][1:]
+                data_interp.add_data(steps, costs)
+
+            steps = np.r_[np.min(np.hstack(data_interp.xs)):np.max(np.hstack(data_interp.xs)):0.01]
+            costs_mean, costs_std = data_interp.eval(steps)
+
+            ax.plot(steps, costs_mean, color=analyze.plot['color'], label=analyze.plot['label'])
+            ax.fill_between(steps, costs_mean - costs_std, costs_mean + costs_std,
+                            color=analyze.plot['color'], alpha=0.4)
+        ax.set_ylabel('Training cost')
+        ax.legend(loc='upper right')
+
+        ### plot number of rollouts within radius (cdf) versus time step
+        ax = axes.ravel()[1]
+        radius = float(analyze_groups[0][0].params['alg']['env'].split('(')[-1].split(')')[0])
+        for analyze_group in self._analyze_groups:
+            # for i, analyze in enumerate(analyze_group):
+            #     rollouts = list(itertools.chain(*analyze.train_rollouts_itrs))
+            #     inside_timesteps = [0]
+            #     for r in rollouts:
+            #         if np.linalg.norm(r['observations'][-1]) < radius:
+            #             inside_timesteps.append(r['steps'][-1])
+            #     inside_timesteps = sorted(inside_timesteps)
+            #
+            #     ax.plot(inside_timesteps, np.linspace(0, len(inside_timesteps), len(inside_timesteps)),
+            #             color=analyze.plot['color'], alpha=1-0.7*i/float(len(analyze_group)))
+
+            # data_interp = DataAverageInterpolation()
+            # max_step = max([max([r['steps'][-1] for r in itertools.chain(*analyze.train_rollouts_itrs)])
+            #                 for analyze in analyze_group])
+            # for analyze in analyze_group:
+            #     rollouts = list(itertools.chain(*analyze.train_rollouts_itrs))
+            #     inside_timesteps = [0]
+            #     for r in rollouts:
+            #         if np.linalg.norm(r['observations'][-1]) < radius:
+            #             inside_timesteps.append(r['steps'][-1])
+            #     inside_timesteps.append(max_step)
+            #     inside_timesteps = sorted(inside_timesteps)
+            #
+            #     data_interp.add_data(sorted(inside_timesteps),
+            #                          np.linspace(0, len(inside_timesteps), len(inside_timesteps)))
+            #
+            # steps = np.r_[0:max_step:5]
+            # counts_mean, counts_std = data_interp.eval(steps)
+            # ax.plot(steps, counts_mean, color=analyze.plot['color'], label=analyze.plot['label'])
+            # ax.fill_between(steps, counts_mean - counts_std, counts_mean + counts_std,
+            #                 color=analyze.plot['color'], alpha=0.4)
+
+
+            inside_timesteps = [] # final timestep for rollouts ending inside the radius
+            for analyze in analyze_group:
+                rollouts = list(itertools.chain(*analyze.train_rollouts_itrs))
+                for r in rollouts:
+                    if np.linalg.norm(r['observations'][-1]) < radius:
+                        inside_timesteps.append(r['steps'][-1])
+            inside_timesteps = sorted(np.array(inside_timesteps, dtype=float) / float(len(analyze_group)))
+            ax.plot([0] + inside_timesteps, np.linspace(0, len(inside_timesteps), len(inside_timesteps) + 1),
+                    color=analyze.plot['color'], label=analyze.plot['label'])
+        ax.set_ylabel('Rollouts within radius {0:.2f}'.format(radius))
+
+        for ax in axes.ravel():
+            ax.set_xlabel('Steps')
+            ax.set_xlabel('Steps')
+            xfmt = ticker.ScalarFormatter()
+            xfmt.set_powerlimits((0, 0))
+            ax.xaxis.set_major_formatter(xfmt)
+
+        f.savefig(self._analyze_img_file, bbox_inches='tight', dpi=200)
+        plt.close(f)
 
     ###########
     ### Run ###
@@ -221,7 +306,7 @@ if __name__ == '__main__':
     analyze_groups = []
     ### H = 1
     analyze_group = []
-    for i in range(260, 265):
+    for i in range(290, 295):
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'H = 1',
@@ -230,7 +315,7 @@ if __name__ == '__main__':
     analyze_groups.append(analyze_group)
     ### H = 2
     analyze_group = []
-    for i in range(265, 270):
+    for i in range(295, 300):
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'H = 2',
@@ -239,32 +324,32 @@ if __name__ == '__main__':
     analyze_groups.append(analyze_group)
     ### H = 3
     analyze_group = []
-    for i in range(270, 275):
+    for i in range(300, 305):
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'H = 3',
                                                   'color': 'b'
                                               }))
     analyze_groups.append(analyze_group)
-    # ### H = 4
-    # analyze_group = []
-    # for i in range(275, 280):
-    #     analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
-    #                                           plot={
-    #                                               'label': 'H = 4',
-    #                                               'color': 'y'
-    #                                           }))
-    # analyze_groups.append(analyze_group)
+    ### H = 4
+    analyze_group = []
+    for i in range(305, 310):
+        analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
+                                              plot={
+                                                  'label': 'H = 4',
+                                                  'color': 'y'
+                                              }))
+    analyze_groups.append(analyze_group)
     # ### H = 5
-    # analyze_group = []
-    # for i in range(280, 285):
-    #     analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
-    #                                           plot={
-    #                                               'label': 'H = 5',
-    #                                               'color': 'c'
-    #                                           }))
-    # analyze_groups.append(analyze_group)
+    analyze_group = []
+    for i in range(310, 315):
+        analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
+                                              plot={
+                                                  'label': 'H = 5',
+                                                  'color': 'c'
+                                              }))
+    analyze_groups.append(analyze_group)
 
-    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'point_rnn_gamma_1_0_260_284', analyze_groups)
+    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'sparse_point_rnn_290_314', analyze_groups)
     plotter.run()
 

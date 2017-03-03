@@ -29,6 +29,7 @@ def run_task(params):
 
     from rllab.envs.gym_env import GymEnv
     from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
+    from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
     from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
     env = TfEnv(normalize(eval(params['alg'].pop('env'))))
 
