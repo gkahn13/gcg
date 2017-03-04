@@ -213,9 +213,12 @@ class PlotAnalyzeRNNCritic(object):
         plt.close(f)
 
     def _plot_analyze_SparsePointEnv(self):
-        import IPython; IPython.embed()
 
-        f, axes = plt.subplots(1, 2, figsize=(10, 5))
+        ##############################
+        ### Plot fraction one axis ###
+        ##############################
+
+        f, axes = plt.subplots(1, 2, figsize=(30, 10))
 
         ### plot training cost
         ax = axes.ravel()[0]
@@ -239,52 +242,43 @@ class PlotAnalyzeRNNCritic(object):
         ax = axes.ravel()[1]
         radius = float(analyze_groups[0][0].params['alg']['env'].split('(')[-1].split(')')[0])
         for analyze_group in self._analyze_groups:
-            # for i, analyze in enumerate(analyze_group):
-            #     rollouts = list(itertools.chain(*analyze.train_rollouts_itrs))
-            #     inside_timesteps = [0]
-            #     for r in rollouts:
-            #         if np.linalg.norm(r['observations'][-1]) < radius:
-            #             inside_timesteps.append(r['steps'][-1])
-            #     inside_timesteps = sorted(inside_timesteps)
-            #
-            #     ax.plot(inside_timesteps, np.linspace(0, len(inside_timesteps), len(inside_timesteps)),
-            #             color=analyze.plot['color'], alpha=1-0.7*i/float(len(analyze_group)))
-
-            # data_interp = DataAverageInterpolation()
-            # max_step = max([max([r['steps'][-1] for r in itertools.chain(*analyze.train_rollouts_itrs)])
-            #                 for analyze in analyze_group])
-            # for analyze in analyze_group:
-            #     rollouts = list(itertools.chain(*analyze.train_rollouts_itrs))
-            #     inside_timesteps = [0]
-            #     for r in rollouts:
-            #         if np.linalg.norm(r['observations'][-1]) < radius:
-            #             inside_timesteps.append(r['steps'][-1])
-            #     inside_timesteps.append(max_step)
-            #     inside_timesteps = sorted(inside_timesteps)
-            #
-            #     data_interp.add_data(sorted(inside_timesteps),
-            #                          np.linspace(0, len(inside_timesteps), len(inside_timesteps)))
-            #
-            # steps = np.r_[0:max_step:5]
-            # counts_mean, counts_std = data_interp.eval(steps)
-            # ax.plot(steps, counts_mean, color=analyze.plot['color'], label=analyze.plot['label'])
-            # ax.fill_between(steps, counts_mean - counts_std, counts_mean + counts_std,
-            #                 color=analyze.plot['color'], alpha=0.4)
-
-
-            inside_timesteps = [] # final timestep for rollouts ending inside the radius
+            data_interp = DataAverageInterpolation()
+            min_step = max_step = None
             for analyze in analyze_group:
                 rollouts = list(itertools.chain(*analyze.train_rollouts_itrs))
+                rollouts = sorted(rollouts, key=lambda r: r['steps'][-1])
+                steps, insides = [], []
                 for r in rollouts:
-                    if np.linalg.norm(r['observations'][-1]) < radius:
-                        inside_timesteps.append(r['steps'][-1])
-            inside_timesteps = sorted(np.array(inside_timesteps, dtype=float) / float(len(analyze_group)))
-            ax.plot([0] + inside_timesteps, np.linspace(0, len(inside_timesteps), len(inside_timesteps) + 1),
-                    color=analyze.plot['color'], label=analyze.plot['label'])
-        ax.set_ylabel('Rollouts within radius {0:.2f}'.format(radius))
+                    steps.append(r['steps'][-1])
+                    insides.append(float(np.linalg.norm(r['observations'][-1]) < radius))
 
+                def moving_avg_std(idxs, data, window):
+                    avg_idxs, means, stds = [], [], []
+                    for i in range(window, len(data)):
+                        avg_idxs.append(np.mean(idxs[i - window:i]))
+                        means.append(np.mean(data[i - window:i]))
+                        stds.append(np.std(data[i - window:i]))
+                    return avg_idxs, np.asarray(means), np.asarray(stds)
+
+                steps, insides, _ = moving_avg_std(steps, insides, window=10)
+
+                data_interp.add_data(steps, insides)
+                if min_step is None:
+                    min_step = steps[0]
+                if max_step is None:
+                    max_step = steps[-1]
+                min_step = max(min_step, steps[0])
+                max_step = min(max_step, steps[-1])
+
+            steps = np.r_[min_step:max_step:5.]
+            insides_mean, insides_std = data_interp.eval(steps)
+
+            ax.plot(steps, insides_mean, color=analyze.plot['color'], label=analyze.plot['label'])
+            ax.grid()
+        ax.set_ylabel('Fraction of rollouts within radius {0:.2f}'.format(radius))
+
+        ### for all plots
         for ax in axes.ravel():
-            ax.set_xlabel('Steps')
             ax.set_xlabel('Steps')
             xfmt = ticker.ScalarFormatter()
             xfmt.set_powerlimits((0, 0))
@@ -292,6 +286,129 @@ class PlotAnalyzeRNNCritic(object):
 
         f.savefig(self._analyze_img_file, bbox_inches='tight', dpi=200)
         plt.close(f)
+
+        ###################################
+        ### Plot fraction multiple axes ###
+        ###################################
+
+        # f, axes = plt.subplots(1 + len(self._analyze_groups), 1, figsize=(15, 5 * len(self._analyze_groups)),
+        #                        sharex=True)
+        #
+        # ### plot training cost
+        # ax = axes.ravel()[0]
+        # for analyze_group in self._analyze_groups:
+        #     data_interp = DataAverageInterpolation()
+        #     for analyze in analyze_group:
+        #         steps = analyze.progress['Step'][1:]
+        #         costs = analyze.progress['Cost'][1:]
+        #         data_interp.add_data(steps, costs)
+        #
+        #     steps = np.r_[np.min(np.hstack(data_interp.xs)):np.max(np.hstack(data_interp.xs)):0.01]
+        #     costs_mean, costs_std = data_interp.eval(steps)
+        #
+        #     ax.plot(steps, costs_mean, color=analyze.plot['color'], label=analyze.plot['label'])
+        #     ax.fill_between(steps, costs_mean - costs_std, costs_mean + costs_std,
+        #                     color=analyze.plot['color'], alpha=0.4)
+        # ax.set_ylabel('Training cost')
+        # ax.legend(loc='upper right')
+        #
+        # ### plot fraction rollouts within radius vs step
+        # radius = float(analyze_groups[0][0].params['alg']['env'].split('(')[-1].split(')')[0])
+        # for ax, analyze_group in zip(axes.ravel()[1:], self._analyze_groups):
+        #     data_interp = DataAverageInterpolation()
+        #     min_step = max_step = None
+        #     for analyze in analyze_group:
+        #         rollouts = list(itertools.chain(*analyze.train_rollouts_itrs))
+        #         rollouts = sorted(rollouts, key=lambda r: r['steps'][-1])
+        #         steps, insides = [], []
+        #         for r in rollouts:
+        #             steps.append(r['steps'][-1])
+        #             insides.append(float(np.linalg.norm(r['observations'][-1]) < radius))
+        #
+        #         def moving_avg_std(idxs, data, window):
+        #             means, stds = [], []
+        #             for i in range(window, len(data)):
+        #                 means.append(np.mean(data[i - window:i]))
+        #                 stds.append(np.std(data[i - window:i]))
+        #             return idxs[window:], np.asarray(means), np.asarray(stds)
+        #
+        #         steps, insides, _ = moving_avg_std(steps, insides, window=5)
+        #
+        #         data_interp.add_data(steps, insides)
+        #         if min_step is None:
+        #             min_step = steps[0]
+        #         if max_step is None:
+        #             max_step = steps[-1]
+        #         min_step = max(min_step, steps[0])
+        #         max_step = min(max_step, steps[-1])
+        #
+        #     steps = np.r_[min_step:max_step:5.]
+        #     insides_mean, insides_std = data_interp.eval(steps)
+        #
+        #     ax.plot(steps, insides_mean, color=analyze.plot['color'], label=analyze.plot['label'])
+        #     ax.fill_between(steps, insides_mean - insides_std, insides_mean + insides_std,
+        #                     color=analyze.plot['color'], alpha=0.4)
+        #     ax.grid()
+        #
+        # ### for all plots
+        # ax.set_xlabel('Steps')
+        # xfmt = ticker.ScalarFormatter()
+        # xfmt.set_powerlimits((0, 0))
+        # ax.xaxis.set_major_formatter(xfmt)
+        #
+        # f.savefig(self._analyze_img_file, bbox_inches='tight')
+        # plt.close(f)
+
+
+        ################
+        ### Plot CDF ###
+        ################
+
+        # f, axes = plt.subplots(1, 2, figsize=(10, 5))
+        #
+        # ### plot training cost
+        # ax = axes.ravel()[0]
+        # for analyze_group in self._analyze_groups:
+        #     data_interp = DataAverageInterpolation()
+        #     for analyze in analyze_group:
+        #         steps = analyze.progress['Step'][1:]
+        #         costs = analyze.progress['Cost'][1:]
+        #         data_interp.add_data(steps, costs)
+        #
+        #     steps = np.r_[np.min(np.hstack(data_interp.xs)):np.max(np.hstack(data_interp.xs)):0.01]
+        #     costs_mean, costs_std = data_interp.eval(steps)
+        #
+        #     ax.plot(steps, costs_mean, color=analyze.plot['color'], label=analyze.plot['label'])
+        #     ax.fill_between(steps, costs_mean - costs_std, costs_mean + costs_std,
+        #                     color=analyze.plot['color'], alpha=0.4)
+        # ax.set_ylabel('Training cost')
+        # ax.legend(loc='upper right')
+        #
+        # ### plot number of rollouts within radius (cdf) versus time step
+        # ax = axes.ravel()[1]
+        # radius = float(analyze_groups[0][0].params['alg']['env'].split('(')[-1].split(')')[0])
+        # for analyze_group in self._analyze_groups:
+        #
+        #     inside_timesteps = [] # final timestep for rollouts ending inside the radius
+        #     for analyze in analyze_group:
+        #         rollouts = list(itertools.chain(*analyze.train_rollouts_itrs))
+        #         for r in rollouts:
+        #             if np.linalg.norm(r['observations'][-1]) < radius:
+        #                 inside_timesteps.append(r['steps'][-1])
+        #     inside_timesteps = sorted(np.array(inside_timesteps, dtype=float) / float(len(analyze_group)))
+        #     ax.plot([0] + inside_timesteps, np.linspace(0, len(inside_timesteps), len(inside_timesteps) + 1),
+        #             color=analyze.plot['color'], label=analyze.plot['label'])
+        # ax.set_ylabel('Rollouts within radius {0:.2f}'.format(radius))
+        #
+        # for ax in axes.ravel():
+        #     ax.set_xlabel('Steps')
+        #     ax.set_xlabel('Steps')
+        #     xfmt = ticker.ScalarFormatter()
+        #     xfmt.set_powerlimits((0, 0))
+        #     ax.xaxis.set_major_formatter(xfmt)
+        #
+        # f.savefig(self._analyze_img_file, bbox_inches='tight', dpi=200)
+        # plt.close(f)
 
     ###########
     ### Run ###

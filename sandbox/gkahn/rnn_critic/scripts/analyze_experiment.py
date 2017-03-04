@@ -24,6 +24,10 @@ from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
 from sandbox.gkahn.rnn_critic.policies.policy import RNNCriticPolicy
 from sandbox.gkahn.rnn_critic.sampler.vectorized_rollout_sampler import RNNCriticVectorizedRolloutSampler
 
+#########################
+### Utility functions ###
+#########################
+
 def rollout_policy(env, agent, max_path_length=np.inf, animated=False, speedup=1, start_obs=None):
     observations = []
     actions = []
@@ -45,6 +49,8 @@ def rollout_policy(env, agent, max_path_length=np.inf, animated=False, speedup=1
         rewards.append(r)
         actions.append(env.action_space.flatten(a))
         agent_infos.append(agent_info)
+        if isinstance(inner_env(env), GymEnv):
+            env_info['qpos'] = inner_env(env).env.env.env.model.data.qpos
         env_infos.append(env_info)
         path_length += 1
         if d:
@@ -65,6 +71,14 @@ def rollout_policy(env, agent, max_path_length=np.inf, animated=False, speedup=1
         env_infos=tensor_utils.stack_tensor_dict_list(env_infos),
     )
 
+def inner_env(env):
+    while hasattr(env, 'wrapped_env'):
+        env = env.wrapped_env
+    return env
+
+################
+### Analysis ###
+################
 
 class AnalyzeRNNCritic(object):
     def __init__(self, folder, skip_itr=1, max_itr=sys.maxsize, plot=dict(), gpu_device=None):
@@ -177,16 +191,19 @@ class AnalyzeRNNCritic(object):
                 env = env_itrs[itr // self._skip_itr]
                 policy = self._load_itr_policy(itr)
 
-                sampler = RNNCriticVectorizedRolloutSampler(
-                    env=env,
-                    policy=policy,
-                    n_envs=8,
-                    max_path_length=env.horizon,
-                    rollouts_per_sample=50
-                )
-                sampler.start_worker()
-                rollouts, _ = sampler.obtain_samples()
-                sampler.shutdown_worker()
+                if isinstance(inner_env(env), GymEnv):
+                    rollouts = [rollout_policy(env, policy, max_path_length=env.horizon) for _ in range(50)]
+                else:
+                    sampler = RNNCriticVectorizedRolloutSampler(
+                        env=env,
+                        policy=policy,
+                        n_envs=8,
+                        max_path_length=env.horizon,
+                        rollouts_per_sample=50
+                    )
+                    sampler.start_worker()
+                    rollouts, _ = sampler.obtain_samples()
+                    sampler.shutdown_worker()
 
             rollouts_itrs.append(rollouts)
             itr += self._skip_itr
@@ -446,14 +463,14 @@ class AnalyzeRNNCritic(object):
         plt.close(f)
 
     def _plot_rollouts(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train, plot_prior):
-        env = env_itrs[0]
-        while hasattr(env, 'wrapped_env'):
-            env = env.wrapped_env
+        env = inner_env(env_itrs[0])
         if isinstance(env, SparsePointEnv):
             self._plot_rollouts_PointEnv(train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train, plot_prior)
         elif isinstance(env, GymEnv):
             if 'Reacher' in env.env_id:
                 self._plot_rollouts_Reacher(train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train, plot_prior)
+            elif 'Swimmer' in env.env_id:
+                self._plot_rollouts_Swimmer(train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train, plot_prior)
         else:
             pass
 
@@ -554,6 +571,56 @@ class AnalyzeRNNCritic(object):
 
             f.savefig(self._analyze_rollout_img_file(itr, is_train), bbox_inches='tight', dpi=200.)
             plt.close(f)
+
+    def _plot_rollouts_Swimmer(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train, plot_prior):
+        if is_train:
+            return # can't plot train b/c rollouts dont contain states
+
+        def get_rollout_positions(rollout):
+            qpos = rollout['env_infos']['qpos']
+            positions = qpos[:,:2,:].reshape((len(qpos), -1))
+            return positions
+
+        rollouts_itrs = train_rollouts_itrs if is_train else eval_rollouts_itrs
+
+        max_itr = len(rollouts_itrs) * self._skip_itr
+        itrs = np.r_[0:max_itr:self._skip_itr]
+
+        for itr, rollouts in zip(itrs, rollouts_itrs):
+
+            N_rollouts = 25
+            rollouts = sorted(rollouts, key=lambda r: np.sum(r['rewards']), reverse=True)
+            if len(rollouts) > N_rollouts:
+                rollouts = rollouts[::int(np.ceil(len(rollouts)) / float(N_rollouts))]
+
+            nrows = ncols = int(np.ceil(np.sqrt(len(rollouts))))
+            f, axes = plt.subplots(nrows, ncols, figsize=(10, 10))
+
+            for ax, rollout in zip(axes.ravel(), sorted(rollouts, key=lambda r: np.sum(r['rewards']), reverse=True)):
+                # plot this rollout
+                positions = get_rollout_positions(rollout)
+                ax.plot(positions[:, 0], positions[:, 1], color='k', marker='o', linestyle='-', markersize=0.2)
+                ax.plot([positions[0, 0]], [positions[0, 1]], color='g', marker='o', markersize=5.)
+                ax.plot([positions[-1, 0]], [positions[-1, 1]], color='y', marker='o', markersize=5.)
+
+                ax.set_title('{0:.2f}'.format(np.sum(rollout['rewards'])))
+
+            xlim = [np.inf, -np.inf]
+            ylim = [np.inf, -np.inf]
+            for ax in axes.ravel():
+                xlim[0] = min(xlim[0], ax.get_xlim()[0])
+                xlim[1] = max(xlim[1], ax.get_xlim()[1])
+                ylim[0] = min(ylim[0], ax.get_ylim()[0])
+                ylim[1] = max(ylim[1], ax.get_ylim()[1])
+            for ax in axes.ravel():
+                ax.set_xlim(xlim)
+                ax.set_ylim(ylim)
+
+            f.tight_layout()
+
+            f.savefig(self._analyze_rollout_img_file(itr, is_train), bbox_inches='tight', dpi=200.)
+            plt.close(f)
+
 
     def _plot_policies(self, rollouts_itrs, env_itrs):
         env = env_itrs[0]
