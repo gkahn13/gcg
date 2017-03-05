@@ -175,7 +175,7 @@ class RNNCriticPolicy(Policy, Serializable):
         tf_values = tf.reduce_sum(gammas * tf_rewards, reduction_indices=1)
         return tf_values
 
-    def _graph_cost(self, tf_rewards_ph, tf_rewards, tf_target_rewards, tf_target_mask_ph):
+    def _graph_cost(self, tf_rewards_ph, tf_actions_ph, tf_rewards, tf_target_rewards, tf_target_mask_ph):
         # for training, len(tf_obs_ph) == len(tf_actions_ph)
         # but len(tf_actions_target_ph) == N * len(tf_action_ph),
         # so need to be selective about what to take the max over
@@ -234,7 +234,8 @@ class RNNCriticPolicy(Policy, Serializable):
             update_target_fn = tf.group(*update_target_fn)
 
             ### optimization
-            tf_cost, tf_mse = self._graph_cost(tf_rewards_ph, tf_rewards, tf_target_rewards, tf_target_mask_ph)
+            tf_cost, tf_mse = self._graph_cost(tf_rewards_ph, tf_actions_ph, tf_rewards,
+                                               tf_target_rewards, tf_target_mask_ph)
             tf_opt = self._graph_optimize(tf_cost)
 
             self._graph_init_vars(tf_sess)

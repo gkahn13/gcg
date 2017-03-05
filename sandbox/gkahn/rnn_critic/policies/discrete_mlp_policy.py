@@ -50,32 +50,15 @@ class RNNCriticDiscreteMLPPolicy(RNNCriticPolicy, Serializable):
 
         return d_preprocess
 
-    def _graph_preprocess_inputs(self, tf_obs_ph, tf_actions_ph, d_preprocess):
+    def _graph_preprocess_inputs(self, tf_obs_ph, d_preprocess):
         ### whiten inputs
         tf_obs_whitened = tf.matmul(tf_obs_ph - d_preprocess['observations_mean_var'],
                                     d_preprocess['observations_orth_var'])
 
-        num_obs = tf.shape(tf_obs_whitened)[0]
-        num_action = tf.shape(tf_actions_ph)[0]
+        return tf_obs_whitened
 
-        def tf_repeat_2d(x, reps):
-            """ Repeats x on axis=0 reps times """
-            x_shape = tf.shape(x)
-            x_repeat = tf.reshape(tf.tile(x, [1, reps]), (x_shape[0] * reps, x_shape[1]))
-            x_repeat.set_shape((None, x.get_shape()[1]))
-            return x_repeat
-
-        ### replicate observation for each action
-        def replicate_observation():
-            tf_obs_whitened_rep = tf_repeat_2d(tf_obs_whitened, num_action // num_obs)
-            # tf_obs_whitened_tiled = tf.tile(tf_obs_whitened, tf.pack([batch_size, 1]))
-            # tf_obs_whitened_tiled.set_shape([None, tf_obs_whitened.get_shape()[1]])
-            return tf_obs_whitened_rep
-
-        # assumes num_action is a multiple of num_obs
-        tf_obs_whitened_cond = tf.cond(tf.not_equal(num_obs, num_action), replicate_observation, lambda: tf_obs_whitened)
-
-        return tf_obs_whitened_cond
+    def _graph_preprocess_outputs(self, tf_rewards, d_preprocess):
+        return (tf_rewards * d_preprocess['rewards_orth_var'][0,0]) + d_preprocess['rewards_mean_var']
 
     def _graph_inference(self, tf_obs_ph, tf_actions_ph, d_preprocess):
         input_shape = self._env_spec.observation_space.shape
@@ -105,7 +88,7 @@ class RNNCriticDiscreteMLPPolicy(RNNCriticPolicy, Serializable):
                 tf.add_to_collection('weight_decays', 0.5 * tf.reduce_mean(tf.square(v)))
 
             ### fully connected
-            tf_obs = self._graph_preprocess_inputs(tf_obs_ph, tf_actions_ph, d_preprocess)
+            tf_obs = self._graph_preprocess_inputs(tf_obs_ph, d_preprocess)
             layer = tf_obs
             for i, (weight, bias) in enumerate(zip(weights, biases)):
                 with tf.name_scope('hidden_{0}'.format(i)):
@@ -114,7 +97,23 @@ class RNNCriticDiscreteMLPPolicy(RNNCriticPolicy, Serializable):
                         layer = self._activation(layer)
             rewards_all = layer
 
-            ### compute relevant rewards idxs
+            tf_rewards = self._graph_preprocess_outputs(rewards_all, d_preprocess)
+
+        return tf_rewards
+
+    def _graph_calculate_values(self, tf_rewards):
+        return tf_rewards # b/c network outputs values directly
+
+    def _graph_cost(self, tf_rewards_ph, tf_actions_ph, tf_rewards, tf_target_rewards, tf_target_mask_ph):
+        with tf.name_scope('cost'):
+            ### values of label rewards
+            gammas = np.power(self._gamma * np.ones(self._H), np.arange(self._H))
+            tf_values_ph = tf.reduce_sum(gammas * tf_rewards_ph, reduction_indices=1)
+            ## target network max
+            tf_target_values_max = tf.reduce_max(tf_target_rewards, reduction_indices=1)
+
+            ### values of policy
+            action_dim = self._env_spec.action_space.flat_dim
             with tf.name_scope('reward_idxs'):
                 # action_dim = 4
                 # H = 2
@@ -130,31 +129,22 @@ class RNNCriticDiscreteMLPPolicy(RNNCriticPolicy, Serializable):
             ### extract relevant sum of rewards
             with tf.name_scope('gather_rewards'):
                 reward_idxs_flat = reward_idxs + tf.range(tf.shape(reward_idxs)[0]) * np.power(action_dim, self._H)
-                rewards = tf.expand_dims(tf.gather(tf.reshape(rewards_all, [-1]), reward_idxs_flat), 1)
+                tf_values = tf.gather(tf.reshape(tf_rewards, [-1]), reward_idxs_flat)
 
-            tf_rewards = self._graph_preprocess_outputs(rewards, d_preprocess)
+            self._tf_debug['tf_actions_ph'] = tf_actions_ph
+            self._tf_debug['tf_b'] = tf_b
+            self._tf_debug['tf_c'] = tf_c
+            self._tf_debug['reward_idxs'] = reward_idxs
+            self._tf_debug['reward_idxs_flat'] = reward_idxs_flat
+            self._tf_debug['tf_rewards'] = tf_rewards
+            self._tf_debug['tf_values'] = tf_values
 
-            tf.assert_equal(tf.shape(tf_rewards)[0], tf.shape(tf_actions_ph)[0])
+            mse = tf.reduce_mean(tf.square(tf_values_ph +
+                                           tf_target_mask_ph * np.power(self._gamma, self._H)*tf_target_values_max -
+                                           tf_values))
+            weight_decay = self._weight_decay * tf.add_n(tf.get_collection('weight_decays'))
+            cost = mse + weight_decay
 
-        return tf_rewards
-
-    def _graph_cost(self, tf_rewards_ph, tf_rewards, tf_target_rewards, tf_target_mask_ph):
-        # for training, len(tf_obs_ph) == len(tf_actions_ph)
-        # but len(tf_actions_target_ph) == N * len(tf_action_ph),
-        # so need to be selective about what to take the max over
-        tf_target_values = tf_target_rewards # b/c network outputs the sum anyways
-        batch_size = tf.shape(tf_rewards_ph)[0]
-        tf_target_values_flat = tf.reshape(tf_target_values, (batch_size, -1))
-        tf_target_values_max = tf.reduce_max(tf_target_values_flat, reduction_indices=1)
-
-        tf_values_ph = self._graph_calculate_values(tf_rewards_ph)
-        tf_values = tf_rewards # b/c network outputs the sum anyways
-
-        mse = tf.reduce_mean(tf.square(tf_values_ph +
-                                       tf_target_mask_ph * np.power(self._gamma, self._H)*tf_target_values_max -
-                                       tf_values))
-        weight_decay = self._weight_decay * tf.add_n(tf.get_collection('weight_decays'))
-        cost = mse + weight_decay
         return cost, mse
 
     ################
@@ -178,3 +168,75 @@ class RNNCriticDiscreteMLPPolicy(RNNCriticPolicy, Serializable):
                 self._d_preprocess['observations_mean_ph']: obs_mean,
                 self._d_preprocess['rewards_mean_ph']: np.expand_dims(rewards_mean * self._H, 0), # b/c sum of rewards
             })
+
+    def train_step(self, observations, actions, rewards, dones, use_target):
+        batch_size = len(observations)
+        action_dim = self._env_spec.action_space.flat_dim
+
+        policy_observations = observations[:, 0, :]
+        policy_actions = actions[:, :self._H, :].reshape((batch_size, self._H * action_dim))
+        policy_rewards = rewards[:, :self._H]
+        target_observations = observations[:, self._H, :]
+
+        feed_dict = {
+            ### policy
+            self._tf_obs_ph: policy_observations,
+            self._tf_actions_ph: policy_actions,
+            self._tf_rewards_ph: policy_rewards,
+            ### target network
+            self._tf_obs_target_ph: target_observations,
+            self._tf_target_mask_ph: float(use_target) * (1 - dones[:, self._H].astype(float))
+        }
+        cost, _ = self._tf_sess.run([self._tf_cost, self._tf_opt], feed_dict=feed_dict)
+
+        assert (np.isfinite(cost))
+
+        # debug_keys = sorted(self._tf_debug.keys())
+        # eval_debug = self._tf_sess.run([self._tf_debug[k] for k in debug_keys], feed_dict=feed_dict)
+        # d = {k: v for (k, v) in zip(debug_keys, eval_debug)}
+        # import IPython; IPython.embed()
+
+        self._log_stats['Cost'].append(cost)
+        for k, v in self._log_stats.items():
+            if len(v) > self._log_history_len:
+                self._log_stats[k] = v[1:]
+
+    ######################
+    ### Policy methods ###
+    ######################
+
+    def get_actions(self, observations, return_action_info=False):
+        action_dim = self._env_spec.action_space.flat_dim
+        num_obs = len(observations)
+        observations = self._env_spec.observation_space.flatten_n(observations)
+
+        pred_values = self._tf_sess.run(self._tf_values,
+                                        feed_dict={self._tf_obs_ph: observations})
+
+        chosen_actions = []
+        for i, (observation_i, pred_values_i) in enumerate(zip(observations, pred_values)):
+            def baseN(num, b, numerals="0123456789abcdefghijklmnopqrstuvwxyz"):
+                return ((num == 0) and numerals[0]) or (baseN(num // b, b, numerals).lstrip(numerals[0]) + numerals[num % b])
+
+            chosen_index = int(pred_values_i.argmax())
+            chosen_action_i = int(baseN(chosen_index, action_dim)[-1])
+
+            if self._exploration_strategy is not None:
+                exploration_func = lambda: None
+                exploration_func.get_action = lambda _: (chosen_action_i, dict())
+                chosen_action_i = self._exploration_strategy.get_action(self._num_get_action + i,
+                                                                        observation_i,
+                                                                        exploration_func)
+            chosen_actions.append(chosen_action_i)
+
+        self._num_get_action += num_obs
+
+        if return_action_info:
+            action_info = {
+                'values': pred_values
+            }
+        else:
+            action_info = dict()
+
+        return chosen_actions, action_info
+
