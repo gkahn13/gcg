@@ -17,6 +17,7 @@ from sandbox.gkahn.rnn_critic.exploration_strategies.epsilon_greedy_strategy imp
 from sandbox.gkahn.rnn_critic.algos.rnn_critic import RNNCritic
 from sandbox.gkahn.rnn_critic.policies.mlp_policy import RNNCriticMLPPolicy
 from sandbox.gkahn.rnn_critic.policies.rnn_policy import RNNCriticRNNPolicy
+from sandbox.gkahn.rnn_critic.policies.discrete_mlp_policy import RNNCriticDiscreteMLPPolicy
 
 
 def run_task(params):
@@ -44,6 +45,8 @@ def run_task(params):
         PolicyClass = RNNCriticMLPPolicy
     elif policy_type == 'rnn':
         PolicyClass = RNNCriticRNNPolicy
+    elif policy_type == 'discrete_mlp':
+        PolicyClass = RNNCriticDiscreteMLPPolicy
     else:
         raise Exception('Policy {0} not valid'.format(policy_type))
 

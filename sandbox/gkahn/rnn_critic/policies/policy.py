@@ -66,8 +66,6 @@ class RNNCriticPolicy(Policy, Serializable):
 
         Policy.__init__(self, env_spec, sess=self._tf_sess)
 
-        import IPython; IPython.embed()
-
     ##################
     ### Properties ###
     ##################

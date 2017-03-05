@@ -50,7 +50,11 @@ def rollout_policy(env, agent, max_path_length=np.inf, animated=False, speedup=1
         actions.append(env.action_space.flatten(a))
         agent_infos.append(agent_info)
         if isinstance(inner_env(env), GymEnv):
-            env_info['qpos'] = inner_env(env).env.env.env.model.data.qpos
+            ienv = inner_env(env).env.env.env
+            if hasattr(ienv, 'model'):
+                env_info['qpos'] = ienv.model.data.qpos
+            if hasattr(ienv, 'state'):
+                env_info['state'] = ienv.state
         env_infos.append(env_info)
         path_length += 1
         if d:
@@ -215,13 +219,13 @@ class AnalyzeRNNCritic(object):
     ################
 
     def _plot_analyze(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
-        env = env_itrs[0]
-        while hasattr(env, 'wrapped_env'):
-            env = env.wrapped_env
+        env = inner_env(env_itrs[0])
         if isinstance(env, ChainEnv):
             self._plot_analyze_ChainEnv(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
         elif isinstance(env, SparsePointEnv):
             self._plot_analyze_PointEnv(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
+        elif isinstance(env, GymEnv) and 'CartPole' in env.env_id:
+            self._plot_analyze_CartPole(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
         else:
             self._plot_analyze_general(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
 
@@ -462,6 +466,92 @@ class AnalyzeRNNCritic(object):
         f.savefig(self._analyze_img_file, bbox_inches='tight')
         plt.close(f)
 
+    def _plot_analyze_CartPole(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
+        f, axes = plt.subplots(4, 1, figsize=(4 * len(train_rollouts_itrs), 7.5), sharex=True)
+        f.tight_layout()
+
+        ### plot training cost
+        ax = axes[0]
+        costs = self.progress['Cost'][1:]
+        steps = self.progress['Step'][1:]
+        ax.plot(steps, costs, 'k-')
+        ax.set_ylabel('Cost')
+
+        ### plot cum reward
+        ax = axes[1]
+        rollouts = list(itertools.chain(*train_rollouts_itrs))
+        cum_rewards = [np.sum(r['rewards']) for r in rollouts]
+        steps = [r['steps'][-1] for r in rollouts]
+        ax.plot(steps, cum_rewards, color='k', linestyle='', marker='|', markersize=5.)
+        ax.hlines(env_itrs[0].horizon, steps[0], steps[-1], colors='r', linestyles='dashed')
+        ax.set_ylabel('Cumulative reward')
+
+        start_step = self.params['alg']['learn_after_n_steps']
+        end_step = self.params['alg']['total_steps']
+        save_step = self.params['alg']['save_every_n_steps']
+        first_save_step = save_step * np.floor(start_step / float(save_step))
+        itr_steps = np.r_[first_save_step:end_step:save_step]
+
+        def plot_reward(ax, rewards):
+            color = 'k'
+            bp = ax.boxplot(rewards,
+                            positions=itr_steps,
+                            widths=0.4 * self._skip_itr * save_step)
+            for key in ('boxes', 'medians', 'whiskers', 'fliers', 'caps'):
+                plt.setp(bp[key], color=color)
+            for cap_line, median_line in zip(bp['caps'][1::2], bp['medians']):
+                cx, cy = cap_line.get_xydata()[1]  # top of median line
+                mx, my = median_line.get_xydata()[1]
+                ax.text(cx, cy, '%.2f' % my,
+                        horizontalalignment='right',
+                        verticalalignment='bottom',
+                        color='r')  # draw above, centered
+            # for line in bp['medians']:
+            #     # get position data for median line
+            #     x, y = line.get_xydata()[1]  # top of median line
+            #     # overlay median value
+            #     ax.text(x, y, '%.2f' % y,
+            #             horizontalalignment='left',
+            #             verticalalignment='center',
+            #             color='r')  # draw above, centered
+            # for line in bp['boxes']:
+            #     x, y = line.get_xydata()[0]  # bottom of left line
+            #     ax.text(x, y, '%.2f' % y,
+            #             horizontalalignment='right',  # centered
+            #             verticalalignment='center',
+            #             color='k', alpha=0.5)  # below
+            #     x, y = line.get_xydata()[3]  # bottom of right line
+            #     ax.text(x, y, '%.2f' % y,
+            #             horizontalalignment='right',  # centered
+            #             verticalalignment='center',
+            #             color='k', alpha=0.5)  # below
+            plt.setp(bp['fliers'], marker='_')
+            plt.setp(bp['fliers'], markeredgecolor=color)
+
+        ### plot train cum reward
+        ax = axes[2]
+        rewards = [[np.sum(rollout['rewards']) for rollout in rollouts] for rollouts in train_rollouts_itrs]
+        plot_reward(ax, rewards)
+        ax.set_ylabel('Train cumulative reward')
+
+        ### plot eval cum reward
+        ax = axes[3]
+        rewards = [[np.sum(rollout['rewards']) for rollout in rollouts] for rollouts in eval_rollouts_itrs]
+        plot_reward(ax, rewards)
+        ax.set_ylabel('Eval cumulative reward')
+        ax.set_xlabel('Steps')
+        xfmt = ticker.ScalarFormatter()
+        xfmt.set_powerlimits((0, 0))
+        ax.xaxis.set_major_formatter(xfmt)
+
+        ### for all
+        for ax in axes:
+            ax.set_xlim((-save_step / 2., end_step))
+            ax.set_xticks(itr_steps)
+
+        f.savefig(self._analyze_img_file, bbox_inches='tight')
+        plt.close(f)
+
     def _plot_rollouts(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train, plot_prior):
         env = inner_env(env_itrs[0])
         if isinstance(env, SparsePointEnv):
@@ -620,7 +710,6 @@ class AnalyzeRNNCritic(object):
 
             f.savefig(self._analyze_rollout_img_file(itr, is_train), bbox_inches='tight', dpi=200.)
             plt.close(f)
-
 
     def _plot_policies(self, rollouts_itrs, env_itrs):
         env = env_itrs[0]

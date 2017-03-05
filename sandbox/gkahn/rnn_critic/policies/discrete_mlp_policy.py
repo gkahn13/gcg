@@ -1,16 +1,25 @@
 import numpy as np
-import scipy
 import tensorflow as tf
 
 from sandbox.rocky.tf.spaces.discrete import Discrete
 from rllab.core.serializable import Serializable
 from sandbox.gkahn.rnn_critic.policies.policy import RNNCriticPolicy
 
-class DiscreteRNNCriticPolicy(RNNCriticPolicy, Serializable):
-    def __init__(self, **kwargs):
+class RNNCriticDiscreteMLPPolicy(RNNCriticPolicy, Serializable):
+    def __init__(self,
+                 hidden_layers,
+                 activation,
+                 **kwargs):
+        """
+        :param hidden_layers: list of layer sizes
+        :param activation: str to be evaluated (e.g. 'tf.nn.relu')
+        """
         assert(isinstance(kwargs.get('env_spec').action_space, Discrete))
 
         Serializable.quick_init(self, locals())
+
+        self._hidden_layers = list(hidden_layers)
+        self._activation = eval(activation)
 
         RNNCriticPolicy.__init__(self, **kwargs)
 
@@ -106,22 +115,26 @@ class DiscreteRNNCriticPolicy(RNNCriticPolicy, Serializable):
             rewards_all = layer
 
             ### compute relevant rewards idxs
-            # action_dim = 4
-            # H = 2
-            # tf_actions_ph
-            # [0, 0, 0, 1, 0, 0, 0, 1]
-            tf_b = tf.tile(tf.expand_dims(tf.range(action_dim, dtype=tf.float64), 0), (1, self._H)) * tf_actions_ph
-            # [0, 0, 0, 3, 0, 0, 0, 3]
-            tf_c = tf_b * np.power(action_dim, tf.constant(np.repeat(np.arange(self._H), (action_dim,)), dtype=tf.float64))
-            # [0, 0, 0, 3, 0, 0, 0, 12]
-            reward_idxs = tf.reduce_sum(tf_c, axis=1)
-            # [15]
+            with tf.name_scope('reward_idxs'):
+                # action_dim = 4
+                # H = 2
+                # tf_actions_ph
+                # [0, 0, 0, 1, 0, 0, 0, 1]
+                tf_b = tf.tile(tf.expand_dims(tf.range(action_dim), 0), (1, self._H)) * tf.cast(tf_actions_ph, tf.int32)
+                # [0, 0, 0, 3, 0, 0, 0, 3]
+                tf_c = tf_b * np.power(action_dim, tf.constant(np.repeat(np.arange(self._H), (action_dim,)), dtype=tf.int32))
+                # [0, 0, 0, 3, 0, 0, 0, 12]
+                reward_idxs = tf.reduce_sum(tf_c, axis=1)
+                # [15]
 
             ### extract relevant sum of rewards
-            reward_idxs_flat = reward_idxs + tf.range(tf.shape(reward_idxs)[0]) * np.power(action_dim, self._H)
-            rewards = tf.gather(tf.reshape(rewards_all, [-1]), reward_idxs_flat)
+            with tf.name_scope('gather_rewards'):
+                reward_idxs_flat = reward_idxs + tf.range(tf.shape(reward_idxs)[0]) * np.power(action_dim, self._H)
+                rewards = tf.expand_dims(tf.gather(tf.reshape(rewards_all, [-1]), reward_idxs_flat), 1)
 
             tf_rewards = self._graph_preprocess_outputs(rewards, d_preprocess)
+
+            tf.assert_equal(tf.shape(tf_rewards)[0], tf.shape(tf_actions_ph)[0])
 
         return tf_rewards
 
