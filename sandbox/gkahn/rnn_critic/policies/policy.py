@@ -66,6 +66,8 @@ class RNNCriticPolicy(Policy, Serializable):
 
         Policy.__init__(self, env_spec, sess=self._tf_sess)
 
+        import IPython; IPython.embed()
+
     ##################
     ### Properties ###
     ##################
@@ -288,11 +290,7 @@ class RNNCriticPolicy(Policy, Serializable):
         target_observations = observations[:, self._H, :]
 
         if self._get_action_params['type'] == 'random':
-            action_lower, action_upper = self._env_spec.action_space.bounds
-            N = self._get_action_params['N']
-            target_actions = np.random.uniform(action_lower.tolist(), action_upper.tolist(),
-                                               size=(N, self._H, self._env_spec.action_space.flat_dim))
-            target_actions = target_actions.reshape(N, self._H * self._env_spec.action_space.flat_dim)
+            target_actions = self._get_random_action(self._get_action_params['N'])
         elif self._get_action_params['type'] == 'lattice':
             target_actions = self._get_action_preprocess['actions']
         else:
@@ -351,6 +349,20 @@ class RNNCriticPolicy(Policy, Serializable):
 
         return get_action_preprocess
 
+    def _get_random_action(self, N):
+        u_dim = self._env_spec.action_space.flat_dim
+        if isinstance(self._env_spec.action_space, Discrete):
+            actions = np.random.randint(0, u_dim, size=(N, self._H))
+            actions = (np.arange(actions.max() + 1) == actions[:, :, None]).astype(int)
+            actions = actions.reshape(N, self._H * u_dim).astype(float)
+        else:
+            action_lower, action_upper = self._env_spec.action_space.bounds
+            actions = np.random.uniform(action_lower.tolist(), action_upper.tolist(),
+                                        size=(N, self._H, u_dim))
+            actions = actions.reshape(N, self._H * u_dim)
+
+        return actions
+
     def set_exploration_strategy(self, exploration_strategy):
         self._exploration_strategy = exploration_strategy
 
@@ -363,11 +375,7 @@ class RNNCriticPolicy(Policy, Serializable):
         observations = self._env_spec.observation_space.flatten_n(observations)
 
         if self._get_action_params['type'] == 'random':
-            action_lower, action_upper = self._env_spec.action_space.bounds
-            N = self._get_action_params['N']
-            actions = np.random.uniform(action_lower.tolist(), action_upper.tolist(),
-                                        size=(N * num_obs, self._H, self._env_spec.action_space.flat_dim))
-            actions = actions.reshape(N * num_obs, self._H * self._env_spec.action_space.flat_dim)
+            actions = self._get_random_action(self._get_action_params['N'] * num_obs)
         elif self._get_action_params['type'] == 'lattice':
             actions = np.tile(self._get_action_preprocess['actions'], (num_obs, 1))
         else:

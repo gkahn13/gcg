@@ -11,7 +11,7 @@ if __name__ == '__main__':
 
     gpu_device = 1
     # exps = ['exp{0}'.format(i) for i in range(291, 315)]
-    exps = ['exp321']
+    exps = ['test']
 
     for exp in exps:
         try:
