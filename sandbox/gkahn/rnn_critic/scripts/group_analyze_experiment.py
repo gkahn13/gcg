@@ -414,8 +414,6 @@ class PlotAnalyzeRNNCritic(object):
         # plt.close(f)
 
     def _plot_analyze_CartPole(self):
-        import IPython; IPython.embed()
-
         ##############################
         ### Plot fraction one axis ###
         ##############################
