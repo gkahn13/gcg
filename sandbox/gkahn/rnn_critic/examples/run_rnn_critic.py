@@ -30,6 +30,7 @@ def run_task(params):
         set_seed(params['seed'])
 
     from rllab.envs.gym_env import GymEnv
+    import gym_ple
     from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
     from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
     from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv

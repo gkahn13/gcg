@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow as tf
+import tensorflow.contrib.layers as layers
 
 from sandbox.rocky.tf.spaces.discrete import Discrete
 from rllab.core.serializable import Serializable
@@ -9,6 +10,9 @@ class RNNCriticDiscreteMLPPolicy(RNNCriticPolicy, Serializable):
     def __init__(self,
                  hidden_layers,
                  activation,
+                 conv_hidden_layers=None,
+                 conv_kernels=None,
+                 conv_strides=None,
                  **kwargs):
         """
         :param hidden_layers: list of layer sizes
@@ -20,6 +24,11 @@ class RNNCriticDiscreteMLPPolicy(RNNCriticPolicy, Serializable):
 
         self._hidden_layers = list(hidden_layers)
         self._activation = eval(activation)
+        self._use_conv = (conv_hidden_layers is not None) and (conv_kernels is not None) and (conv_strides is not None)
+        if self._use_conv:
+            self._conv_hidden_layers = list(conv_hidden_layers)
+            self._conv_kernels = list(conv_kernels)
+            self._conv_strides = list(conv_strides)
 
         RNNCriticPolicy.__init__(self, **kwargs)
 
@@ -52,6 +61,8 @@ class RNNCriticDiscreteMLPPolicy(RNNCriticPolicy, Serializable):
 
     def _graph_preprocess_inputs(self, tf_obs_ph, d_preprocess):
         ### whiten inputs
+        if tf_obs_ph.dtype != tf.float32:
+            tf_obs_ph = tf.cast(tf_obs_ph, tf.float32)
         tf_obs_whitened = tf.matmul(tf_obs_ph - d_preprocess['observations_mean_var'],
                                     d_preprocess['observations_orth_var'])
 
@@ -63,39 +74,30 @@ class RNNCriticDiscreteMLPPolicy(RNNCriticPolicy, Serializable):
     def _graph_inference(self, tf_obs_ph, tf_actions_ph, d_preprocess):
         input_shape = self._env_spec.observation_space.shape
         action_dim = self._env_spec.action_space.flat_dim
-        assert(len(input_shape) == 1) # TODO
-
-        input_dim = np.prod(input_shape)
-        output_dim = np.power(action_dim, self._H)
+        output_dim = int(np.power(action_dim, self._H))
 
         with tf.name_scope('inference'):
+            layer = self._graph_preprocess_inputs(tf_obs_ph, d_preprocess)
 
-            ### weights
-            with tf.variable_scope('inference_vars'):
-                weights = []
-                biases = []
-
-                curr_layer = input_dim
-                for i, next_layer in enumerate(self._hidden_layers + [output_dim]):
-                    weights.append(tf.get_variable('w_hidden_{0}'.format(i), [curr_layer, next_layer],
-                                                   initializer=tf.contrib.layers.xavier_initializer()))
-                    biases.append(tf.get_variable('b_hidden_{0}'.format(i), [next_layer],
-                                                  initializer=tf.constant_initializer(0.)))
-                    curr_layer = next_layer
-
-            ### weight decays
-            for v in weights:
-                tf.add_to_collection('weight_decays', 0.5 * tf.reduce_mean(tf.square(v)))
+            ### conv
+            if self._use_conv:
+                layer = tf.reshape(layer, [-1] + list(input_shape))
+                for num_outputs, kernel_size, stride in zip(self._conv_hidden_layers,
+                                                            self._conv_kernels,
+                                                            self._conv_strides):
+                    layer = layers.convolution2d(layer,
+                                                 num_outputs=num_outputs,
+                                                 kernel_size=kernel_size,
+                                                 stride=stride,
+                                                 activation_fn=self._activation)
+                layer = layers.flatten(layer)
 
             ### fully connected
-            tf_obs = self._graph_preprocess_inputs(tf_obs_ph, d_preprocess)
-            layer = tf_obs
-            for i, (weight, bias) in enumerate(zip(weights, biases)):
-                with tf.name_scope('hidden_{0}'.format(i)):
-                    layer = tf.add(tf.matmul(layer, weight), bias)
-                    if i < len(weights) - 1:
-                        layer = self._activation(layer)
-            rewards_all = layer
+            for num_outputs in self._hidden_layers:
+                layer = layers.fully_connected(layer, num_outputs=num_outputs, activation_fn=self._activation,
+                                               weights_regularizer=layers.l2_regularizer(1.))
+            rewards_all = layers.fully_connected(layer, num_outputs=output_dim, activation_fn=None,
+                                                 weights_regularizer=layers.l2_regularizer(1.))
 
             tf_rewards = self._graph_preprocess_outputs(rewards_all, d_preprocess)
 
@@ -142,7 +144,10 @@ class RNNCriticDiscreteMLPPolicy(RNNCriticPolicy, Serializable):
             mse = tf.reduce_mean(tf.square(tf_values_ph +
                                            tf_target_mask_ph * np.power(self._gamma, self._H)*tf_target_values_max -
                                            tf_values))
-            weight_decay = self._weight_decay * tf.add_n(tf.get_collection('weight_decays'))
+            if len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)) > 0:
+                weight_decay = self._weight_decay * tf.add_n(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
+            else:
+                weight_decay = 0
             cost = mse + weight_decay
 
         return cost, mse

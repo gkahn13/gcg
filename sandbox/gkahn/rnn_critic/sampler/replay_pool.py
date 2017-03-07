@@ -1,3 +1,4 @@
+import time
 import itertools
 from collections import defaultdict
 import numpy as np
@@ -18,11 +19,12 @@ class RNNCriticReplayPool(object):
         self._size = size
         self._log_history_len = log_history_len
 
-        ### initialize buffer
-        obs_dim = env_spec.observation_space.flat_dim
-        action_dim = env_spec.action_space.flat_dim
+        ### buffer
+        obs_shape = self._env_spec.observation_space.shape
+        obs_dim = self._env_spec.observation_space.flat_dim
+        action_dim = self._env_spec.action_space.flat_dim
         self._steps = np.empty((self._size,), dtype=np.int32)
-        self._observations = np.nan * np.ones((self._size, obs_dim), dtype=np.float32)
+        self._observations = np.empty((self._size, obs_dim), dtype=np.uint8 if self.obs_is_im else np.float32)
         self._actions = np.nan * np.ones((self._size, action_dim), dtype=np.float32)
         self._rewards = np.nan * np.ones((self._size,), dtype=np.float32)
         self._dones = np.empty((self._size,), dtype=bool)
@@ -39,6 +41,7 @@ class RNNCriticReplayPool(object):
         self._last_done_index = 0
         self._log_stats = defaultdict(list)
         self._log_paths = []
+        self._last_get_record_tabular_time = None
 
     def __len__(self):
         return self._curr_size
@@ -51,6 +54,10 @@ class RNNCriticReplayPool(object):
         else:
             raise Exception
 
+    @property
+    def obs_is_im(self):
+        return len(self._env_spec.observation_space.shape) > 1
+
     ##################
     ### Statistics ###
     ##################
@@ -58,17 +65,21 @@ class RNNCriticReplayPool(object):
     @property
     def statistics(self):
         stats = dict()
-        for name, value in (('observations', self._observations[:len(self)]),
-                            ('actions', self._actions[:len(self)]),
-                            ('rewards', self._rewards[:len(self)])):
+        for name, value, is_im in (('observations', self._observations[:len(self)], self.obs_is_im),
+                                   ('actions', self._actions[:len(self)], False),
+                                   ('rewards', self._rewards[:len(self)], False)):
             stats[name + '_mean'] = np.mean(value, axis=0)
             if np.shape(self._stats[name + '_mean']) is tuple():
                 stats[name + '_mean'] = np.array([stats[name + '_mean']])
-            stats[name + '_cov'] = np.cov(value.T)
-            if np.shape(stats[name + '_cov']) is tuple():
-                stats[name + '_cov'] = np.array([[stats[name + '_cov']]])
-            orth, eigs, _ = np.linalg.svd(stats[name + '_cov'])
-            stats[name + '_orth'] = orth / np.sqrt(eigs + 1e-5)
+            if not is_im:
+                stats[name + '_cov'] = np.cov(value.T)
+                if np.shape(stats[name + '_cov']) is tuple():
+                    stats[name + '_cov'] = np.array([[stats[name + '_cov']]])
+                orth, eigs, _ = np.linalg.svd(stats[name + '_cov'])
+                stats[name + '_orth'] = orth / np.sqrt(eigs + 1e-5)
+            else:
+                assert(value.dtype == np.uint8)
+                stats[name + '_orth'] = np.eye(value.shape[1]) / 255.
 
         return stats
 
@@ -83,8 +94,11 @@ class RNNCriticReplayPool(object):
             for k, v in [(k, v) for (k, v) in pool_stat.items() if 'mean' in k or 'cov' in k]:
                 stats[k] += ratio * v
         for name in ('observations', 'actions', 'rewards'):
-            orth, eigs, _ = np.linalg.svd(stats[name+'_cov'])
-            stats[name+'_orth'] = orth / np.sqrt(eigs + 1e-5)
+            if name+'_cov' in stats.keys():
+                orth, eigs, _ = np.linalg.svd(stats[name+'_cov'])
+                stats[name+'_orth'] = orth / np.sqrt(eigs + 1e-5)
+            else:
+                stats[name+'_orth'] = pool_stats[0][name+'_orth']
 
         return stats
 
@@ -93,6 +107,8 @@ class RNNCriticReplayPool(object):
     ###################
 
     def add(self, step, observation, action, reward, done):
+        assert(observation.dtype == self._observations.dtype)
+
         self._steps[self._index] = step
         self._observations[self._index, :] = self._env_spec.observation_space.flatten(observation)
         self._actions[self._index, :] = self._env_spec.action_space.flatten(action)
@@ -149,8 +165,7 @@ class RNNCriticReplayPool(object):
                     dones_i[j] = True
 
             if not np.all(np.isfinite(observations_i)):
-                print('fuck null')
-                import IPython; IPython.embed()
+                raise Exception
 
                 # observations = [0 1 2 3]
                 # actions = [10 11 rand rand]
@@ -170,8 +185,7 @@ class RNNCriticReplayPool(object):
 
         for k, arr in enumerate((observations, actions, rewards, dones)):
             if not np.all(np.isfinite(arr)):
-                print('fuck fuck null')
-                import IPython; IPython.embed()
+                raise Exception
 
             assert(np.all(np.isfinite(arr)))
             assert(arr.shape[0] == batch_size)
@@ -250,7 +264,8 @@ class RNNCriticReplayPool(object):
             self._last_done_index = self._index
 
     def get_record_tabular(self):
-        return {
+        d = {
+            'Time': time.time() - self._last_get_record_tabular_time if self._last_get_record_tabular_time else 0.,
             'FinalRewardMean': np.mean(self._log_stats['FinalReward']),
             'FinalRewardStd': np.std(self._log_stats['FinalReward']),
             'AvgRewardMean': np.mean(self._log_stats['AvgReward']),
@@ -258,6 +273,9 @@ class RNNCriticReplayPool(object):
             'CumRewardMean': np.mean(self._log_stats['CumReward']),
             'CumRewardStd': np.std(self._log_stats['CumReward'])
         }
+        self._last_get_record_tabular_time = time.time()
+        return d
+
 
     def get_recent_paths(self):
         paths = self._log_paths

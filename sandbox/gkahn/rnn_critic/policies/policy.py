@@ -104,9 +104,11 @@ class RNNCriticPolicy(Policy, Serializable):
 
     def _graph_inputs_outputs_from_placeholders(self):
         with tf.variable_scope('feed_input'):
-            tf_obs_ph = tf.placeholder('float', [None, self._env_spec.observation_space.flat_dim], name='tf_obs_ph')
-            tf_actions_ph = tf.placeholder('float', [None, self._env_spec.action_space.flat_dim * self._H], name='tf_actions_ph')
-            tf_rewards_ph = tf.placeholder('float', [None, self._H], name='tf_rewards_ph')
+            obs_shape = self._env_spec.observation_space.shape
+            tf_obs_ph = tf.placeholder(tf.uint8 if len(obs_shape) > 1 else tf.float32,
+                                       [None, self._env_spec.observation_space.flat_dim], name='tf_obs_ph')
+            tf_actions_ph = tf.placeholder(tf.float32, [None, self._env_spec.action_space.flat_dim * self._H], name='tf_actions_ph')
+            tf_rewards_ph = tf.placeholder(tf.float32, [None, self._H], name='tf_rewards_ph')
 
         return tf_obs_ph, tf_actions_ph, tf_rewards_ph
 
@@ -136,6 +138,8 @@ class RNNCriticPolicy(Policy, Serializable):
 
     def _graph_preprocess_inputs(self, tf_obs_ph, tf_actions_ph, d_preprocess):
         ### whiten inputs
+        if tf_obs_ph.dtype != tf.float32:
+            tf_obs_ph = tf.cast(tf_obs_ph, tf.float32)
         tf_obs_whitened = tf.matmul(tf_obs_ph - d_preprocess['observations_mean_var'],
                                     d_preprocess['observations_orth_var'])
         tf_actions_whitened = tf.matmul(tf_actions_ph - d_preprocess['actions_mean_var'],
@@ -190,7 +194,10 @@ class RNNCriticPolicy(Policy, Serializable):
         mse = tf.reduce_mean(tf.square(tf_values_ph +
                                        tf_target_mask_ph * np.power(self._gamma, self._H)*tf_target_values_max -
                                        tf_values))
-        weight_decay = self._weight_decay * tf.add_n(tf.get_collection('weight_decays'))
+        if len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)) > 0:
+            weight_decay = self._weight_decay * tf.add_n(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
+        else:
+            weight_decay = 0
         cost = mse + weight_decay
         return cost, mse
 
@@ -229,6 +236,7 @@ class RNNCriticPolicy(Policy, Serializable):
             target_network_vars = sorted(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='target_network'), key=lambda v: v.name)
             update_target_fn = []
             for var, var_target in zip(policy_vars, target_network_vars):
+                assert(var.name.replace('policy', '') == var_target.name.replace('target_network', ''))
                 update_target_fn.append(var_target.assign(var))
             update_target_fn = tf.group(*update_target_fn)
 
