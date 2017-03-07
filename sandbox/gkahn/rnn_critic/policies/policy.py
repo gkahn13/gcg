@@ -205,8 +205,7 @@ class RNNCriticPolicy(Policy, Serializable):
         if tf_sess is None:
             tf_sess, tf_graph = RNNCriticPolicy.create_session_and_graph(gpu_device=self._gpu_device,
                                                                          gpu_frac=self._gpu_frac)
-        else:
-            tf_graph = tf_sess.graph
+        tf_graph = tf_sess.graph
 
         with tf_sess.as_default(), tf_graph.as_default():
             if ext.get_seed() is not None:

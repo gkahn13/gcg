@@ -500,7 +500,8 @@ if __name__ == '__main__':
     analyze_groups = []
     ### H = 1
     analyze_group = []
-    for i in range(330, 335):
+    for i in range(360, 365):
+        print('\nexp {0}\n'.format(i))
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'H = 1',
@@ -509,7 +510,8 @@ if __name__ == '__main__':
     analyze_groups.append(analyze_group)
     ### H = 2
     analyze_group = []
-    for i in range(335, 340):
+    for i in range(365, 370):
+        print('\nexp {0}\n'.format(i))
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'H = 2',
@@ -518,7 +520,8 @@ if __name__ == '__main__':
     analyze_groups.append(analyze_group)
     ### H = 3
     analyze_group = []
-    for i in range(340, 345):
+    for i in range(370, 375):
+        print('\nexp {0}\n'.format(i))
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'H = 3',
@@ -527,7 +530,8 @@ if __name__ == '__main__':
     analyze_groups.append(analyze_group)
     ### H = 4
     analyze_group = []
-    for i in range(345, 350):
+    for i in range(375, 380):
+        print('\nexp {0}\n'.format(i))
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'H = 4',
@@ -536,7 +540,8 @@ if __name__ == '__main__':
     analyze_groups.append(analyze_group)
     # ### H = 5
     analyze_group = []
-    for i in range(350, 355):
+    for i in range(380, 385):
+        print('\nexp {0}\n'.format(i))
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'H = 5',
@@ -544,6 +549,6 @@ if __name__ == '__main__':
                                               }))
     analyze_groups.append(analyze_group)
 
-    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'cartpole_330_354', analyze_groups)
+    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'cartpole_360_384', analyze_groups)
     plotter.run()
 

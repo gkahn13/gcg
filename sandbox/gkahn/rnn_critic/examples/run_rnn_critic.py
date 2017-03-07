@@ -18,6 +18,7 @@ from sandbox.gkahn.rnn_critic.algos.rnn_critic import RNNCritic
 from sandbox.gkahn.rnn_critic.policies.mlp_policy import RNNCriticMLPPolicy
 from sandbox.gkahn.rnn_critic.policies.rnn_policy import RNNCriticRNNPolicy
 from sandbox.gkahn.rnn_critic.policies.discrete_mlp_policy import RNNCriticDiscreteMLPPolicy
+from sandbox.gkahn.rnn_critic.policies.discrete_rnn_policy import RNNCriticDiscreteRNNPolicy
 
 
 def run_task(params):
@@ -47,6 +48,8 @@ def run_task(params):
         PolicyClass = RNNCriticRNNPolicy
     elif policy_type == 'discrete_mlp':
         PolicyClass = RNNCriticDiscreteMLPPolicy
+    elif policy_type == 'discrete_rnn':
+        PolicyClass = RNNCriticDiscreteRNNPolicy
     else:
         raise Exception('Policy {0} not valid'.format(policy_type))
 
@@ -91,6 +94,8 @@ def main(yaml_file):
     with open(yaml_file, 'r') as f:
         params = yaml.load(f)
     params['yaml_path'] = yaml_file
+
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(params['policy']['gpu_device']) # TODO: hack so don't double GPU
 
     run_experiment_lite(
         lambda x: run_task(params), # HACK
