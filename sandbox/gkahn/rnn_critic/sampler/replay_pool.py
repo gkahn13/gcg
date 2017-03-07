@@ -24,7 +24,7 @@ class RNNCriticReplayPool(object):
         obs_dim = self._env_spec.observation_space.flat_dim
         action_dim = self._env_spec.action_space.flat_dim
         self._steps = np.empty((self._size,), dtype=np.int32)
-        self._observations = np.empty((self._size, obs_dim), dtype=np.uint8 if self.obs_is_im else np.float32)
+        self._observations = np.empty((self._size, obs_dim), dtype=np.uint8 if self.obs_is_im else np.float64)
         self._actions = np.nan * np.ones((self._size, action_dim), dtype=np.float32)
         self._rewards = np.nan * np.ones((self._size,), dtype=np.float32)
         self._dones = np.empty((self._size,), dtype=bool)
@@ -68,10 +68,10 @@ class RNNCriticReplayPool(object):
         for name, value, is_im in (('observations', self._observations[:len(self)], self.obs_is_im),
                                    ('actions', self._actions[:len(self)], False),
                                    ('rewards', self._rewards[:len(self)], False)):
-            stats[name + '_mean'] = np.mean(value, axis=0)
-            if np.shape(self._stats[name + '_mean']) is tuple():
-                stats[name + '_mean'] = np.array([stats[name + '_mean']])
             if not is_im:
+                stats[name + '_mean'] = np.mean(value, axis=0)
+                if np.shape(self._stats[name + '_mean']) is tuple():
+                    stats[name + '_mean'] = np.array([stats[name + '_mean']])
                 stats[name + '_cov'] = np.cov(value.T)
                 if np.shape(stats[name + '_cov']) is tuple():
                     stats[name + '_cov'] = np.array([[stats[name + '_cov']]])
@@ -79,6 +79,7 @@ class RNNCriticReplayPool(object):
                 stats[name + '_orth'] = orth / np.sqrt(eigs + 1e-5)
             else:
                 assert(value.dtype == np.uint8)
+                stats[name + '_mean'] = (0.5 * 255) * np.ones((1, value.shape[1]))
                 stats[name + '_orth'] = np.eye(value.shape[1]) / 255.
 
         return stats

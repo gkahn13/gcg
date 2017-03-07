@@ -14,6 +14,7 @@ from sklearn.utils.extmath import cartesian
 from sandbox.rocky.tf.envs.base import TfEnv
 from rllab.envs.normalized_env import normalize
 from rllab.envs.gym_env import GymEnv
+import gym_ple
 from rllab.misc.ext import set_seed
 # from rllab.misc import tensor_utils
 from sandbox.rocky.tf.misc import tensor_utils
@@ -226,6 +227,8 @@ class AnalyzeRNNCritic(object):
             self._plot_analyze_PointEnv(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
         elif isinstance(env, GymEnv) and 'CartPole' in env.env_id:
             self._plot_analyze_CartPole(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
+        elif isinstance(env, GymEnv) and 'Catcher-ram' in env.env_id:
+            self._plot_analyze_CatcherRam(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
         else:
             self._plot_analyze_general(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
 
@@ -548,6 +551,51 @@ class AnalyzeRNNCritic(object):
         for ax in axes:
             ax.set_xlim((-save_step / 2., end_step))
             ax.set_xticks(itr_steps)
+
+        f.savefig(self._analyze_img_file, bbox_inches='tight')
+        plt.close(f)
+
+    def _plot_analyze_CatcherRam(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
+        f, axes = plt.subplots(3, 1, figsize=(20., 7.5), sharex=True)
+        f.tight_layout()
+
+        ### plot training cost
+        ax = axes[0]
+        costs = self.progress['Cost'][1:]
+        steps = self.progress['Step'][1:]
+        ax.plot(steps, costs, 'k-')
+        ax.set_ylabel('Cost')
+
+        ### plot training rollout length vs step
+        ax = axes[1]
+        rollouts = list(itertools.chain(*train_rollouts_itrs))
+        rollout_lens = [len(r['observations']) for r in rollouts]
+        steps = [r['steps'][-1] for r in rollouts]
+        steps, rollout_lens = zip(*sorted(zip(steps, rollout_lens), key=lambda x: x[0]))
+        ax.plot(steps, rollout_lens, color='k', marker='|', linestyle='', markersize=10.)
+        ax.vlines(self.params['alg']['learn_after_n_steps'], 0, ax.get_ylim()[1], colors='g', linestyles='dashed')
+        ax.set_ylabel('Rollout length')
+
+        ### plot training rollout length vs step smoothed
+        ax = axes[2]
+        def moving_avg_std(idxs, data, window):
+            means, stds = [], []
+            for i in range(window, len(data)):
+                means.append(np.mean(data[i-window:i]))
+                stds.append(np.std(data[i - window:i]))
+            return idxs[:-window], np.asarray(means), np.asarray(stds)
+        moving_steps, rollout_lens_mean, rollout_lens_std = moving_avg_std(steps, rollout_lens, 5)
+        ax.plot(moving_steps, rollout_lens_mean, 'k-')
+        ax.fill_between(moving_steps, rollout_lens_mean - rollout_lens_std, rollout_lens_mean + rollout_lens_std,
+                        color='k', alpha=0.4)
+        ax.vlines(self.params['alg']['learn_after_n_steps'], 0, ax.get_ylim()[1], colors='g', linestyles='dashed')
+        ax.set_ylabel('Rollout length')
+
+        ### for all plots
+        ax.set_xlabel('Steps')
+        xfmt = ticker.ScalarFormatter()
+        xfmt.set_powerlimits((0, 0))
+        ax.xaxis.set_major_formatter(xfmt)
 
         f.savefig(self._analyze_img_file, bbox_inches='tight')
         plt.close(f)
