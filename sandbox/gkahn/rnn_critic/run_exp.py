@@ -8,10 +8,10 @@ if __name__ == '__main__':
     exps = ['test']
 
     for exp in exps:
-        try:
-            print('Running {0}'.format(exp))
-            run_main(os.path.abspath('examples/yamls/{0}.yaml'.format(exp)))
-            print('Analyzing {0}'.format(exp))
-            analyze_main(exp, skip_itr=1, max_itr=int(1e4))
-        except:
-            print('Error analyzing {0}'.format(exp))
+        # try:
+        print('Running {0}'.format(exp))
+        run_main(os.path.abspath('examples/yamls/{0}.yaml'.format(exp)))
+        # print('Analyzing {0}'.format(exp))
+        # analyze_main(exp, skip_itr=1, max_itr=int(1e4))
+        # except:
+        #     print('Error analyzing {0}'.format(exp))

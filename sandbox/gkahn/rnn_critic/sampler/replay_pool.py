@@ -7,17 +7,17 @@ import rllab.misc.logger as logger
 
 class RNNCriticReplayPool(object):
 
-    def __init__(self, env_spec, H, size, log_history_len):
+    def __init__(self, env_spec, H, size, save_rollouts=False):
         """
         :param env_spec: for observation/action dimensions
         :param H: horizon length
         :param size: size of pool
-        :param log_history_len: length of log history
+        :param save_rollouts: for debugging
         """
         self._env_spec = env_spec
         self._H = H
         self._size = size
-        self._log_history_len = log_history_len
+        self._save_rollouts = save_rollouts
 
         ### buffer
         obs_shape = self._env_spec.observation_space.shape
@@ -41,7 +41,7 @@ class RNNCriticReplayPool(object):
         self._last_done_index = 0
         self._log_stats = defaultdict(list)
         self._log_paths = []
-        self._last_get_record_tabular_time = None
+        self._last_get_log_stats_time = None
 
     def __len__(self):
         return self._curr_size
@@ -241,41 +241,31 @@ class RNNCriticReplayPool(object):
             self._log_stats['FinalReward'].append(rewards[-1])
             self._log_stats['AvgReward'].append(np.mean(rewards))
             self._log_stats['CumReward'].append(np.sum(rewards))
-
-            for k, v in self._log_stats.items():
-                if len(v) > self._log_history_len:
-                    self._log_stats[k] = v[1:]
+            self._log_stats['EpisodeLength'].append(len(rewards))
 
             # steps = self._steps[indices]
-            # import IPython; IPython.embed()
 
             # for s in self._steps[indices]:
             #     print(s)
 
             ## update paths
-            self._log_paths.append({
-                'steps': self._steps[indices],
-                'observations': self._observations[indices],
-                'actions': self._actions[indices],
-                'rewards': self._rewards[indices],
-                'dones': self._dones[indices],
-            })
+            if self._save_rollouts:
+                self._log_paths.append({
+                    'steps': self._steps[indices],
+                    'observations': self._observations[indices],
+                    'actions': self._actions[indices],
+                    'rewards': self._rewards[indices],
+                    'dones': self._dones[indices],
+                })
 
             self._last_done_index = self._index
 
-    def get_record_tabular(self):
-        d = {
-            'Time': time.time() - self._last_get_record_tabular_time if self._last_get_record_tabular_time else 0.,
-            'FinalRewardMean': np.mean(self._log_stats['FinalReward']),
-            'FinalRewardStd': np.std(self._log_stats['FinalReward']),
-            'AvgRewardMean': np.mean(self._log_stats['AvgReward']),
-            'AvgRewardStd': np.std(self._log_stats['AvgReward']),
-            'CumRewardMean': np.mean(self._log_stats['CumReward']),
-            'CumRewardStd': np.std(self._log_stats['CumReward'])
-        }
-        self._last_get_record_tabular_time = time.time()
+    def get_log_stats(self):
+        self._log_stats['Time'] = [time.time() - self._last_get_log_stats_time] if self._last_get_log_stats_time else [0.]
+        d = self._log_stats
+        self._last_get_log_stats_time = time.time()
+        self._log_stats = defaultdict(list)
         return d
-
 
     def get_recent_paths(self):
         paths = self._log_paths
@@ -284,9 +274,22 @@ class RNNCriticReplayPool(object):
 
     @staticmethod
     def log_pools(replay_pools):
-        record_tabulars = [replay_pool.get_record_tabular() for replay_pool in replay_pools]
-        for key in sorted(record_tabulars[0].keys()):
-            logger.record_tabular(key, np.mean([rc[key] for rc in record_tabulars]))
+        def join(l):
+            return list(itertools.chain(*l))
+        all_log_stats = [replay_pool.get_log_stats() for replay_pool in replay_pools]
+        log_stats = defaultdict(list)
+        for k in all_log_stats[0].keys():
+            log_stats[k] = join([ls[k] for ls in all_log_stats])
+        logger.record_tabular('CumRewardMean', np.mean(log_stats['CumReward']))
+        logger.record_tabular('CumRewardStd', np.std(log_stats['CumReward']))
+        logger.record_tabular('AvgRewardMean', np.mean(log_stats['AvgReward']))
+        logger.record_tabular('AvgRewardStd', np.std(log_stats['AvgReward']))
+        logger.record_tabular('FinalRewardMean', np.mean(log_stats['FinalReward']))
+        logger.record_tabular('FinalRewardStd', np.std(log_stats['FinalReward']))
+        logger.record_tabular('EpisodeLengthMean', np.mean(log_stats['EpisodeLength']))
+        logger.record_tabular('EpisodeLengthStd', np.std(log_stats['EpisodeLength']))
+        logger.record_tabular('NumEpisodes', len(log_stats['EpisodeLength']))
+        logger.record_tabular('Time', np.mean(log_stats['Time']))
 
     @staticmethod
     def get_recent_paths_pools(replay_pools):

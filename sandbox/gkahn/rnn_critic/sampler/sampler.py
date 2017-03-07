@@ -6,14 +6,14 @@ from sandbox.rocky.tf.envs.vec_env_executor import VecEnvExecutor
 from sandbox.gkahn.rnn_critic.sampler.replay_pool import RNNCriticReplayPool
 
 class RNNCriticSampler(object):
-    def __init__(self, policy, env, n_envs, replay_pool_size, max_path_length):
+    def __init__(self, policy, env, n_envs, replay_pool_size, max_path_length, save_rollouts=False):
         self._policy = policy
         self._n_envs = n_envs
 
         self._replay_pools = [RNNCriticReplayPool(env.spec,
                                                   policy.H,
                                                   replay_pool_size // n_envs,
-                                                  log_history_len=(10 * max_path_length) // n_envs)
+                                                  save_rollouts=save_rollouts)
                               for _ in range(n_envs)]
         self._vec_env = VecEnvExecutor(
             envs=[pickle.loads(pickle.dumps(env)) for _ in range(self._n_envs)],
