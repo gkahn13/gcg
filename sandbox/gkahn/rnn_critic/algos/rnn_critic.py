@@ -2,6 +2,7 @@ from rllab.algos.base import RLAlgorithm
 from rllab.misc.overrides import overrides
 import rllab.misc.logger as logger
 from sandbox.gkahn.rnn_critic.sampler.sampler import RNNCriticSampler
+from sandbox.gkahn.rnn_critic.utils.utils import timeit
 
 class RNNCritic(RLAlgorithm):
 
@@ -86,15 +87,24 @@ class RNNCritic(RLAlgorithm):
     def train(self):
         save_itr = 0
         target_updated = False
+        timeit.reset()
+        timeit.start('total')
         for step in range(0, self._total_steps, self._sampler.n_envs):
+            timeit.start('sample')
             self._sampler.step(step)
+            timeit.stop('sample')
 
             if step > self._learn_after_n_steps:
                 ### training step
                 if self._train_every_n_steps >= 1:
                     if step % self._train_every_n_steps == 0:
-                        self._policy.train_step(*self._sampler.sample(self._batch_size),
+                        timeit.start('batch')
+                        batch = self._sampler.sample(self._batch_size)
+                        timeit.stop('batch')
+                        timeit.start('train')
+                        self._policy.train_step(*batch,
                                                 use_target=target_updated)
+                        timeit.stop('train')
                 else:
                     for _ in range(int(1. / self._train_every_n_steps)):
                         self._policy.train_step(*self._sampler.sample(self._batch_size),
@@ -103,12 +113,16 @@ class RNNCritic(RLAlgorithm):
                 ### update target network
                 if step > self._update_target_after_n_steps and step % self._update_target_every_n_steps == 0:
                     # logger.log('Updating target network...')
+                    timeit.start('target')
                     self._policy.update_target()
                     target_updated = True
+                    timeit.stop('target')
 
                 ### update preprocess
                 if step % self._update_preprocess_every_n_steps == 0:
+                    timeit.start('preprocess')
                     self._policy.update_preprocess(self._sampler.statistics)
+                    timeit.stop('preprocess')
 
                 if step % self._log_every_n_steps == 0:
                     logger.log('step %.3e' % step)
@@ -116,6 +130,12 @@ class RNNCritic(RLAlgorithm):
                     self._sampler.log()
                     self._policy.log()
                     logger.dump_tabular(with_prefix=False)
+                    timeit.stop('total')
+                    # print('')
+                    # print(str(timeit))
+                    # print('')
+                    timeit.reset()
+                    timeit.start('total')
 
                 ### save model
                 if step % self._save_every_n_steps == 0:

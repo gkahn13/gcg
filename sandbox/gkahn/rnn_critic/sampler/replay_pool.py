@@ -5,6 +5,8 @@ import numpy as np
 
 import rllab.misc.logger as logger
 
+from sandbox.gkahn.rnn_critic.utils.utils import timeit
+
 class RNNCriticReplayPool(object):
 
     def __init__(self, env_spec, H, size, save_rollouts=False):
@@ -31,11 +33,11 @@ class RNNCriticReplayPool(object):
         self._index = 0
         self._curr_size = 0
 
-        ### keep track of valid start indices (depends on horizon H)
-        self._start_indices = np.zeros((self._size,), dtype=np.int16)
-
         ### keep track of statistics
         self._stats = defaultdict(int)
+        if self.obs_is_im:
+            self._obs_mean = (0.5 * 255) * np.ones((1, obs_dim))
+            self._obs_orth = np.eye(obs_dim) / 255.
 
         ### logging
         self._last_done_index = 0
@@ -79,8 +81,8 @@ class RNNCriticReplayPool(object):
                 stats[name + '_orth'] = orth / np.sqrt(eigs + 1e-5)
             else:
                 assert(value.dtype == np.uint8)
-                stats[name + '_mean'] = (0.5 * 255) * np.ones((1, value.shape[1]))
-                stats[name + '_orth'] = np.eye(value.shape[1]) / 255.
+                stats[name + '_mean'] = self._obs_mean # (0.5 * 255) * np.ones((1, value.shape[1]))
+                stats[name + '_orth'] = self._obs_orth # np.eye(value.shape[1]) / 255.
 
         return stats
 
@@ -118,13 +120,6 @@ class RNNCriticReplayPool(object):
         self._index = (self._index + 1) % self._size
         self._curr_size = max(self._curr_size, self._index)
 
-        if len(self) >= self._H:
-            # unnulify H ago
-            self._start_indices[self._index - self._H] = True
-            # nullify next H, since may be from a different sequence
-            false_indices = self._get_indices(self._index, self._index + self._H)
-            self._start_indices[false_indices] = False
-
         ### update log stats
         self._update_log_stats(observation, action, reward, done)
 
@@ -144,7 +139,13 @@ class RNNCriticReplayPool(object):
 
         observations, actions, rewards, dones = [], [], [], []
 
-        start_indices = np.random.choice(self._start_indices.nonzero()[0], size=(batch_size,), replace=True)
+        start_indices = []
+        false_indices = self._get_indices(self._index, self._index + self._H)
+        while len(start_indices) < batch_size:
+            start_index = np.random.randint(low=0, high=len(self)-self._H)
+            if start_index not in false_indices:
+                start_indices.append(start_index)
+
         for start_index in start_indices:
             indices = self._get_indices(start_index, (start_index + self._H + 1) % self._curr_size)
             observations_i = self._observations[indices]
@@ -165,32 +166,30 @@ class RNNCriticReplayPool(object):
                     rewards_i[j] = 0.
                     dones_i[j] = True
 
-            if not np.all(np.isfinite(observations_i)):
-                raise Exception
-
                 # observations = [0 1 2 3]
                 # actions = [10 11 rand rand]
                 # rewards = [20 21 0 0]
                 # dones = [False True True True]
 
-            observations.append(observations_i.tolist())
-            actions.append(actions_i.tolist())
-            rewards.append(rewards_i.tolist())
-            dones.append(dones_i.tolist())
+            observations.append(np.expand_dims(observations_i, 0))
+            actions.append(np.expand_dims(actions_i, 0))
+            rewards.append(np.expand_dims(rewards_i, 0))
+            dones.append(np.expand_dims(dones_i, 0))
 
+        observations = np.vstack(observations)
+        actions = np.vstack(actions)
+        rewards = np.vstack(rewards)
+        dones = np.vstack(dones)
 
-        observations = np.asarray(observations)
-        actions = np.asarray(actions)
-        rewards = np.asarray(rewards)
-        dones = np.asarray(dones)
-
-        for k, arr in enumerate((observations, actions, rewards, dones)):
-            if not np.all(np.isfinite(arr)):
-                raise Exception
-
-            assert(np.all(np.isfinite(arr)))
-            assert(arr.shape[0] == batch_size)
-            assert(arr.shape[1] == self._H + 1)
+        # timeit.start('replay_pool:isfinite')
+        # for k, arr in enumerate((observations, actions, rewards, dones)):
+        #     if not np.all(np.isfinite(arr)):
+        #         raise Exception
+        #
+        #     assert(np.all(np.isfinite(arr)))
+        #     assert(arr.shape[0] == batch_size)
+        #     assert(arr.shape[1] == self._H + 1)
+        # timeit.stop('replay_pool:isfinite')
 
         return observations, actions, rewards, dones
 
@@ -206,9 +205,8 @@ class RNNCriticReplayPool(object):
         pool_lens = np.array([replay_pool.can_sample() * len(replay_pool) for replay_pool in replay_pools]).astype(float)
         pool_ratios = pool_lens / pool_lens.sum()
         # how many from each pool
-        batch_sizes = np.zeros(len(replay_pools), dtype=int)
-        for _ in range(batch_size):
-            batch_sizes[np.random.choice(range(len(replay_pools)), p=pool_ratios)] += 1
+        choices = np.random.choice(range(len(replay_pools)), size=batch_size, p=pool_ratios)
+        batch_sizes = np.bincount(choices, minlength=len(replay_pools))
         # sample from each pool
         for i, replay_pool in enumerate(replay_pools):
             if batch_sizes[i] == 0:

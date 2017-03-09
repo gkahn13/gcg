@@ -90,6 +90,7 @@ class RNNCriticDiscreteMLPPolicy(RNNCriticPolicy, Serializable):
                                                  kernel_size=kernel_size,
                                                  stride=stride,
                                                  activation_fn=self._activation)
+
                 layer = layers.flatten(layer)
 
             ### fully connected
@@ -100,6 +101,9 @@ class RNNCriticDiscreteMLPPolicy(RNNCriticPolicy, Serializable):
                                                  weights_regularizer=layers.l2_regularizer(1.))
 
             tf_rewards = self._graph_preprocess_outputs(rewards_all, d_preprocess)
+
+            # num_vars = np.sum([np.prod(v.get_shape()) for v in tf.trainable_variables()])
+            # print('num_vars: {0}'.format(num_vars))
 
         return tf_rewards
 

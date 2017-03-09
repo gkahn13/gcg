@@ -142,8 +142,11 @@ class RNNCriticPolicy(Policy, Serializable):
             tf_obs_ph = tf.cast(tf_obs_ph, tf.float32)
         tf_obs_whitened = tf.matmul(tf_obs_ph - d_preprocess['observations_mean_var'],
                                     d_preprocess['observations_orth_var'])
-        tf_actions_whitened = tf.matmul(tf_actions_ph - d_preprocess['actions_mean_var'],
-                                        d_preprocess['actions_orth_var'])
+        if isinstance(self._env_spec.action_space, Discrete):
+            tf_actions_whitened = tf_actions_ph
+        else:
+            tf_actions_whitened = tf.matmul(tf_actions_ph - d_preprocess['actions_mean_var'],
+                                            d_preprocess['actions_orth_var'])
 
         num_obs = tf.shape(tf_obs_whitened)[0]
         num_action = tf.shape(tf_actions_whitened)[0]
@@ -232,8 +235,14 @@ class RNNCriticPolicy(Policy, Serializable):
                 tf_target_mask_ph = tf.placeholder('float', [None], name='tf_target_mask_ph')
                 tf_target_rewards = self._graph_inference(tf_obs_target_ph, tf_actions_target_ph, d_preprocess)
 
-            policy_vars = sorted(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='policy'), key=lambda v: v.name)
-            target_network_vars = sorted(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='target_network'), key=lambda v: v.name)
+            if hasattr(tf.GraphKeys, 'GLOBAL_VARIABLES'):
+                var_collection_name = tf.GraphKeys.GLOBAL_VARIABLES
+            elif hasattr(tf.GraphKeys, 'VARIABLES'):
+                var_collection_name = tf.GraphKeys.VARIABLES
+            else:
+                raise Exception
+            policy_vars = sorted(tf.get_collection(var_collection_name, scope='policy'), key=lambda v: v.name)
+            target_network_vars = sorted(tf.get_collection(var_collection_name, scope='target_network'), key=lambda v: v.name)
             update_target_fn = []
             for var, var_target in zip(policy_vars, target_network_vars):
                 assert(var.name.replace('policy', '') == var_target.name.replace('target_network', ''))
