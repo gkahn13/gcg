@@ -21,6 +21,7 @@ class RNNCriticPolicy(Policy, Serializable):
                  gamma,
                  weight_decay,
                  learning_rate,
+                 grad_clip_norm,
                  get_action_params,
                  gpu_device=None,
                  gpu_frac=None,
@@ -31,6 +32,7 @@ class RNNCriticPolicy(Policy, Serializable):
         :param gamma: reward decay
         :param weight_decay
         :param learning_rate
+        :param grad_clip_norm
         :param reset_every_train: reset parameters every time train is called?
         :param train_steps: how many calls to optimizer each time train is called
         :param batch_size
@@ -43,6 +45,7 @@ class RNNCriticPolicy(Policy, Serializable):
         self._gamma = gamma
         self._weight_decay = weight_decay
         self._learning_rate = learning_rate
+        self._grad_clip_norm = grad_clip_norm
         self._get_action_params = get_action_params
         self._gpu_device = gpu_device
         self._gpu_frac = gpu_frac
@@ -204,8 +207,13 @@ class RNNCriticPolicy(Policy, Serializable):
         cost = mse + weight_decay
         return cost, mse
 
-    def _graph_optimize(self, tf_cost):
-        return tf.train.AdamOptimizer(learning_rate=self._learning_rate).minimize(tf_cost)
+    def _graph_optimize(self, tf_cost, policy_vars):
+        optimizer = tf.train.AdamOptimizer(learning_rate=self._learning_rate)
+        gradients = optimizer.compute_gradients(tf_cost, var_list=policy_vars)
+        for i, (grad, var) in enumerate(gradients):
+            if grad is not None:
+                gradients[i] = (tf.clip_by_norm(grad, self._grad_clip_norm), var)
+        return optimizer.apply_gradients(gradients)
 
     def _graph_init_vars(self, tf_sess):
         tf_sess.run([tf.global_variables_initializer()])
@@ -221,19 +229,19 @@ class RNNCriticPolicy(Policy, Serializable):
             if ext.get_seed() is not None:
                 ext.set_seed(ext.get_seed())
 
-            d_preprocess = self._graph_preprocess_from_placeholders()
-
             ### policy
             with tf.variable_scope('policy'):
+                d_preprocess = self._graph_preprocess_from_placeholders()
                 tf_obs_ph, tf_actions_ph, tf_rewards_ph = self._graph_inputs_outputs_from_placeholders()
                 tf_rewards = self._graph_inference(tf_obs_ph, tf_actions_ph, d_preprocess)
                 tf_values = self._graph_calculate_values(tf_rewards)
 
             ### target network
             with tf.variable_scope('target_network'):
+                d_preprocess_target = self._graph_preprocess_from_placeholders()
                 tf_obs_target_ph, tf_actions_target_ph, _ = self._graph_inputs_outputs_from_placeholders()
                 tf_target_mask_ph = tf.placeholder('float', [None], name='tf_target_mask_ph')
-                tf_target_rewards = self._graph_inference(tf_obs_target_ph, tf_actions_target_ph, d_preprocess)
+                tf_target_rewards = self._graph_inference(tf_obs_target_ph, tf_actions_target_ph, d_preprocess_target)
 
             if hasattr(tf.GraphKeys, 'GLOBAL_VARIABLES'):
                 var_collection_name = tf.GraphKeys.GLOBAL_VARIABLES
@@ -252,7 +260,7 @@ class RNNCriticPolicy(Policy, Serializable):
             ### optimization
             tf_cost, tf_mse = self._graph_cost(tf_rewards_ph, tf_actions_ph, tf_rewards,
                                                tf_target_rewards, tf_target_mask_ph)
-            tf_opt = self._graph_optimize(tf_cost)
+            tf_opt = self._graph_optimize(tf_cost, policy_vars)
 
             self._graph_init_vars(tf_sess)
 
