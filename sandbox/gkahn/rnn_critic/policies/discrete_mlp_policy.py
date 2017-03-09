@@ -206,9 +206,6 @@ class RNNCriticDiscreteMLPPolicy(RNNCriticPolicy, Serializable):
         # import IPython; IPython.embed()
 
         self._log_stats['Cost'].append(cost)
-        for k, v in self._log_stats.items():
-            if len(v) > self._log_history_len:
-                self._log_stats[k] = v[1:]
 
     ######################
     ### Policy methods ###

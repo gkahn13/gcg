@@ -335,9 +335,6 @@ class RNNCriticPolicy(Policy, Serializable):
         assert(np.isfinite(cost))
 
         self._log_stats['Cost'].append(cost)
-        for k, v in self._log_stats.items():
-            if len(v) > self._log_history_len:
-                self._log_stats[k] = v[1:]
 
     ######################
     ### Policy methods ###
@@ -474,3 +471,4 @@ class RNNCriticPolicy(Policy, Serializable):
     def log(self):
         for k in sorted(self._log_stats.keys()):
             logger.record_tabular(k, np.mean(self._log_stats[k]))
+        self._log_stats.clear()
