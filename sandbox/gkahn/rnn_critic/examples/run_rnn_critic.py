@@ -25,16 +25,19 @@ def run_task(params):
     # copy yaml for posterity
     shutil.copy(params['yaml_path'], os.path.join(logger.get_snapshot_dir(), os.path.basename(params['yaml_path'])))
 
-    # set seed
-    if params['seed'] is not None:
-        set_seed(params['seed'])
-
     from rllab.envs.gym_env import GymEnv
     import gym_ple
     from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
     from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
     from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
-    env = TfEnv(normalize(eval(params['alg'].pop('env'))))
+    inner_env = eval(params['alg'].pop('env'))
+    env = TfEnv(normalize(inner_env))
+
+    # set seed
+    if params['seed'] is not None:
+        set_seed(params['seed'])
+        if isinstance(inner_env, GymEnv):
+            inner_env.env.seed(params['seed'])
 
     #####################
     ### Create policy ###

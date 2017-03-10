@@ -11,6 +11,7 @@ class RNNCriticRNNPolicy(RNNCriticPolicy, Serializable):
                  reward_hidden_layers,
                  rnn_state_dim,
                  activation,
+                 rnn_activation,
                  **kwargs):
         """
         :param obs_hidden_layers: layer sizes for preprocessing the observation
@@ -26,6 +27,7 @@ class RNNCriticRNNPolicy(RNNCriticPolicy, Serializable):
         self._reward_hidden_layers = list(reward_hidden_layers)
         self._rnn_state_dim = rnn_state_dim
         self._activation = eval(activation)
+        self._rnn_activation = eval(rnn_activation)
 
         RNNCriticPolicy.__init__(self, **kwargs)
 
@@ -117,9 +119,9 @@ class RNNCriticRNNPolicy(RNNCriticPolicy, Serializable):
                     if is_lstm:
                         rnn_cell = tf.nn.rnn_cell.BasicLSTMCell(self._rnn_state_dim,
                                                                 state_is_tuple=False,
-                                                                activation=self._activation)
+                                                                activation=self._rnn_activation)
                     else:
-                        rnn_cell = tf.nn.rnn_cell.BasicRNNCell(self._rnn_state_dim, activation=self._activation)
+                        rnn_cell = tf.nn.rnn_cell.BasicRNNCell(self._rnn_state_dim, activation=self._rnn_activation)
                     rnn_outputs, rnn_states = tf.nn.dynamic_rnn(rnn_cell, rnn_inputs, initial_state=istate)
 
             ### internal states --> rewards

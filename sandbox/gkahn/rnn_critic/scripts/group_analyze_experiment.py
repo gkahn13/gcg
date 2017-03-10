@@ -474,6 +474,7 @@ class PlotAnalyzeRNNCritic(object):
             ax.plot(steps, cum_rewards_mean, color=analyze.plot['color'], label=analyze.plot['label'])
             ax.fill_between(steps, cum_rewards_mean - cum_rewards_std, cum_rewards_mean + cum_rewards_std,
                             color=analyze.plot['color'], alpha=0.4)
+            ax.set_ylim((0, 225))
             ax.grid()
         ax.set_ylabel('Cumulative reward')
 
@@ -500,7 +501,7 @@ if __name__ == '__main__':
     analyze_groups = []
     ### H = 1
     analyze_group = []
-    for i in range(360, 365):
+    for i in range(530, 535):
         print('\nexp {0}\n'.format(i))
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
@@ -510,7 +511,7 @@ if __name__ == '__main__':
     analyze_groups.append(analyze_group)
     ### H = 2
     analyze_group = []
-    for i in range(365, 370):
+    for i in range(535, 540):
         print('\nexp {0}\n'.format(i))
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
@@ -520,7 +521,7 @@ if __name__ == '__main__':
     analyze_groups.append(analyze_group)
     ### H = 3
     analyze_group = []
-    for i in range(370, 375):
+    for i in range(540, 545):
         print('\nexp {0}\n'.format(i))
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
@@ -530,7 +531,7 @@ if __name__ == '__main__':
     analyze_groups.append(analyze_group)
     ### H = 4
     analyze_group = []
-    for i in range(375, 380):
+    for i in range(545, 550):
         print('\nexp {0}\n'.format(i))
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
@@ -538,9 +539,9 @@ if __name__ == '__main__':
                                                   'color': 'y'
                                               }))
     analyze_groups.append(analyze_group)
-    # ### H = 5
+    ### H = 5
     analyze_group = []
-    for i in range(380, 385):
+    for i in range(550, 555):
         print('\nexp {0}\n'.format(i))
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
@@ -548,7 +549,17 @@ if __name__ == '__main__':
                                                   'color': 'c'
                                               }))
     analyze_groups.append(analyze_group)
+    ### H = 10
+    analyze_group = []
+    for i in range(555, 560):
+        print('\nexp {0}\n'.format(i))
+        analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
+                                              plot={
+                                                  'label': 'H = 10',
+                                                  'color': 'm'
+                                              }))
+    analyze_groups.append(analyze_group)
 
-    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'cartpole_360_384', analyze_groups)
+    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'cartpole_530_559', analyze_groups)
     plotter.run()
 

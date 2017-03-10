@@ -41,6 +41,15 @@ class TimeIt(object):
 
 timeit = TimeIt()
 
+####################
+### Environments ###
+####################
+
+def inner_env(env):
+    while hasattr(env, 'wrapped_env'):
+        env = env.wrapped_env
+    return env
+
 ##############
 ### Images ###
 ##############

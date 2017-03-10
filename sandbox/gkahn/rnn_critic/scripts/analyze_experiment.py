@@ -86,14 +86,13 @@ def inner_env(env):
 ################
 
 class AnalyzeRNNCritic(object):
-    def __init__(self, folder, skip_itr=1, max_itr=sys.maxsize, plot=dict(), gpu_device=None):
+    def __init__(self, folder, skip_itr=1, max_itr=sys.maxsize, plot=dict()):
         """
         :param kwargs: holds random extra properties
         """
         self._folder = folder
         self._skip_itr = skip_itr
         self._max_itr = max_itr
-        self._gpu_device = gpu_device
 
         ### load data
         self.name = os.path.basename(self._folder)
@@ -159,7 +158,8 @@ class AnalyzeRNNCritic(object):
         return policy
 
     def _load_itr(self, itr):
-        sess, graph = RNNCriticPolicy.create_session_and_graph(gpu_device=self._gpu_device)
+        sess, graph = RNNCriticPolicy.create_session_and_graph(gpu_device=self.params['policy']['gpu_device'],
+                                                               gpu_frac=self.params['policy']['gpu_frac'])
         with graph.as_default(), sess.as_default():
             d = joblib.load(self._itr_file(itr))
             rollouts = d['rollouts']
@@ -191,7 +191,8 @@ class AnalyzeRNNCritic(object):
             if self.params['seed'] is not None:
                 set_seed(self.params['seed'])
 
-            sess, graph = RNNCriticPolicy.create_session_and_graph(gpu_device=self._gpu_device)
+            sess, graph = RNNCriticPolicy.create_session_and_graph(gpu_device=self.params['policy']['gpu_device'],
+                                                                   gpu_frac=self.params['policy']['gpu_frac'])
             with graph.as_default(), sess.as_default():
                 env = env_itrs[itr // self._skip_itr]
                 policy = self._load_itr_policy(itr)
@@ -786,7 +787,8 @@ class AnalyzeRNNCritic(object):
             xs = np.linspace(xlim[0], xlim[1], 10)
             ys = np.linspace(ylim[0], ylim[1], 10)
 
-            sess, graph = RNNCriticPolicy.create_session_and_graph(gpu_device=self._gpu_device)
+            sess, graph = RNNCriticPolicy.create_session_and_graph(gpu_device=self.params['policy']['gpu_device'],
+                                                                   gpu_frac=self.params['policy']['gpu_frac'])
             with graph.as_default(), sess.as_default():
                 policy = self._load_itr_policy(itr)
 
@@ -870,7 +872,8 @@ class AnalyzeRNNCritic(object):
         xs = np.linspace(xlim[0], xlim[1], N)
         ys = np.linspace(ylim[0], ylim[1], N)
         while os.path.exists(self._itr_file(itr)):
-            sess, graph = RNNCriticPolicy.create_session_and_graph(gpu_device=self._gpu_device)
+            sess, graph = RNNCriticPolicy.create_session_and_graph(gpu_device=self.params['policy']['gpu_device'],
+                                                                   gpu_frac=self.params['policy']['gpu_frac'])
             with graph.as_default(), sess.as_default():
                 policy = self._load_itr_policy(itr)
 
@@ -946,7 +949,8 @@ class AnalyzeRNNCritic(object):
         q_values = []
         itr = 0
         while os.path.exists(self._itr_file(itr)):
-            sess, graph = RNNCriticPolicy.create_session_and_graph(gpu_device=self._gpu_device)
+            sess, graph = RNNCriticPolicy.create_session_and_graph(gpu_device=self.params['policy']['gpu_device'],
+                                                                   gpu_frac=self.params['policy']['gpu_frac'])
             with graph.as_default(), sess.as_default():
                 policy = self._load_itr_policy(itr)
 
@@ -1001,11 +1005,10 @@ class AnalyzeRNNCritic(object):
         self._plot_Q_function(self.env_itrs)
 
 
-def main(folder, skip_itr, max_itr, gpu_device=None):
+def main(folder, skip_itr, max_itr):
     analyze = AnalyzeRNNCritic(os.path.join('/home/gkahn/code/rllab/data/local/rnn-critic/', folder),
                                skip_itr=skip_itr,
-                               max_itr=max_itr,
-                               gpu_device=gpu_device)
+                               max_itr=max_itr)
     analyze.run()
 
 if __name__ == '__main__':
