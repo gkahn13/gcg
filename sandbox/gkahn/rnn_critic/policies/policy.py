@@ -1,3 +1,4 @@
+import abc
 import os
 from collections import defaultdict
 import itertools
@@ -12,11 +13,14 @@ import rllab.misc.logger as logger
 from rllab.misc import ext
 
 from sandbox.rocky.tf.spaces.discrete import Discrete
-from sandbox.gkahn.tf.policies.base import Policy
+from sandbox.gkahn.tf.policies.base import Policy as TfPolicy
 
-class RNNCriticPolicy(Policy, Serializable):
+class Policy(TfPolicy, Serializable):
+    __metaclass__ = abc.ABCMeta
+
     def __init__(self,
                  env_spec,
+                 N,
                  H,
                  gamma,
                  weight_decay,
@@ -25,10 +29,10 @@ class RNNCriticPolicy(Policy, Serializable):
                  get_action_params,
                  gpu_device=None,
                  gpu_frac=None,
-                 log_history_len=100,
                  **kwargs):
         """
-        :param H: critic horizon length
+        :param N: number of returns to use (i.e. n-step)
+        :param H: action planning horizon
         :param gamma: reward decay
         :param weight_decay
         :param learning_rate
@@ -41,6 +45,7 @@ class RNNCriticPolicy(Policy, Serializable):
         Serializable.quick_init(self, locals())
 
         self._env_spec = env_spec
+        self._N = N
         self._H = H
         self._gamma = gamma
         self._weight_decay = weight_decay
@@ -49,7 +54,6 @@ class RNNCriticPolicy(Policy, Serializable):
         self._get_action_params = get_action_params
         self._gpu_device = gpu_device
         self._gpu_frac = gpu_frac
-        self._log_history_len = log_history_len
         self._exploration_strategy = None # don't set in init b/c will then be Serialized
 
         self._tf_debug = dict()
@@ -67,15 +71,20 @@ class RNNCriticPolicy(Policy, Serializable):
         ### logging
         self._log_stats = defaultdict(list)
 
-        Policy.__init__(self, env_spec, sess=self._tf_sess)
+        TfPolicy.__init__(self, env_spec, sess=self._tf_sess)
 
     ##################
     ### Properties ###
     ##################
 
     @property
-    def H(self):
-        return self._H
+    def N(self):
+        return self._N
+
+    @abc.abstractproperty
+    def N_output(self):
+        """ number of outputs of graph inference """
+        raise NotImplementedError
 
     @property
     def session(self):
@@ -111,7 +120,7 @@ class RNNCriticPolicy(Policy, Serializable):
             tf_obs_ph = tf.placeholder(tf.uint8 if len(obs_shape) > 1 else tf.float32,
                                        [None, self._env_spec.observation_space.flat_dim], name='tf_obs_ph')
             tf_actions_ph = tf.placeholder(tf.float32, [None, self._env_spec.action_space.flat_dim * self._H], name='tf_actions_ph')
-            tf_rewards_ph = tf.placeholder(tf.float32, [None, self._H], name='tf_rewards_ph')
+            tf_rewards_ph = tf.placeholder(tf.float32, [None, self._N], name='tf_rewards_ph')
 
         return tf_obs_ph, tf_actions_ph, tf_rewards_ph
 
@@ -121,7 +130,7 @@ class RNNCriticPolicy(Policy, Serializable):
         with tf.variable_scope('preprocess'):
             for name, dim in (('observations', self._env_spec.observation_space.flat_dim),
                               ('actions', self._env_spec.action_space.flat_dim * self._H),
-                              ('rewards', self._H)):
+                              ('rewards', self.N_output)):
                 d_preprocess[name+'_mean_ph'] = tf.placeholder(tf.float32, shape=(1, dim), name=name+'_mean_ph')
                 d_preprocess[name+'_mean_var'] = tf.get_variable(name+'_mean_var', shape=[1, dim],
                                                                  trainable=False, dtype=tf.float32,
@@ -177,11 +186,13 @@ class RNNCriticPolicy(Policy, Serializable):
         return tf.add(tf.matmul(tf_rewards, tf.transpose(d_preprocess['rewards_orth_var'])),
                       d_preprocess['rewards_mean_var'])
 
+    @abc.abstractmethod
     def _graph_inference(self, tf_obs_ph, tf_actions_ph, d_preprocess):
         raise NotImplementedError
 
     def _graph_calculate_values(self, tf_rewards):
-        gammas = np.power(self._gamma * np.ones(self._H), np.arange(self._H))
+        N = tf_rewards.get_shape()[1].value
+        gammas = np.power(self._gamma * np.ones(N), np.arange(N))
         tf_values = tf.reduce_sum(gammas * tf_rewards, reduction_indices=1)
         return tf_values
 
@@ -198,7 +209,7 @@ class RNNCriticPolicy(Policy, Serializable):
         tf_values = self._graph_calculate_values(tf_rewards)
 
         mse = tf.reduce_mean(tf.square(tf_values_ph +
-                                       tf_target_mask_ph * np.power(self._gamma, self._H)*tf_target_values_max -
+                                       tf_target_mask_ph * np.power(self._gamma, self._N)*tf_target_values_max -
                                        tf_values))
         if len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)) > 0:
             weight_decay = self._weight_decay * tf.add_n(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
@@ -221,8 +232,7 @@ class RNNCriticPolicy(Policy, Serializable):
     def _graph_setup(self):
         tf_sess = tf.get_default_session()
         if tf_sess is None:
-            tf_sess, tf_graph = RNNCriticPolicy.create_session_and_graph(gpu_device=self._gpu_device,
-                                                                         gpu_frac=self._gpu_frac)
+            tf_sess, tf_graph = Policy.create_session_and_graph(gpu_device=self._gpu_device, gpu_frac=self._gpu_frac)
         tf_graph = tf_sess.graph
 
         with tf_sess.as_default(), tf_graph.as_default():
@@ -296,8 +306,10 @@ class RNNCriticPolicy(Policy, Serializable):
               self._d_preprocess['observations_orth_ph']: obs_orth,
               self._d_preprocess['actions_mean_ph']: np.tile(actions_mean, self._H),
               self._d_preprocess['actions_orth_ph']: scipy.linalg.block_diag(*([actions_orth] * self._H)),
-              self._d_preprocess['rewards_mean_ph']: np.expand_dims(np.tile(rewards_mean, self._H), 0),
-              self._d_preprocess['rewards_orth_ph']: scipy.linalg.block_diag(*([rewards_orth] * self._H))
+              self._d_preprocess['rewards_mean_ph']: (self._N / float(self.N_output)) * # reweighting!
+                                                     np.expand_dims(np.tile(rewards_mean, self.N_output), 0),
+              self._d_preprocess['rewards_orth_ph']: (self._N / float(self.N_output)) *
+                                                     scipy.linalg.block_diag(*([rewards_orth] * self.N_output))
           })
 
     def update_target(self):
@@ -309,11 +321,11 @@ class RNNCriticPolicy(Policy, Serializable):
 
         policy_observations = observations[:, 0, :]
         policy_actions = actions[:, :self._H, :].reshape((batch_size, self._H * action_dim))
-        policy_rewards = rewards[:, :self._H]
+        policy_rewards = rewards[:, :self._N]
         target_observations = observations[:, self._H, :]
 
         if self._get_action_params['type'] == 'random':
-            target_actions = self._get_random_action(self._get_action_params['N'])
+            target_actions = self._get_random_action(self._get_action_params['K'])
         elif self._get_action_params['type'] == 'lattice':
             target_actions = self._get_action_preprocess['actions']
         else:
@@ -359,11 +371,12 @@ class RNNCriticPolicy(Policy, Serializable):
                     actions[i, one_hots] = 1
                 get_action_preprocess['actions'] = actions
             else:
-                N = self._get_action_params['N']
+                K = self._get_action_params['K']
                 action_lower, action_upper = self._env_spec.action_space.bounds
-                single_actions = cartesian([np.linspace(l, u, N) for l, u in zip(action_lower, action_upper)])
+                single_actions = cartesian([np.linspace(l, u, K) for l, u in zip(action_lower, action_upper)])
                 actions = np.asarray(list(itertools.combinations(single_actions, self._H)))
-                get_action_preprocess['actions'] = actions.reshape((len(actions), self._H * self._env_spec.action_space.flat_dim))
+                get_action_preprocess['actions'] = actions.reshape((len(actions),
+                                                                    self._H * self._env_spec.action_space.flat_dim))
         else:
             raise NotImplementedError('get_action type {0} not implemented'.format(self._get_action_params['type']))
 
@@ -395,7 +408,7 @@ class RNNCriticPolicy(Policy, Serializable):
         observations = self._env_spec.observation_space.flatten_n(observations)
 
         if self._get_action_params['type'] == 'random':
-            actions = self._get_random_action(self._get_action_params['N'] * num_obs)
+            actions = self._get_random_action(self._get_action_params['K'] * num_obs)
         elif self._get_action_params['type'] == 'lattice':
             actions = np.tile(self._get_action_preprocess['actions'], (num_obs, 1))
         else:
@@ -441,7 +454,7 @@ class RNNCriticPolicy(Policy, Serializable):
 
     @property
     def recurrent(self):
-        raise NotImplementedError
+        return False
 
     def terminate(self):
         self._tf_sess.close()

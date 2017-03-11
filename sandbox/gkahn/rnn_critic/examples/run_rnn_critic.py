@@ -15,10 +15,8 @@ from rllab.exploration_strategies.gaussian_strategy import GaussianStrategy
 from sandbox.gkahn.rnn_critic.exploration_strategies.epsilon_greedy_strategy import EpsilonGreedyStrategy
 ### RNN critic
 from sandbox.gkahn.rnn_critic.algos.rnn_critic import RNNCritic
-from sandbox.gkahn.rnn_critic.policies.mlp_policy import RNNCriticMLPPolicy
-from sandbox.gkahn.rnn_critic.policies.rnn_policy import RNNCriticRNNPolicy
-from sandbox.gkahn.rnn_critic.policies.discrete_mlp_policy import RNNCriticDiscreteMLPPolicy
-from sandbox.gkahn.rnn_critic.policies.discrete_rnn_policy import RNNCriticDiscreteRNNPolicy
+from sandbox.gkahn.rnn_critic.policies.dqn_policy import DQNPolicy
+from sandbox.gkahn.rnn_critic.policies.nstep_dqn_policy import NstepDQNPolicy
 
 
 def run_task(params):
@@ -43,24 +41,15 @@ def run_task(params):
     ### Create policy ###
     #####################
 
-    policy_type = params['policy']['type']
+    policy_class = params['policy']['class']
+    PolicyClass = eval(policy_class)
+    policy_params = params['policy'][policy_class]
     get_action_type = params['get_action']['type']
-
-    if policy_type == 'mlp':
-        PolicyClass = RNNCriticMLPPolicy
-    elif policy_type == 'rnn':
-        PolicyClass = RNNCriticRNNPolicy
-    elif policy_type == 'discrete_mlp':
-        PolicyClass = RNNCriticDiscreteMLPPolicy
-    elif policy_type == 'discrete_rnn':
-        PolicyClass = RNNCriticDiscreteRNNPolicy
-    else:
-        raise Exception('Policy {0} not valid'.format(policy_type))
 
     policy = PolicyClass(
         env_spec=env.spec,
         get_action_params=params['get_action'][get_action_type],
-        **params['policy'][policy_type],
+        **policy_params,
         **params['policy']
     )
 

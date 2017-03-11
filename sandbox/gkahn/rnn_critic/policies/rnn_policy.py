@@ -2,9 +2,9 @@ import tensorflow as tf
 
 from rllab.misc.overrides import overrides
 from rllab.core.serializable import Serializable
-from sandbox.gkahn.rnn_critic.policies.policy import RNNCriticPolicy
+from sandbox.gkahn.rnn_critic.policies.policy import Policy
 
-class RNNCriticRNNPolicy(RNNCriticPolicy, Serializable):
+class RNNCriticRNNPolicy(Policy, Serializable):
     def __init__(self,
                  obs_hidden_layers,
                  action_hidden_layers,
@@ -29,7 +29,7 @@ class RNNCriticRNNPolicy(RNNCriticPolicy, Serializable):
         self._activation = eval(activation)
         self._rnn_activation = eval(rnn_activation)
 
-        RNNCriticPolicy.__init__(self, **kwargs)
+        Policy.__init__(self, **kwargs)
 
     @overrides
     def _graph_inference(self, tf_obs_ph, tf_actions_ph, d_preprocess):
@@ -104,9 +104,9 @@ class RNNCriticRNNPolicy(RNNCriticPolicy, Serializable):
 
             ### actions --> rnn input at each time step
             with tf.name_scope('actions_to_rnn_input'):
-                tf_actions_list = tf.split(1, self._H, tf_actions)
+                tf_actions_list = tf.split(1, self._N, tf_actions)
                 rnn_inputs = []
-                for h in range(self._H):
+                for h in range(self._N):
                     layer = tf_actions_list[h]
                     for action_weight, action_bias in zip(action_weights, action_biases):
                         layer = self._activation(tf.add(tf.matmul(layer, action_weight), action_bias))
@@ -127,7 +127,7 @@ class RNNCriticRNNPolicy(RNNCriticPolicy, Serializable):
             ### internal states --> rewards
             with tf.name_scope('istates_to_rewards'):
                 rewards = []
-                for h in range(self._H):
+                for h in range(self._N):
                     layer = rnn_outputs[:, h, :]
                     for i, (reward_weight, reward_bias) in enumerate(zip(reward_weights, reward_biases)):
                         layer = tf.add(tf.matmul(layer, reward_weight), reward_bias)

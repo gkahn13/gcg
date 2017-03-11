@@ -9,15 +9,15 @@ from sandbox.gkahn.rnn_critic.utils.utils import timeit
 
 class RNNCriticReplayPool(object):
 
-    def __init__(self, env_spec, H, size, save_rollouts=False):
+    def __init__(self, env_spec, N, size, save_rollouts=False):
         """
         :param env_spec: for observation/action dimensions
-        :param H: horizon length
+        :param N: horizon length
         :param size: size of pool
         :param save_rollouts: for debugging
         """
         self._env_spec = env_spec
-        self._H = H
+        self._N = N
         self._size = size
         self._save_rollouts = save_rollouts
 
@@ -128,7 +128,7 @@ class RNNCriticReplayPool(object):
     ########################
 
     def can_sample(self):
-        return len(self) > self._H
+        return len(self) > self._N
 
     def sample(self, batch_size):
         """
@@ -140,14 +140,14 @@ class RNNCriticReplayPool(object):
         observations, actions, rewards, dones = [], [], [], []
 
         start_indices = []
-        false_indices = self._get_indices(self._index, self._index + self._H)
+        false_indices = self._get_indices(self._index, self._index + self._N)
         while len(start_indices) < batch_size:
-            start_index = np.random.randint(low=0, high=len(self)-self._H)
+            start_index = np.random.randint(low=0, high=len(self)-self._N)
             if start_index not in false_indices:
                 start_indices.append(start_index)
 
         for start_index in start_indices:
-            indices = self._get_indices(start_index, (start_index + self._H + 1) % self._curr_size)
+            indices = self._get_indices(start_index, (start_index + self._N + 1) % self._curr_size)
             observations_i = self._observations[indices]
             actions_i = self._actions[indices]
             rewards_i = self._rewards[indices]
@@ -188,7 +188,7 @@ class RNNCriticReplayPool(object):
         #
         #     assert(np.all(np.isfinite(arr)))
         #     assert(arr.shape[0] == batch_size)
-        #     assert(arr.shape[1] == self._H + 1)
+        #     assert(arr.shape[1] == self._N + 1)
         # timeit.stop('replay_pool:isfinite')
 
         return observations, actions, rewards, dones

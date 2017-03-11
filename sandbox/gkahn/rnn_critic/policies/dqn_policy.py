@@ -5,7 +5,7 @@ from rllab.misc.overrides import overrides
 from rllab.core.serializable import Serializable
 from sandbox.gkahn.rnn_critic.policies.policy import Policy
 
-class RNNCriticMLPPolicy(Policy, Serializable):
+class DQNPolicy(Policy, Serializable):
     def __init__(self,
                  hidden_layers,
                  activation,
@@ -21,9 +21,23 @@ class RNNCriticMLPPolicy(Policy, Serializable):
 
         Policy.__init__(self, **kwargs)
 
+        assert(self._H == 1)
+
+    ##################
+    ### Properties ###
+    ##################
+
+    @property
+    def N_output(self):
+        return 1
+
+    ###########################
+    ### TF graph operations ###
+    ###########################
+
     @overrides
     def _graph_inference(self, tf_obs_ph, tf_actions_ph, d_preprocess):
-        output_dim = self._N
+        output_dim = self.N_output
 
         with tf.name_scope('inference'):
             tf_obs, tf_actions = self._graph_preprocess_inputs(tf_obs_ph, tf_actions_ph, d_preprocess)
@@ -40,7 +54,3 @@ class RNNCriticMLPPolicy(Policy, Serializable):
             tf_rewards = self._graph_preprocess_outputs(layer, d_preprocess)
 
         return tf_rewards
-
-    @property
-    def recurrent(self):
-        return False
