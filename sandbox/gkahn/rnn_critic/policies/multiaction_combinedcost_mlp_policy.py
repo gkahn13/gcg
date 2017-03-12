@@ -24,7 +24,6 @@ class MultiactionCombinedcostMLPPolicy(Policy, Serializable):
         assert(self._N > 1)
         assert(self._H > 1)
         assert(self._N == self._H)
-        assert(self._cost_type == 'combined')
 
     ##################
     ### Properties ###

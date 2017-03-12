@@ -19,6 +19,8 @@ from sandbox.gkahn.rnn_critic.policies.dqn_policy import DQNPolicy
 from sandbox.gkahn.rnn_critic.policies.nstep_dqn_policy import NstepDQNPolicy
 from sandbox.gkahn.rnn_critic.policies.multiaction_combinedcost_mlp_policy import MultiactionCombinedcostMLPPolicy
 from sandbox.gkahn.rnn_critic.policies.multiaction_combinedcost_rnn_policy import MultiactionCombinedcostRNNPolicy
+from sandbox.gkahn.rnn_critic.policies.multiaction_separatedcost_mlp_policy import MultiactionSeparatedcostMLPPolicy
+from sandbox.gkahn.rnn_critic.policies.multiaction_separatedcost_rnn_policy import MultiactionSeparatedcostRNNPolicy
 
 def run_task(params):
     # copy yaml for posterity
