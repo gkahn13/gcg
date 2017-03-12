@@ -499,67 +499,77 @@ if __name__ == '__main__':
     SAVE_FOLDER = '/home/gkahn/code/rllab/data/local/rnn-critic/'
 
     analyze_groups = []
-    ### H = 1
+    ### DQNPolicy N = 1
     analyze_group = []
-    for i in range(530, 535):
+    for i in range(600, 605):
         print('\nexp {0}\n'.format(i))
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
-                                                  'label': 'H = 1',
+                                                  'label': 'DQNPolicy, N = 1',
                                                   'color': 'r'
                                               }))
     analyze_groups.append(analyze_group)
-    ### H = 2
+    ### NstepDQNPolicy N = 3
     analyze_group = []
-    for i in range(535, 540):
+    for i in range(605, 610):
         print('\nexp {0}\n'.format(i))
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
-                                                  'label': 'H = 2',
+                                                  'label': 'NstepDQNPolicy, N = 3',
                                                   'color': 'g'
                                               }))
     analyze_groups.append(analyze_group)
-    ### H = 3
+    ### NstepDQNPolicy N = 6
     analyze_group = []
-    for i in range(540, 545):
+    for i in range(610, 615):
         print('\nexp {0}\n'.format(i))
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
-                                                  'label': 'H = 3',
+                                                  'label': 'NstepDQNPolicy, N = 6',
                                                   'color': 'b'
                                               }))
     analyze_groups.append(analyze_group)
-    ### H = 4
+    ### MultiactionCombinedcostMLPPolicy N = 3
     analyze_group = []
-    for i in range(545, 550):
+    for i in range(615, 620):
         print('\nexp {0}\n'.format(i))
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
-                                                  'label': 'H = 4',
+                                                  'label': 'MultiactionCombinedcostMLPPolicy, N = 3',
                                                   'color': 'y'
                                               }))
     analyze_groups.append(analyze_group)
-    ### H = 5
+    ### MultiactionCombinedcostMLPPolicy N = 6
     analyze_group = []
-    for i in range(550, 555):
+    for i in range(620, 625):
         print('\nexp {0}\n'.format(i))
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
-                                                  'label': 'H = 5',
+                                                  'label': 'MultiactionCombinedcostMLPPolicy, N = 6',
                                                   'color': 'c'
                                               }))
     analyze_groups.append(analyze_group)
-    ### H = 10
+    ### MultiactionCombinedcostRNNPolicy N = 3
     analyze_group = []
-    for i in range(555, 560):
+    for i in range(625, 630):
         print('\nexp {0}\n'.format(i))
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
-                                                  'label': 'H = 10',
+                                                  'label': 'MultiactionCombinedcostRNNPolicy, N = 3',
                                                   'color': 'm'
                                               }))
     analyze_groups.append(analyze_group)
+    ### MultiactionCombinedcostRNNPolicy N = 6
+    analyze_group = []
+    for i in range(630, 635):
+        print('\nexp {0}\n'.format(i))
+        analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
+                                              plot={
+                                                  'label': 'MultiactionCombinedcostRNNPolicy, N = 6',
+                                                  'color': 'k'
+                                              }))
+    analyze_groups.append(analyze_group)
 
-    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'cartpole_530_559', analyze_groups)
+    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'cartpole_600_634', analyze_groups)
     plotter.run()
 

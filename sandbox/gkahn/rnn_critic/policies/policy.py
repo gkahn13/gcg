@@ -22,6 +22,7 @@ class Policy(TfPolicy, Serializable):
                  env_spec,
                  N,
                  H,
+                 cost_type,
                  gamma,
                  weight_decay,
                  learning_rate,
@@ -33,6 +34,7 @@ class Policy(TfPolicy, Serializable):
         """
         :param N: number of returns to use (i.e. n-step)
         :param H: action planning horizon
+        :param cost_type: combined or separated
         :param gamma: reward decay
         :param weight_decay
         :param learning_rate
@@ -43,10 +45,12 @@ class Policy(TfPolicy, Serializable):
         :param get_action_params: dictionary specifying how to choose actions
         """
         Serializable.quick_init(self, locals())
+        assert(cost_type == 'combined' or cost_type == 'separated')
 
         self._env_spec = env_spec
         self._N = N
         self._H = H
+        self._cost_type = cost_type
         self._gamma = gamma
         self._weight_decay = weight_decay
         self._learning_rate = learning_rate

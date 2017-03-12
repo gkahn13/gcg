@@ -22,6 +22,7 @@ class DQNPolicy(Policy, Serializable):
         Policy.__init__(self, **kwargs)
 
         assert(self._H == 1)
+        assert (self._cost_type == 'combined')
 
     ##################
     ### Properties ###
