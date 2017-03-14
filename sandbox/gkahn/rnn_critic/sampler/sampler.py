@@ -10,6 +10,8 @@ from sandbox.rocky.tf.envs.vec_env_executor import VecEnvExecutor
 from sandbox.gkahn.rnn_critic.sampler.replay_pool import RNNCriticReplayPool
 from sandbox.gkahn.rnn_critic.utils import utils
 
+from sandbox.gkahn.rnn_critic.utils.utils import timeit
+
 class RNNCriticSampler(object):
     def __init__(self, policy, env, n_envs, replay_pool_size, max_path_length, save_rollouts=False):
         self._policy = policy
@@ -20,17 +22,21 @@ class RNNCriticSampler(object):
                                                   replay_pool_size // n_envs,
                                                   save_rollouts=save_rollouts)
                               for _ in range(n_envs)]
-        envs = [pickle.loads(pickle.dumps(env)) for _ in range(self._n_envs)]
-        ### need to seed each environment if it is GymEnv
-        seed = get_seed()
-        if seed is not None and isinstance(utils.inner_env(env), GymEnv):
-            for i, env in enumerate(envs):
-                utils.inner_env(env).env.seed(seed + i)
-        self._vec_env = VecEnvExecutor(
-            envs=envs,
-            max_path_length=max_path_length
-        )
-        self._curr_observations = self._vec_env.reset()
+        if self._n_envs > 1:
+            envs = [pickle.loads(pickle.dumps(env)) for _ in range(self._n_envs)]
+            ### need to seed each environment if it is GymEnv
+            seed = get_seed()
+            if seed is not None and isinstance(utils.inner_env(env), GymEnv):
+                for i, env in enumerate(envs):
+                    utils.inner_env(env).env.seed(seed + i)
+            self._vec_env = VecEnvExecutor(
+                envs=envs,
+                max_path_length=max_path_length
+            )
+            self._curr_observations = self._vec_env.reset()
+        else:
+            self._vec_env = env
+            self._curr_observations = [self._vec_env.reset()]
 
     @property
     def n_envs(self):
@@ -50,8 +56,19 @@ class RNNCriticSampler(object):
 
     def step(self, step):
         """ Takes one step in each simulator and adds to respective replay pools """
+        timeit.start('sampler:get_actions')
         actions, _ = self._policy.get_actions(self._curr_observations)
+        if self._n_envs == 1:
+            actions = actions[0]
+        timeit.stop('sampler:get_actions')
+        timeit.start('sampler:step')
         next_observations, rewards, dones, _ = self._vec_env.step(actions)
+        if self._n_envs == 1:
+            actions = [actions]
+            next_observations = [next_observations]
+            rewards = [rewards]
+            dones = [dones]
+        timeit.stop('sampler:step')
         for i, replay_pool in enumerate(self._replay_pools):
             replay_pool.add(step + i,
                             self._curr_observations[i],

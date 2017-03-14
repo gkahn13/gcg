@@ -8,8 +8,10 @@ from rllab.misc.instrument import run_experiment_lite
 import rllab.misc.logger as logger
 from rllab.misc.ext import set_seed
 ### environments
+import gym
 from sandbox.rocky.tf.envs.base import TfEnv
 from rllab.envs.normalized_env import normalize
+from sandbox.gkahn.rnn_critic.utils.atari_wrappers import wrap_deepmind
 ### exploration strategies
 from rllab.exploration_strategies.gaussian_strategy import GaussianStrategy
 from sandbox.gkahn.rnn_critic.exploration_strategies.epsilon_greedy_strategy import EpsilonGreedyStrategy
@@ -27,6 +29,7 @@ def run_task(params):
     shutil.copy(params['yaml_path'], os.path.join(logger.get_snapshot_dir(), os.path.basename(params['yaml_path'])))
 
     from rllab.envs.gym_env import GymEnv
+    from sandbox.gkahn.rnn_critic.envs.premade_gym_env import PremadeGymEnv
     import gym_ple
     from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
     from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
