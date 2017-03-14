@@ -94,6 +94,10 @@ class Policy(TfPolicy, Serializable):
     def session(self):
         return self._tf_sess
 
+    @property
+    def _obs_is_im(self):
+        return len(self._env_spec.observation_space.shape) > 1
+
     ###########################
     ### TF graph operations ###
     ###########################
@@ -132,9 +136,9 @@ class Policy(TfPolicy, Serializable):
         d_preprocess = dict()
 
         with tf.variable_scope('preprocess'):
-            for name, dim in (('observations', self._env_spec.observation_space.flat_dim),
-                              ('actions', self._env_spec.action_space.flat_dim * self._H),
-                              ('rewards', self.N_output)):
+            for name, dim, diag_orth in (('observations', self._env_spec.observation_space.flat_dim, self._obs_is_im),
+                                         ('actions', self._env_spec.action_space.flat_dim * self._H, False),
+                                         ('rewards', self.N_output, False)):
                 d_preprocess[name+'_mean_ph'] = tf.placeholder(tf.float32, shape=(1, dim), name=name+'_mean_ph')
                 d_preprocess[name+'_mean_var'] = tf.get_variable(name+'_mean_var', shape=[1, dim],
                                                                  trainable=False, dtype=tf.float32,
@@ -142,11 +146,18 @@ class Policy(TfPolicy, Serializable):
                 d_preprocess[name+'_mean_assign'] = tf.assign(d_preprocess[name+'_mean_var'],
                                                               d_preprocess[name+'_mean_ph'])
 
-                d_preprocess[name+'_orth_ph'] = tf.placeholder(tf.float32, shape=(dim, dim), name=name+'_orth_ph')
-                d_preprocess[name+'_orth_var'] = tf.get_variable(name+'_orth_var',
-                                                                 shape=(dim, dim),
-                                                                 trainable=False, dtype=tf.float32,
-                                                                 initializer=tf.constant_initializer(np.eye(dim)))
+                if diag_orth:
+                    d_preprocess[name + '_orth_ph'] = tf.placeholder(tf.float32, shape=(dim,), name=name + '_orth_ph')
+                    d_preprocess[name + '_orth_var'] = tf.get_variable(name + '_orth_var',
+                                                                       shape=(dim,),
+                                                                       trainable=False, dtype=tf.float32,
+                                                                       initializer=tf.constant_initializer(np.ones(dim)))
+                else:
+                    d_preprocess[name + '_orth_ph'] = tf.placeholder(tf.float32, shape=(dim, dim), name=name + '_orth_ph')
+                    d_preprocess[name + '_orth_var'] = tf.get_variable(name + '_orth_var',
+                                                                       shape=(dim, dim),
+                                                                       trainable=False, dtype=tf.float32,
+                                                                       initializer=tf.constant_initializer(np.eye(dim)))
                 d_preprocess[name+'_orth_assign'] = tf.assign(d_preprocess[name+'_orth_var'],
                                                               d_preprocess[name+'_orth_ph'])
 
@@ -156,8 +167,13 @@ class Policy(TfPolicy, Serializable):
         ### whiten inputs
         if tf_obs_ph.dtype != tf.float32:
             tf_obs_ph = tf.cast(tf_obs_ph, tf.float32)
-        tf_obs_whitened = tf.matmul(tf_obs_ph - d_preprocess['observations_mean_var'],
-                                    d_preprocess['observations_orth_var'])
+        if self._obs_is_im:
+            tf_obs_whitened = tf.mul(tf_obs_ph - d_preprocess['observations_mean_var'],
+                                     d_preprocess['observations_orth_var'])
+        else:
+            tf_obs_whitened = tf.matmul(tf_obs_ph - d_preprocess['observations_mean_var'],
+                                        d_preprocess['observations_orth_var'])
+
         if isinstance(self._env_spec.action_space, Discrete):
             tf_actions_whitened = tf_actions_ph
         else:
@@ -297,6 +313,7 @@ class Policy(TfPolicy, Serializable):
             preprocess_stats['actions_orth'], \
             preprocess_stats['rewards_mean'], \
             preprocess_stats['rewards_orth']
+        # we assume if obs is im, the obs orth is the diagonal of the covariance
         self._tf_sess.run([
             self._d_preprocess['observations_mean_assign'],
             # self._d_preprocess['observations_orth_assign'],

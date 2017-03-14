@@ -120,8 +120,11 @@ class RNNCritic(RLAlgorithm):
 
                 ### update preprocess
                 if step % self._update_preprocess_every_n_steps == 0:
+                    timeit.start('stats')
+                    stats = self._sampler.statistics
+                    timeit.stop('stats')
                     timeit.start('preprocess')
-                    self._policy.update_preprocess(self._sampler.statistics)
+                    self._policy.update_preprocess(stats)
                     timeit.stop('preprocess')
 
                 if step % self._log_every_n_steps == 0:

@@ -233,8 +233,8 @@ class AnalyzeRNNCritic(object):
             self._plot_analyze_PointEnv(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
         elif isinstance(env, GymEnv) and 'CartPole' in env.env_id:
             self._plot_analyze_CartPole(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
-        elif isinstance(env, GymEnv) and 'Catcher-ram' in env.env_id:
-            self._plot_analyze_CatcherRam(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
+        elif isinstance(env, GymEnv) and 'Catcher' in env.env_id:
+            self._plot_analyze_Catcher(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
         elif isinstance(env, GymEnv) and 'Swimmer' in env.env_id:
             self._plot_analyze_Swimmer(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
         else:
@@ -563,7 +563,7 @@ class AnalyzeRNNCritic(object):
         f.savefig(self._analyze_img_file, bbox_inches='tight')
         plt.close(f)
 
-    def _plot_analyze_CatcherRam(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
+    def _plot_analyze_Catcher(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
         f, axes = plt.subplots(3, 1, figsize=(20., 7.5), sharex=True)
         f.tight_layout()
 

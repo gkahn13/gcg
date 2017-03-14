@@ -37,7 +37,7 @@ class RNNCriticReplayPool(object):
         self._stats = defaultdict(int)
         if self.obs_is_im:
             self._obs_mean = (0.5 * 255) * np.ones((1, obs_dim))
-            self._obs_orth = np.eye(obs_dim) / 255.
+            self._obs_orth = np.ones(obs_dim) / 255.
 
         ### logging
         self._last_done_index = 0
