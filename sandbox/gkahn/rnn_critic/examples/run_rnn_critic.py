@@ -61,15 +61,9 @@ def run_task(params):
     ###################################
 
     es_params = params['alg'].pop('exploration_strategy')
-    es_type = es_params['type']
-    if es_type == 'gaussian':
-        ESClass = GaussianStrategy
-    elif es_type == 'epsilon_greedy':
-        ESClass = EpsilonGreedyStrategy
-    else:
-        raise Exception('Exploration strategy {0} not valid'.format(es_type))
-
-    exploration_strategy = ESClass(env_spec=env.spec, **es_params[es_type])
+    es_class = es_params['class']
+    ESClass = eval(es_class)
+    exploration_strategy = ESClass(env_spec=env.spec, **es_params[es_class])
 
     ########################
     ### Create algorithm ###

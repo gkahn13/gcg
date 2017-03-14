@@ -14,6 +14,7 @@ from rllab.misc import ext
 
 from sandbox.rocky.tf.spaces.discrete import Discrete
 from sandbox.gkahn.tf.policies.base import Policy as TfPolicy
+from sandbox.gkahn.rnn_critic.utils import schedules
 
 class Policy(TfPolicy, Serializable):
     __metaclass__ = abc.ABCMeta
@@ -25,7 +26,7 @@ class Policy(TfPolicy, Serializable):
                  cost_type,
                  gamma,
                  weight_decay,
-                 learning_rate,
+                 lr_schedule,
                  grad_clip_norm,
                  get_action_params,
                  gpu_device=None,
@@ -37,7 +38,7 @@ class Policy(TfPolicy, Serializable):
         :param cost_type: combined or separated
         :param gamma: reward decay
         :param weight_decay
-        :param learning_rate
+        :param lr_schedule: arguments for PiecewiseSchedule
         :param grad_clip_norm
         :param reset_every_train: reset parameters every time train is called?
         :param train_steps: how many calls to optimizer each time train is called
@@ -53,7 +54,7 @@ class Policy(TfPolicy, Serializable):
         self._cost_type = cost_type
         self._gamma = gamma
         self._weight_decay = weight_decay
-        self._learning_rate = learning_rate
+        self._lr_schedule = schedules.PiecewiseSchedule(**lr_schedule)
         self._grad_clip_norm = grad_clip_norm
         self._get_action_params = get_action_params
         self._gpu_device = gpu_device
@@ -62,7 +63,7 @@ class Policy(TfPolicy, Serializable):
 
         self._tf_debug = dict()
         self._tf_graph, self._tf_sess, self._d_preprocess, \
-            self._tf_obs_ph, self._tf_actions_ph, self._tf_rewards_ph, self._tf_values, self._tf_cost, self._tf_opt, \
+            self._tf_obs_ph, self._tf_actions_ph, self._tf_rewards_ph, self._tf_values, self._tf_cost, self._tf_opt, self._tf_lr_ph, \
             self._tf_obs_target_ph, self._tf_actions_target_ph, self._tf_target_mask_ph, self._update_target_fn = \
             self._graph_setup()
 
@@ -239,12 +240,13 @@ class Policy(TfPolicy, Serializable):
         return cost, mse
 
     def _graph_optimize(self, tf_cost, policy_vars):
-        optimizer = tf.train.AdamOptimizer(learning_rate=self._learning_rate)
+        tf_lr_ph = tf.placeholder(tf.float32, (), name="learning_rate")
+        optimizer = tf.train.AdamOptimizer(learning_rate=tf_lr_ph)
         gradients = optimizer.compute_gradients(tf_cost, var_list=policy_vars)
         for i, (grad, var) in enumerate(gradients):
             if grad is not None:
                 gradients[i] = (tf.clip_by_norm(grad, self._grad_clip_norm), var)
-        return optimizer.apply_gradients(gradients)
+        return optimizer.apply_gradients(gradients), tf_lr_ph
 
     def _graph_init_vars(self, tf_sess):
         tf_sess.run([tf.global_variables_initializer()])
@@ -290,7 +292,7 @@ class Policy(TfPolicy, Serializable):
             ### optimization
             tf_cost, tf_mse = self._graph_cost(tf_rewards_ph, tf_actions_ph, tf_rewards,
                                                tf_target_rewards, tf_target_mask_ph)
-            tf_opt = self._graph_optimize(tf_cost, policy_vars)
+            tf_opt, tf_lr_ph = self._graph_optimize(tf_cost, policy_vars)
 
             self._graph_init_vars(tf_sess)
 
@@ -298,7 +300,7 @@ class Policy(TfPolicy, Serializable):
             # writer = tf.train.SummaryWriter('/tmp', graph_def=tf_sess.graph_def)
 
         return tf_graph, tf_sess, d_preprocess, \
-               tf_obs_ph, tf_actions_ph, tf_rewards_ph, tf_values, tf_cost, tf_opt, \
+               tf_obs_ph, tf_actions_ph, tf_rewards_ph, tf_values, tf_cost, tf_opt, tf_lr_ph, \
                tf_obs_target_ph, tf_actions_target_ph, tf_target_mask_ph, update_target_fn
 
     ################
@@ -336,7 +338,7 @@ class Policy(TfPolicy, Serializable):
     def update_target(self):
         self._tf_sess.run(self._update_target_fn)
 
-    def train_step(self, observations, actions, rewards, dones, use_target):
+    def train_step(self, step, observations, actions, rewards, dones, use_target):
         batch_size = len(observations)
         action_dim = self._env_spec.action_space.flat_dim
 
@@ -354,6 +356,8 @@ class Policy(TfPolicy, Serializable):
         target_actions = np.tile(target_actions, (len(observations), 1))
 
         feed_dict = {
+            ### parameters
+            self._tf_lr_ph: self._lr_schedule.value(step),
             ### policy
             self._tf_obs_ph: policy_observations,
             self._tf_actions_ph: policy_actions,

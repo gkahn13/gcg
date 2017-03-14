@@ -18,7 +18,7 @@ class RNNCriticReplayPool(object):
         """
         self._env_spec = env_spec
         self._N = N
-        self._size = size
+        self._size = int(size)
         self._save_rollouts = save_rollouts
 
         ### buffer

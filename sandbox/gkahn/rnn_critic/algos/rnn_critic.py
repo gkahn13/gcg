@@ -50,15 +50,15 @@ class RNNCritic(RLAlgorithm):
 
         self._env = env
         self._policy = policy
-        self._max_path_length = max_path_length
-        self._total_steps = total_steps
-        self._learn_after_n_steps = learn_after_n_steps
-        self._train_every_n_steps = train_every_n_steps
-        self._save_every_n_steps = save_every_n_steps
-        self._update_target_after_n_steps = update_target_after_n_steps
-        self._update_target_every_n_steps = update_target_every_n_steps
-        self._update_preprocess_every_n_steps = update_preprocess_every_n_steps
-        self._log_every_n_steps = log_every_n_steps
+        self._max_path_length = int(max_path_length)
+        self._total_steps = int(total_steps)
+        self._learn_after_n_steps = int(learn_after_n_steps)
+        self._train_every_n_steps = int(train_every_n_steps)
+        self._save_every_n_steps = int(save_every_n_steps)
+        self._update_target_after_n_steps = int(update_target_after_n_steps)
+        self._update_target_every_n_steps = int(update_target_every_n_steps)
+        self._update_preprocess_every_n_steps = int(update_preprocess_every_n_steps)
+        self._log_every_n_steps = int(log_every_n_steps)
         self._batch_size = batch_size
         self._save_rollouts = save_rollouts
 
@@ -102,12 +102,14 @@ class RNNCritic(RLAlgorithm):
                         batch = self._sampler.sample(self._batch_size)
                         timeit.stop('batch')
                         timeit.start('train')
-                        self._policy.train_step(*batch,
+                        self._policy.train_step(step,
+                                                *batch,
                                                 use_target=target_updated)
                         timeit.stop('train')
                 else:
                     for _ in range(int(1. / self._train_every_n_steps)):
-                        self._policy.train_step(*self._sampler.sample(self._batch_size),
+                        self._policy.train_step(step,
+                                                *self._sampler.sample(self._batch_size),
                                                 use_target=target_updated)
 
                 ### update target network
