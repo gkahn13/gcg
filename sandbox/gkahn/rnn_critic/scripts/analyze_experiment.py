@@ -197,8 +197,13 @@ class AnalyzeRNNCritic(object):
                 env = env_itrs[itr // self._skip_itr]
                 policy = self._load_itr_policy(itr)
 
+                print('Evaluating policy for itr {0}'.format(itr))
                 if isinstance(inner_env(env), GymEnv):
-                    rollouts = [rollout_policy(env, policy, max_path_length=env.horizon) for _ in range(50)]
+                    if 'Swimmer' in inner_env(env).env_id or 'Catcher' in inner_env(env).env_id:
+                        num_rollouts = 5
+                    else:
+                        num_rollouts = 50
+                    rollouts = [rollout_policy(env, policy, max_path_length=env.horizon) for _ in range(num_rollouts)]
                 else:
                     sampler = RNNCriticVectorizedRolloutSampler(
                         env=env,
@@ -230,6 +235,8 @@ class AnalyzeRNNCritic(object):
             self._plot_analyze_CartPole(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
         elif isinstance(env, GymEnv) and 'Catcher-ram' in env.env_id:
             self._plot_analyze_CatcherRam(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
+        elif isinstance(env, GymEnv) and 'Swimmer' in env.env_id:
+            self._plot_analyze_Swimmer(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
         else:
             self._plot_analyze_general(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
 
@@ -574,8 +581,6 @@ class AnalyzeRNNCritic(object):
         steps = [r['steps'][-1] for r in rollouts]
         steps, rollout_lens = zip(*sorted(zip(steps, rollout_lens), key=lambda x: x[0]))
         ax.plot(steps, rollout_lens, color='k', marker='|', linestyle='', markersize=10.)
-        ax.vlines(self.params['alg']['learn_after_n_steps'], 0, ax.get_ylim()[1], colors='g', linestyles='dashed')
-        ax.set_ylabel('Rollout length')
 
         ### plot training rollout length vs step smoothed
         ax = axes[2]
@@ -589,14 +594,59 @@ class AnalyzeRNNCritic(object):
         ax.plot(moving_steps, rollout_lens_mean, 'k-')
         ax.fill_between(moving_steps, rollout_lens_mean - rollout_lens_std, rollout_lens_mean + rollout_lens_std,
                         color='k', alpha=0.4)
-        ax.vlines(self.params['alg']['learn_after_n_steps'], 0, ax.get_ylim()[1], colors='g', linestyles='dashed')
-        ax.set_ylabel('Rollout length')
+
+        for ax in axes.ravel()[1:]:
+            ax.set_ylim((-100, 10500))
+            ax.vlines(self.params['alg']['learn_after_n_steps'], 0, ax.get_ylim()[1], colors='g', linestyles='dashed')
+            ax.hlines(10000, steps[0], steps[-1], color='k', alpha=0.5, linestyle='dashed')
+            ax.set_ylabel('Rollout length')
 
         ### for all plots
         ax.set_xlabel('Steps')
         xfmt = ticker.ScalarFormatter()
         xfmt.set_powerlimits((0, 0))
         ax.xaxis.set_major_formatter(xfmt)
+
+        f.savefig(self._analyze_img_file, bbox_inches='tight')
+        plt.close(f)
+
+    def _plot_analyze_Swimmer(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
+        f, axes = plt.subplots(2, 1, figsize=(5 * len(train_rollouts_itrs), 10), sharex=True)
+        f.tight_layout()
+
+        ### plot training cost
+        ax = axes[0]
+        costs = self.progress['Cost'][1:]
+        steps = self.progress['Step'][1:]
+        ax.plot(steps, costs, 'k-')
+        ax.set_ylabel('Cost')
+
+        ### plot cum reward
+        ax = axes[1]
+        idxs = np.nonzero(np.isfinite(self.progress['CumRewardMean']))[0]
+        cum_reward_means = self.progress['CumRewardMean'][idxs]
+        cum_reward_stds = self.progress['CumRewardStd'][idxs]
+        steps = np.array(self.progress['Step'][idxs])
+        ax.plot(steps, cum_reward_means, 'k-')
+        ax.fill_between(steps, cum_reward_means - cum_reward_stds, cum_reward_means + cum_reward_stds,
+                        color='k', alpha=0.4)
+        ax.set_ylabel('Cumulative reward')
+
+        start_step = self.params['alg']['learn_after_n_steps']
+        end_step = steps[-1] # self.params['alg']['total_steps']
+        save_step = self.params['alg']['save_every_n_steps']
+        first_save_step = save_step * np.floor(start_step / float(save_step))
+        itr_steps = np.r_[first_save_step:end_step:save_step]
+
+        ax.set_xlabel('Steps')
+        xfmt = ticker.ScalarFormatter()
+        xfmt.set_powerlimits((0, 0))
+        ax.xaxis.set_major_formatter(xfmt)
+
+        ### for all
+        for ax in axes:
+            ax.set_xlim((-save_step/2., end_step))
+            ax.set_xticks(itr_steps)
 
         f.savefig(self._analyze_img_file, bbox_inches='tight')
         plt.close(f)
