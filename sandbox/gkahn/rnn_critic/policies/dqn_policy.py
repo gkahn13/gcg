@@ -38,7 +38,7 @@ class DQNPolicy(Policy, Serializable):
 
         assert(self._H == 1)
         assert(self._cost_type == 'combined')
-        assert (self._concat_or_bilinear == 'concat' or self._concat_or_bilinear == 'bilinear')
+        assert(self._concat_or_bilinear == 'concat' or self._concat_or_bilinear == 'bilinear')
 
     ##################
     ### Properties ###

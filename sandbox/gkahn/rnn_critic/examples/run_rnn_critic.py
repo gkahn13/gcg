@@ -18,6 +18,7 @@ from sandbox.gkahn.rnn_critic.exploration_strategies.epsilon_greedy_strategy imp
 ### RNN critic
 from sandbox.gkahn.rnn_critic.algos.rnn_critic import RNNCritic
 from sandbox.gkahn.rnn_critic.policies.dqn_policy import DQNPolicy
+from sandbox.gkahn.rnn_critic.policies.discrete_dqn_policy import DiscreteDQNPolicy
 from sandbox.gkahn.rnn_critic.policies.nstep_dqn_policy import NstepDQNPolicy
 from sandbox.gkahn.rnn_critic.policies.multiaction_combinedcost_mlp_policy import MultiactionCombinedcostMLPPolicy
 from sandbox.gkahn.rnn_critic.policies.multiaction_combinedcost_rnn_policy import MultiactionCombinedcostRNNPolicy

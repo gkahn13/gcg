@@ -237,6 +237,8 @@ class AnalyzeRNNCritic(object):
             self._plot_analyze_Catcher(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
         elif isinstance(env, GymEnv) and 'Swimmer' in env.env_id:
             self._plot_analyze_Swimmer(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
+        elif isinstance(env, GymEnv) and 'Pong' in env.env_id:
+            self._plot_analyze_Pong(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
         else:
             self._plot_analyze_general(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
 
@@ -611,6 +613,47 @@ class AnalyzeRNNCritic(object):
         plt.close(f)
 
     def _plot_analyze_Swimmer(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
+        f, axes = plt.subplots(2, 1, figsize=(5 * len(train_rollouts_itrs), 10), sharex=True)
+        f.tight_layout()
+
+        ### plot training cost
+        ax = axes[0]
+        costs = self.progress['Cost'][1:]
+        steps = self.progress['Step'][1:]
+        ax.plot(steps, costs, 'k-')
+        ax.set_ylabel('Cost')
+
+        ### plot cum reward
+        ax = axes[1]
+        idxs = np.nonzero(np.isfinite(self.progress['CumRewardMean']))[0]
+        cum_reward_means = self.progress['CumRewardMean'][idxs]
+        cum_reward_stds = self.progress['CumRewardStd'][idxs]
+        steps = np.array(self.progress['Step'][idxs])
+        ax.plot(steps, cum_reward_means, 'k-')
+        ax.fill_between(steps, cum_reward_means - cum_reward_stds, cum_reward_means + cum_reward_stds,
+                        color='k', alpha=0.4)
+        ax.set_ylabel('Cumulative reward')
+
+        start_step = self.params['alg']['learn_after_n_steps']
+        end_step = steps[-1] # self.params['alg']['total_steps']
+        save_step = self.params['alg']['save_every_n_steps']
+        first_save_step = save_step * np.floor(start_step / float(save_step))
+        itr_steps = np.r_[first_save_step:end_step:save_step]
+
+        ax.set_xlabel('Steps')
+        xfmt = ticker.ScalarFormatter()
+        xfmt.set_powerlimits((0, 0))
+        ax.xaxis.set_major_formatter(xfmt)
+
+        ### for all
+        for ax in axes:
+            ax.set_xlim((-save_step/2., end_step))
+            ax.set_xticks(itr_steps)
+
+        f.savefig(self._analyze_img_file, bbox_inches='tight')
+        plt.close(f)
+
+    def _plot_analyze_Pong(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
         f, axes = plt.subplots(2, 1, figsize=(5 * len(train_rollouts_itrs), 10), sharex=True)
         f.tight_layout()
 
