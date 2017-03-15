@@ -9,16 +9,18 @@ from sandbox.gkahn.rnn_critic.utils.utils import timeit
 
 class RNNCriticReplayPool(object):
 
-    def __init__(self, env_spec, N, size, save_rollouts=False):
+    def __init__(self, env_spec, N, size, obs_history_len, save_rollouts=False):
         """
         :param env_spec: for observation/action dimensions
         :param N: horizon length
         :param size: size of pool
+        :param obs_history_len: how many previous obs to include when sampling? (= 1 is only current observation)
         :param save_rollouts: for debugging
         """
         self._env_spec = env_spec
         self._N = N
         self._size = int(size)
+        self._obs_history_len = obs_history_len
         self._save_rollouts = save_rollouts
 
         ### buffer
@@ -29,7 +31,7 @@ class RNNCriticReplayPool(object):
         self._observations = np.empty((self._size, obs_dim), dtype=np.uint8 if self.obs_is_im else np.float64)
         self._actions = np.nan * np.ones((self._size, action_dim), dtype=np.float32)
         self._rewards = np.nan * np.ones((self._size,), dtype=np.float32)
-        self._dones = np.empty((self._size,), dtype=bool)
+        self._dones = np.ones((self._size,), dtype=bool) # initialize as all done
         self._index = 0
         self._curr_size = 0
 
@@ -109,11 +111,32 @@ class RNNCriticReplayPool(object):
     ### Add to pool ###
     ###################
 
-    def add(self, step, observation, action, reward, done):
-        assert(observation.dtype == self._observations.dtype)
+    def store_observation(self, step, observation):
+        assert (observation.dtype == self._observations.dtype)
 
         self._steps[self._index] = step
         self._observations[self._index, :] = self._env_spec.observation_space.flatten(observation)
+
+    def _encode_observation(self, index):
+        """ Encodes observation starting at index by concatenating obs_history_len previous """
+        indices = self._get_indices(index - self._obs_history_len + 1, index + 1)  # plus 1 b/c inclusive
+        observations = self._observations[indices]
+        dones = self._dones[indices]
+
+        encountered_done = False
+        for i in range(len(dones) - 2, -1, -1):  # skip the most current frame since don't know if it's done
+            encountered_done = encountered_done or dones[i]
+            if encountered_done:
+                observations[i, ...] = 0.
+
+        return observations.ravel()
+
+    def encode_recent_observation(self):
+        return self._encode_observation(self._index)
+
+
+    def store_effect(self, action, reward, done):
+        observation = self._observations[self._index]
         self._actions[self._index, :] = self._env_spec.action_space.flatten(action)
         self._rewards[self._index] = reward
         self._dones[self._index] = done
@@ -123,12 +146,26 @@ class RNNCriticReplayPool(object):
         ### update log stats
         self._update_log_stats(observation, action, reward, done)
 
+    # def add(self, step, observation, action, reward, done):
+    #     assert(observation.dtype == self._observations.dtype)
+    #
+    #     self._steps[self._index] = step
+    #     self._observations[self._index, :] = self._env_spec.observation_space.flatten(observation)
+    #     self._actions[self._index, :] = self._env_spec.action_space.flatten(action)
+    #     self._rewards[self._index] = reward
+    #     self._dones[self._index] = done
+    #     self._index = (self._index + 1) % self._size
+    #     self._curr_size = max(self._curr_size, self._index)
+    #
+    #     ### update log stats
+    #     self._update_log_stats(observation, action, reward, done)
+
     ########################
     ### Sample from pool ###
     ########################
 
     def can_sample(self):
-        return len(self) > self._N
+        return len(self) > self._obs_history_len and len(self) > self._N
 
     def sample(self, batch_size):
         """
@@ -140,7 +177,8 @@ class RNNCriticReplayPool(object):
         observations, actions, rewards, dones = [], [], [], []
 
         start_indices = []
-        false_indices = self._get_indices(self._index, self._index + self._N)
+        false_indices = self._get_indices(self._index - self._obs_history_len, self._index) + \
+                        self._get_indices(self._index, self._index + self._N)
         while len(start_indices) < batch_size:
             start_index = np.random.randint(low=0, high=len(self)-self._N)
             if start_index not in false_indices:
@@ -148,7 +186,7 @@ class RNNCriticReplayPool(object):
 
         for start_index in start_indices:
             indices = self._get_indices(start_index, (start_index + self._N + 1) % self._curr_size)
-            observations_i = self._observations[indices]
+            observations_i = np.vstack([self._encode_observation(index) for index in indices])
             actions_i = self._actions[indices]
             rewards_i = self._rewards[indices]
             dones_i = self._dones[indices]

@@ -14,7 +14,7 @@ from rllab.misc import ext
 
 from sandbox.rocky.tf.spaces.discrete import Discrete
 from sandbox.gkahn.tf.policies.base import Policy as TfPolicy
-from sandbox.gkahn.rnn_critic.utils import schedules
+from sandbox.gkahn.rnn_critic.utils import schedules, tf_utils
 
 class Policy(TfPolicy, Serializable):
     __metaclass__ = abc.ABCMeta
@@ -25,6 +25,7 @@ class Policy(TfPolicy, Serializable):
                  H,
                  cost_type,
                  gamma,
+                 obs_history_len,
                  weight_decay,
                  lr_schedule,
                  grad_clip_norm,
@@ -37,6 +38,7 @@ class Policy(TfPolicy, Serializable):
         :param H: action planning horizon
         :param cost_type: combined or separated
         :param gamma: reward decay
+        :param obs_history_len: how many previous obs to include when sampling? (=1 is only current observation)
         :param weight_decay
         :param lr_schedule: arguments for PiecewiseSchedule
         :param grad_clip_norm
@@ -47,12 +49,14 @@ class Policy(TfPolicy, Serializable):
         """
         Serializable.quick_init(self, locals())
         assert(cost_type == 'combined' or cost_type == 'separated')
+        assert(type(obs_history_len) is int and obs_history_len >= 1)
 
         self._env_spec = env_spec
         self._N = N
         self._H = H
         self._cost_type = cost_type
         self._gamma = gamma
+        self._obs_history_len = obs_history_len
         self._weight_decay = weight_decay
         self._lr_schedule = schedules.PiecewiseSchedule(**lr_schedule)
         self._grad_clip_norm = grad_clip_norm
@@ -99,6 +103,10 @@ class Policy(TfPolicy, Serializable):
     def _obs_is_im(self):
         return len(self._env_spec.observation_space.shape) > 1
 
+    @property
+    def obs_history_len(self):
+        return self._obs_history_len
+
     ###########################
     ### TF graph operations ###
     ###########################
@@ -127,7 +135,7 @@ class Policy(TfPolicy, Serializable):
         with tf.variable_scope('feed_input'):
             obs_shape = self._env_spec.observation_space.shape
             tf_obs_ph = tf.placeholder(tf.uint8 if len(obs_shape) > 1 else tf.float32,
-                                       [None, self._env_spec.observation_space.flat_dim], name='tf_obs_ph')
+                                       [None, self._env_spec.observation_space.flat_dim * self._obs_history_len], name='tf_obs_ph')
             tf_actions_ph = tf.placeholder(tf.float32, [None, self._env_spec.action_space.flat_dim * self._H], name='tf_actions_ph')
             tf_rewards_ph = tf.placeholder(tf.float32, [None, self._N], name='tf_rewards_ph')
 
@@ -169,11 +177,13 @@ class Policy(TfPolicy, Serializable):
         if tf_obs_ph.dtype != tf.float32:
             tf_obs_ph = tf.cast(tf_obs_ph, tf.float32)
         if self._obs_is_im:
-            tf_obs_whitened = tf.mul(tf_obs_ph - d_preprocess['observations_mean_var'],
-                                     d_preprocess['observations_orth_var'])
+            tf_obs_whitened = tf.mul(tf_obs_ph -
+                                     tf.tile(d_preprocess['observations_mean_var'], (1, self._obs_history_len)),
+                                     tf.tile(d_preprocess['observations_orth_var'], (self._obs_history_len,)))
         else:
-            tf_obs_whitened = tf.matmul(tf_obs_ph - d_preprocess['observations_mean_var'],
-                                        d_preprocess['observations_orth_var'])
+            tf_obs_whitened = tf.matmul(tf_obs_ph -
+                                        tf.tile(d_preprocess['observations_mean_var'], (1, self._obs_history_len)),
+                                        tf_utils.block_diagonal([d_preprocess['observations_orth_var']] * self._obs_history_len))
 
         if isinstance(self._env_spec.action_space, Discrete):
             tf_actions_whitened = tf_actions_ph
@@ -241,7 +251,7 @@ class Policy(TfPolicy, Serializable):
 
     def _graph_optimize(self, tf_cost, policy_vars):
         tf_lr_ph = tf.placeholder(tf.float32, (), name="learning_rate")
-        optimizer = tf.train.AdamOptimizer(learning_rate=tf_lr_ph)
+        optimizer = tf.train.AdamOptimizer(learning_rate=tf_lr_ph, epsilon=1e-4)
         gradients = optimizer.compute_gradients(tf_cost, var_list=policy_vars)
         for i, (grad, var) in enumerate(gradients):
             if grad is not None:

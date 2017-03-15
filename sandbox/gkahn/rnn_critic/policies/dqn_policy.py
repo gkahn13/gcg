@@ -54,13 +54,14 @@ class DQNPolicy(Policy, Serializable):
 
     @overrides
     def _graph_inference(self, tf_obs_ph, tf_actions_ph, d_preprocess):
-        obs_shape = self._env_spec.observation_space.shape
         output_dim = self.N_output
 
         with tf.name_scope('inference'):
             if self._use_conv:
                 tf_obs, tf_actions = self._graph_preprocess_inputs(tf_obs_ph, tf_actions_ph, d_preprocess)
 
+                obs_shape = list(self._env_spec.observation_space.shape)
+                obs_shape[-1] = self._obs_history_len
                 layer = tf.reshape(tf_obs, [-1] + list(obs_shape))
                 for num_outputs, kernel_size, stride in zip(self._conv_hidden_layers,
                                                             self._conv_kernels,

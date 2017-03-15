@@ -9,6 +9,7 @@ from sandbox.rocky.tf.envs.vec_env_executor import VecEnvExecutor
 
 from sandbox.gkahn.rnn_critic.sampler.replay_pool import RNNCriticReplayPool
 from sandbox.gkahn.rnn_critic.utils import utils
+from sandbox.gkahn.rnn_critic.envs.single_env_executor import SingleEnvExecutor
 
 from sandbox.gkahn.rnn_critic.utils.utils import timeit
 
@@ -20,6 +21,7 @@ class RNNCriticSampler(object):
         self._replay_pools = [RNNCriticReplayPool(env.spec,
                                                   policy.N,
                                                   replay_pool_size // n_envs,
+                                                  obs_history_len=policy.obs_history_len,
                                                   save_rollouts=save_rollouts)
                               for _ in range(n_envs)]
         if self._n_envs > 1:
@@ -29,14 +31,16 @@ class RNNCriticSampler(object):
             if seed is not None and isinstance(utils.inner_env(env), GymEnv):
                 for i, env in enumerate(envs):
                     utils.inner_env(env).env.seed(seed + i)
-            self._vec_env = VecEnvExecutor(
-                envs=envs,
-                max_path_length=max_path_length
-            )
+                self._vec_env = VecEnvExecutor(
+                    envs=envs,
+                    max_path_length=max_path_length
+                )
             self._curr_observations = self._vec_env.reset()
         else:
             self._vec_env = env
             self._curr_observations = [self._vec_env.reset()]
+            self._max_path_length = max_path_length
+            self._curr_path_length = 0
 
     @property
     def n_envs(self):
@@ -56,25 +60,30 @@ class RNNCriticSampler(object):
 
     def step(self, step):
         """ Takes one step in each simulator and adds to respective replay pools """
-        timeit.start('sampler:get_actions')
-        actions, _ = self._policy.get_actions(self._curr_observations)
+        ### store last observations and get encoded
+        encoded_observations = []
+        for i, (replay_pool, observation) in enumerate(zip(self._replay_pools, self._curr_observations)):
+            replay_pool.store_observation(step + i, observation)
+            encoded_observations.append(replay_pool.encode_recent_observation())
+
+        ### get actions and take step
+        actions, _ = self._policy.get_actions(encoded_observations)
         if self._n_envs == 1:
             actions = actions[0]
-        timeit.stop('sampler:get_actions')
-        timeit.start('sampler:step')
         next_observations, rewards, dones, _ = self._vec_env.step(actions)
         if self._n_envs == 1:
+            self._curr_path_length += 1
+            if dones or self._curr_path_length > self._max_path_length:
+                next_observations = self._vec_env.reset()
+                self._curr_path_length = 0
             actions = [actions]
             next_observations = [next_observations]
             rewards = [rewards]
             dones = [dones]
-        timeit.stop('sampler:step')
-        for i, replay_pool in enumerate(self._replay_pools):
-            replay_pool.add(step + i,
-                            self._curr_observations[i],
-                            actions[i],
-                            rewards[i],
-                            dones[i])
+
+        ### add to replay pool
+        for replay_pool, action, reward, done in zip(self._replay_pools, actions, rewards, dones):
+            replay_pool.store_effect(action, reward, done)
         self._curr_observations = next_observations
 
     #########################
