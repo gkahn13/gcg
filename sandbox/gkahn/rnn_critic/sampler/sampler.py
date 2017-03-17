@@ -58,7 +58,7 @@ class RNNCriticSampler(object):
     ### Add to pools ###
     ####################
 
-    def step(self, step):
+    def step(self, step, take_random_actions=False):
         """ Takes one step in each simulator and adds to respective replay pools """
         ### store last observations and get encoded
         encoded_observations = []
@@ -67,7 +67,10 @@ class RNNCriticSampler(object):
             encoded_observations.append(replay_pool.encode_recent_observation())
 
         ### get actions and take step
-        actions, _ = self._policy.get_actions(encoded_observations)
+        if take_random_actions:
+            actions = [self._vec_env.action_space.sample() for _ in range(self._n_envs)]
+        else:
+            actions, _ = self._policy.get_actions(encoded_observations)
         if self._n_envs == 1:
             actions = actions[0]
         next_observations, rewards, dones, _ = self._vec_env.step(actions)

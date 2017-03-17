@@ -47,14 +47,12 @@ class MultiactionCombinedcostMLPPolicy(Policy, Serializable):
         output_dim = self.N_output
 
         with tf.name_scope('inference'):
+            tf_obs, tf_actions = self._graph_preprocess_inputs(tf_obs_ph, tf_actions_ph, d_preprocess)
+
             if self._concat_or_bilinear == 'concat':
-                tf_obs, tf_actions = self._graph_preprocess_inputs(tf_obs_ph, tf_actions_ph, d_preprocess)
                 layer = tf.concat(1, [tf_obs, tf_actions])
             elif self._concat_or_bilinear == 'bilinear':
-                with tf.device('/cpu:0'): # 6x speed up
-                    tf_obs, tf_actions = self._graph_preprocess_inputs(tf_obs_ph, tf_actions_ph, d_preprocess)
-                    layer = tf_utils.batch_outer_product(tf_obs, tf_actions)
-                    layer = tf.reshape(layer, (-1, (tf_obs.get_shape()[1] * tf_actions.get_shape()[1]).value))
+                layer = tf.concat(1, (tf_utils.batch_outer_product_2d(tf_obs, tf_actions), tf_obs, tf_actions))
             else:
                 raise Exception
 

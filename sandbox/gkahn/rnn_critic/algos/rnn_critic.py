@@ -99,7 +99,7 @@ class RNNCritic(RLAlgorithm):
         timeit.start('total')
         for step in range(0, self._total_steps, self._sampler.n_envs):
             timeit.start('sample')
-            self._sampler.step(step)
+            self._sampler.step(step, take_random_actions=(step <= self._learn_after_n_steps))
             timeit.stop('sample')
 
             if step > self._learn_after_n_steps:
