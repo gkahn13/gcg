@@ -165,6 +165,23 @@ class DiscreteDQNPolicy(Policy, Serializable):
     ### Training ###
     ################
 
+    @overrides
+    def update_preprocess(self, preprocess_stats):
+        """ Only observations """
+        obs_mean, obs_orth = \
+            preprocess_stats['observations_mean'], \
+            preprocess_stats['observations_orth'], \
+            # we assume if obs is im, the obs orth is the diagonal of the covariance
+        self._tf_sess.run([
+            self._d_preprocess['observations_mean_assign'],
+            self._d_preprocess['observations_orth_assign'],
+        ],
+            feed_dict={
+                self._d_preprocess['observations_mean_ph']: obs_mean,
+                self._d_preprocess['observations_orth_ph']: obs_orth,
+            })
+
+    @overrides
     def train_step(self, step, observations, actions, rewards, dones, use_target):
         batch_size = len(observations)
         action_dim = self._env_spec.action_space.flat_dim
@@ -195,6 +212,7 @@ class DiscreteDQNPolicy(Policy, Serializable):
     ### Policy methods ###
     ######################
 
+    @overrides
     def get_actions(self, observations, return_action_info=False):
         action_dim = self._env_spec.action_space.flat_dim
         num_obs = len(observations)

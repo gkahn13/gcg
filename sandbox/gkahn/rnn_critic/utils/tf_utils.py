@@ -19,6 +19,24 @@ def minimize_and_clip(optimizer, objective, var_list, clip_val=10):
 ### Operations ###
 ##################
 
+def repeat_2d(x, reps, axis):
+    assert(axis == 0 or axis == 1)
+
+    if axis == 1:
+        x = tf.transpose(x)
+
+    static_shape = list(x.get_shape())
+    dyn_shape = tf.shape(x)
+    x_repeat = tf.reshape(tf.tile(x, [1, reps]), (dyn_shape[0] * reps, dyn_shape[1]))
+    if static_shape[0].value is not None:
+        static_shape[0] = tf.Dimension(static_shape[0].value *reps)
+    x_repeat.set_shape(static_shape)
+
+    if axis == 1:
+        x_repeat = tf.transpose(x_repeat)
+
+    return x_repeat
+
 def batch_outer_product(X, Y):
     """
     :param X: [N, U]
@@ -31,6 +49,19 @@ def batch_outer_product(X, Y):
     results = tf.batch_matmul(X_batch, Y_batch) # [N, U, V]
 
     return results
+
+def batch_outer_product_2d(X, Y):
+    """
+    :param X: [N, U]
+    :param Y: [N, V]
+    :return [N, U * V]
+    """
+    U = X.get_shape()[1].value
+    V = Y.get_shape()[1].value
+    assert(U is not None)
+    assert(V is not None)
+
+    return tf.mul(tf.tile(X, (1, V)), repeat_2d(Y, U, 1))
 
 def block_diagonal(matrices, dtype=tf.float32):
     """Constructs block-diagonal matrices from a list of batched 2D tensors.
@@ -66,10 +97,39 @@ def block_diagonal(matrices, dtype=tf.float32):
         row_after_length = ret_columns - current_column
         row_blocks.append(tf.pad(
             tensor=matrix,
-            paddings=tf.concat(
+            paddings=tf.concat(0,
                 [tf.zeros([tf.rank(matrix) - 1, 2], dtype=tf.int32),
-                 [(row_before_length, row_after_length)]],
-                axis=0)))
-    blocked = tf.concat(row_blocks, -2)
+                 [(row_before_length, row_after_length)]])))
+    blocked = tf.concat(-2, row_blocks)
     blocked.set_shape(batch_shape.concatenate((blocked_rows, blocked_cols)))
     return blocked
+
+if __name__ == '__main__':
+    import numpy as np
+    np.random.seed(0)
+    tf.set_random_seed(0)
+
+    ### repeat_2d test
+    a = tf.constant(np.random.random((2, 4)))
+    a0 = repeat_2d(a, 2, 0)
+    a1 = repeat_2d(a, 2, 1)
+
+    sess = tf.Session()
+    a_eval, a0_eval, a1_eval = sess.run([a, a0, a1])
+    print('\nrepeat 2d test')
+    print('a:\n{0}'.format(a_eval))
+    print('a0\n{0}'.format(a0_eval))
+    print('a1\n{0}'.format(a1_eval))
+
+    ### test batch outer
+    a = tf.constant(np.random.random((3, 2)))
+    b = tf.constant(np.random.randint(0, 2, (3, 2)).astype(np.float64))
+    ab_outer = tf.reshape(batch_outer_product(b, a), (a.get_shape()[0].value, -1))
+    ab_outer_2d = batch_outer_product_2d(a, b)
+
+    a_eval, b_eval, ab_outer_eval, ab_outer_2d_eval = sess.run([a, b, ab_outer, ab_outer_2d])
+    print('\nbatch outer test')
+    print('a:\n{0}'.format(a_eval))
+    print('b:\n{0}'.format(b_eval))
+    print('ab_outer:\n{0}'.format(ab_outer_eval))
+    print('ab_outer_2d:\n{0}'.format(ab_outer_2d_eval))

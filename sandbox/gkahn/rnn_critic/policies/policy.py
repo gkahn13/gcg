@@ -194,22 +194,10 @@ class Policy(TfPolicy, Serializable):
         num_obs = tf.shape(tf_obs_whitened)[0]
         num_action = tf.shape(tf_actions_whitened)[0]
 
-        def tf_repeat_2d(x, reps):
-            """ Repeats x on axis=0 reps times """
-            x_shape = tf.shape(x)
-            x_repeat = tf.reshape(tf.tile(x, [1, reps]), (x_shape[0] * reps, x_shape[1]))
-            x_repeat.set_shape((None, x.get_shape()[1]))
-            return x_repeat
-
-        ### replicate observation for each action
-        def replicate_observation():
-            tf_obs_whitened_rep = tf_repeat_2d(tf_obs_whitened, num_action // num_obs)
-            # tf_obs_whitened_tiled = tf.tile(tf_obs_whitened, tf.pack([batch_size, 1]))
-            # tf_obs_whitened_tiled.set_shape([None, tf_obs_whitened.get_shape()[1]])
-            return tf_obs_whitened_rep
-
         # assumes num_action is a multiple of num_obs
-        tf_obs_whitened_cond = tf.cond(tf.not_equal(num_obs, num_action), replicate_observation, lambda: tf_obs_whitened)
+        tf_obs_whitened_cond = tf.cond(tf.not_equal(num_obs, num_action),
+                                       lambda: tf_utils.repeat_2d(tf_obs_whitened, num_action // num_obs, 0),
+                                       lambda: tf_obs_whitened)
 
         return tf_obs_whitened_cond, tf_actions_whitened
 

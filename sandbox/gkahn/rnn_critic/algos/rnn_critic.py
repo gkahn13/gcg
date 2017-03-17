@@ -1,3 +1,5 @@
+import pickle
+
 from rllab.algos.base import RLAlgorithm
 from rllab.misc.overrides import overrides
 import rllab.misc.logger as logger
@@ -74,11 +76,17 @@ class RNNCritic(RLAlgorithm):
         )
 
     def _save_params(self, itr):
+        env_is_pickleable = True
+        try:
+            pickle.dumps(self._env)
+        except:
+            env_is_pickleable=False
+
         with self._policy.session.as_default(), self._policy.session.graph.as_default():
             itr_params = dict(
                 itr=itr,
                 policy=self._policy,
-                env=self._env,
+                env=self._env if env_is_pickleable else None,
                 rollouts=self._sampler.get_recent_paths()
             )
             logger.save_itr_params(itr, itr_params)

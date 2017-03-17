@@ -11,7 +11,8 @@ from rllab.misc.ext import set_seed
 import gym
 from sandbox.rocky.tf.envs.base import TfEnv
 from rllab.envs.normalized_env import normalize
-from sandbox.gkahn.rnn_critic.utils.atari_wrappers import wrap_deepmind
+from sandbox.gkahn.rnn_critic.envs.atari_wrappers import wrap_deepmind
+from sandbox.gkahn.rnn_critic.envs.pygame_wrappers import wrap_pygame
 ### exploration strategies
 from rllab.exploration_strategies.gaussian_strategy import GaussianStrategy
 from sandbox.gkahn.rnn_critic.exploration_strategies.epsilon_greedy_strategy import EpsilonGreedyStrategy

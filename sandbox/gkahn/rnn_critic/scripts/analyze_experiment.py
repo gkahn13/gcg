@@ -25,6 +25,17 @@ from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
 from sandbox.gkahn.rnn_critic.policies.policy import Policy
 from sandbox.gkahn.rnn_critic.sampler.vectorized_rollout_sampler import RNNCriticVectorizedRolloutSampler
 
+### environments
+import gym
+from sandbox.gkahn.rnn_critic.envs.atari_wrappers import wrap_deepmind
+from sandbox.gkahn.rnn_critic.envs.pygame_wrappers import wrap_pygame
+from rllab.envs.gym_env import GymEnv
+from sandbox.gkahn.rnn_critic.envs.premade_gym_env import PremadeGymEnv
+import gym_ple
+from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
+from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
+from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
+
 #########################
 ### Utility functions ###
 #########################
@@ -102,6 +113,7 @@ class AnalyzeRNNCritic(object):
         self.progress = pandas.read_csv(self._progress_file)
 
         self.train_rollouts_itrs, self.env_itrs = self._load_all_itrs()
+        # self.eval_rollouts_itrs = []
         if not os.path.exists(self._eval_rollouts_itrs_file):
             eval_rollouts_itrs = self._eval_all_policies(self.env_itrs)
             with open(self._eval_rollouts_itrs_file, 'wb') as f:
@@ -165,6 +177,10 @@ class AnalyzeRNNCritic(object):
             rollouts = d['rollouts']
             env = d['env']
             d['policy'].terminate()
+
+        if env is None:
+            inner_env = eval(self.params['alg']['env'])
+            env = TfEnv(normalize(inner_env))
 
         return rollouts, env
 
@@ -233,6 +249,8 @@ class AnalyzeRNNCritic(object):
             self._plot_analyze_PointEnv(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
         elif isinstance(env, GymEnv) and 'CartPole' in env.env_id:
             self._plot_analyze_CartPole(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
+        elif isinstance(env, GymEnv) and 'Catcher-ram' in env.env_id:
+            self._plot_analyze_CatcherRam(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
         elif isinstance(env, GymEnv) and 'Catcher' in env.env_id:
             self._plot_analyze_Catcher(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
         elif isinstance(env, GymEnv) and 'Swimmer' in env.env_id:
@@ -565,7 +583,7 @@ class AnalyzeRNNCritic(object):
         f.savefig(self._analyze_img_file, bbox_inches='tight')
         plt.close(f)
 
-    def _plot_analyze_Catcher(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
+    def _plot_analyze_CatcherRam(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
         f, axes = plt.subplots(3, 1, figsize=(20., 7.5), sharex=True)
         f.tight_layout()
 
@@ -608,6 +626,47 @@ class AnalyzeRNNCritic(object):
         xfmt = ticker.ScalarFormatter()
         xfmt.set_powerlimits((0, 0))
         ax.xaxis.set_major_formatter(xfmt)
+
+        f.savefig(self._analyze_img_file, bbox_inches='tight')
+        plt.close(f)
+
+    def _plot_analyze_Catcher(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
+        f, axes = plt.subplots(2, 1, figsize=(5 * len(train_rollouts_itrs), 10), sharex=True)
+        f.tight_layout()
+
+        ### plot training cost
+        ax = axes[0]
+        costs = self.progress['Cost'][1:]
+        steps = self.progress['Step'][1:]
+        ax.plot(steps, costs, 'k-')
+        ax.set_ylabel('Cost')
+
+        ### plot episode length
+        ax = axes[1]
+        idxs = np.nonzero(np.isfinite(self.progress['EpisodeLengthMean']))[0]
+        episode_length_means = self.progress['EpisodeLengthMean'][idxs]
+        episode_length_stds = self.progress['EpisodeLengthStd'][idxs]
+        steps = np.array(self.progress['Step'][idxs])
+        ax.plot(steps, episode_length_means, 'k-')
+        ax.fill_between(steps, episode_length_means - episode_length_stds, episode_length_means + episode_length_stds,
+                        color='k', alpha=0.4)
+        ax.set_ylabel('Episode Length')
+
+        start_step = self.params['alg']['learn_after_n_steps']
+        end_step = steps[-1] # self.params['alg']['total_steps']
+        save_step = self.params['alg']['save_every_n_steps']
+        first_save_step = save_step * np.floor(start_step / float(save_step))
+        itr_steps = np.r_[first_save_step:end_step:save_step]
+
+        ax.set_xlabel('Steps')
+        xfmt = ticker.ScalarFormatter()
+        xfmt.set_powerlimits((0, 0))
+        ax.xaxis.set_major_formatter(xfmt)
+
+        ### for all
+        for ax in axes:
+            ax.set_xlim((-save_step/2., end_step))
+            ax.set_xticks(itr_steps)
 
         f.savefig(self._analyze_img_file, bbox_inches='tight')
         plt.close(f)
