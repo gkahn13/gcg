@@ -14,7 +14,7 @@ from rllab.envs.normalized_env import normalize
 from sandbox.gkahn.rnn_critic.envs.atari_wrappers import wrap_deepmind
 from sandbox.gkahn.rnn_critic.envs.pygame_wrappers import wrap_pygame
 ### exploration strategies
-from rllab.exploration_strategies.gaussian_strategy import GaussianStrategy
+from sandbox.gkahn.rnn_critic.exploration_strategies.gaussian_strategy import GaussianStrategy
 from sandbox.gkahn.rnn_critic.exploration_strategies.epsilon_greedy_strategy import EpsilonGreedyStrategy
 ### RNN critic
 from sandbox.gkahn.rnn_critic.algos.rnn_critic import RNNCritic

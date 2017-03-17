@@ -30,6 +30,7 @@ class Policy(TfPolicy, Serializable):
                  lr_schedule,
                  grad_clip_norm,
                  get_action_params,
+                 preprocess,
                  gpu_device=None,
                  gpu_frac=None,
                  **kwargs):
@@ -60,6 +61,7 @@ class Policy(TfPolicy, Serializable):
         self._weight_decay = weight_decay
         self._lr_schedule = schedules.PiecewiseSchedule(**lr_schedule)
         self._grad_clip_norm = grad_clip_norm
+        self._preprocess_params = preprocess
         self._get_action_params = get_action_params
         self._gpu_device = gpu_device
         self._gpu_frac = gpu_frac
@@ -313,15 +315,16 @@ class Policy(TfPolicy, Serializable):
             preprocess_stats['actions_orth'], \
             preprocess_stats['rewards_mean'], \
             preprocess_stats['rewards_orth']
+
+        tf_assigns = []
+        for key in ('observations_mean', 'observations_orth',
+                    'actions_mean', 'actions_orth',
+                    'rewards_mean', 'rewards_orth'):
+            if self._preprocess_params[key]:
+                tf_assigns.append(self._preprocess_params[key + '_assign'])
+
         # we assume if obs is im, the obs orth is the diagonal of the covariance
-        self._tf_sess.run([
-            self._d_preprocess['observations_mean_assign'],
-            # self._d_preprocess['observations_orth_assign'],
-            self._d_preprocess['actions_mean_assign'],
-            # self._d_preprocess['actions_orth_assign'],
-            self._d_preprocess['rewards_mean_assign'],
-            # self._d_preprocess['rewards_orth_assign']
-        ],
+        self._tf_sess.run(tf_assigns,
           feed_dict={
               self._d_preprocess['observations_mean_ph']: obs_mean,
               self._d_preprocess['observations_orth_ph']: obs_orth,

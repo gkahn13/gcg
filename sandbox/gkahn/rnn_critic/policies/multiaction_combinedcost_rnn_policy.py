@@ -11,6 +11,7 @@ class MultiactionCombinedcostRNNPolicy(Policy, Serializable):
                  action_hidden_layers,
                  reward_hidden_layers,
                  rnn_state_dim,
+                 use_lstm,
                  activation,
                  rnn_activation,
                  **kwargs):
@@ -19,6 +20,7 @@ class MultiactionCombinedcostRNNPolicy(Policy, Serializable):
         :param action_hidden_layers: layer sizes for preprocessing the action
         :param reward_hidden_layers: layer sizes for processing the reward
         :param rnn_state_dim: dimension of the hidden state
+        :param use_lstm: use lstm
         :param activation: string, e.g. 'tf.nn.relu'
         """
         Serializable.quick_init(self, locals())
@@ -27,6 +29,7 @@ class MultiactionCombinedcostRNNPolicy(Policy, Serializable):
         self._action_hidden_layers = list(action_hidden_layers)
         self._reward_hidden_layers = list(reward_hidden_layers)
         self._rnn_state_dim = rnn_state_dim
+        self._use_lstm = use_lstm
         self._activation = eval(activation)
         self._rnn_activation = eval(rnn_activation)
 
@@ -56,7 +59,8 @@ class MultiactionCombinedcostRNNPolicy(Policy, Serializable):
             ### obs --> internal state
             with tf.name_scope('obs_to_istate'):
                 layer = tf_obs
-                for num_outputs in self._obs_hidden_layers + [self._rnn_state_dim]:
+                final_dim = self._rnn_state_dim if not self._use_lstm else 2 * self._rnn_state_dim
+                for num_outputs in self._obs_hidden_layers + [final_dim]:
                     layer = layers.fully_connected(layer, num_outputs=num_outputs, activation_fn=self._activation,
                                                    weights_regularizer=layers.l2_regularizer(1.))
                 istate = layer
@@ -79,7 +83,12 @@ class MultiactionCombinedcostRNNPolicy(Policy, Serializable):
             ### create rnn
             with tf.name_scope('rnn'):
                 with tf.variable_scope('rnn_vars'):
-                    rnn_cell = tf.nn.rnn_cell.BasicRNNCell(self._rnn_state_dim, activation=self._rnn_activation)
+                    if self._use_lstm:
+                        rnn_cell = tf.nn.rnn_cell.BasicLSTMCell(self._rnn_state_dim,
+                                                                state_is_tuple=False,
+                                                                activation=self._rnn_activation)
+                    else:
+                        rnn_cell = tf.nn.rnn_cell.BasicRNNCell(self._rnn_state_dim, activation=self._rnn_activation)
                     rnn_outputs, rnn_states = tf.nn.dynamic_rnn(rnn_cell, rnn_inputs, initial_state=istate)
 
             ### internal states --> rewards
