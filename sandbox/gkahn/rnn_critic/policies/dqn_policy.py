@@ -81,7 +81,7 @@ class DQNPolicy(Policy, Serializable):
                 if self._concat_or_bilinear == 'concat':
                     layer = tf.concat(1, [layer, tf_actions])
                 elif self._concat_or_bilinear == 'bilinear':
-                    layer = tf_utils.batch_outer_product_2d(layer, tf_actions)
+                    layer = tf.concat(1, (tf_utils.batch_outer_product_2d(layer, tf_actions), layer, tf_actions))
                 else:
                     raise Exception
 
@@ -98,7 +98,7 @@ class DQNPolicy(Policy, Serializable):
                     layer = tf.concat(1, [tf_obs, tf_actions])
                 elif self._concat_or_bilinear == 'bilinear':
                     tf_obs, tf_actions = self._graph_preprocess_inputs(tf_obs_ph, tf_actions_ph, d_preprocess)
-                    layer = tf_utils.batch_outer_product_2d(tf_obs, tf_actions)
+                    layer = tf.concat(1, (tf_utils.batch_outer_product_2d(tf_obs, tf_actions), tf_obs, tf_actions))
                 else:
                     raise Exception
 
