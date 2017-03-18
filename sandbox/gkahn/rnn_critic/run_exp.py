@@ -4,8 +4,8 @@ from sandbox.gkahn.rnn_critic.examples.run_rnn_critic import main as run_main
 from sandbox.gkahn.rnn_critic.scripts.analyze_experiment import main as analyze_main
 
 if __name__ == '__main__':
-    # exps = ['exp{0}'.format(i) for i in range(650, 655)]
-    exps = ['exp677']
+    exps = ['exp{0}'.format(i) for i in range(758, 760)]
+    # exps = ['exp750']
 
     for exp in exps:
         try:

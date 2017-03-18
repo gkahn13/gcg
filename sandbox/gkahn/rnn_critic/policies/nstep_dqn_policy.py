@@ -4,21 +4,25 @@ import tensorflow.contrib.layers as layers
 from rllab.misc.overrides import overrides
 from rllab.core.serializable import Serializable
 from sandbox.gkahn.rnn_critic.policies.dqn_policy import DQNPolicy
+from sandbox.gkahn.rnn_critic.utils import tf_utils
 
 class NstepDQNPolicy(DQNPolicy, Serializable):
     def __init__(self,
                  hidden_layers,
                  activation,
+                 concat_or_bilinear,
                  **kwargs):
         """
         :param hidden_layers: list of layer sizes
         :param activation: str to be evaluated (e.g. 'tf.nn.relu')
+        :param concat_or_bilinear: concat initial state or bilinear initial state
         """
         Serializable.quick_init(self, locals())
 
         DQNPolicy.__init__(self,
                            hidden_layers=hidden_layers,
                            activation=activation,
+                           concat_or_bilinear=concat_or_bilinear,
                            **kwargs)
 
         assert(self._N > 1)
@@ -44,7 +48,12 @@ class NstepDQNPolicy(DQNPolicy, Serializable):
             # ensure same number of parameters as multiaction
             tf_actions_rep = tf.tile(tf_actions, (1, self._N))
 
-            layer = tf.concat(1, [tf_obs, tf_actions_rep])
+            if self._concat_or_bilinear == 'concat':
+                layer = tf.concat(1, [tf_obs, tf_actions_rep])
+            elif self._concat_or_bilinear == 'bilinear':
+                layer = tf.concat(1, (tf_utils.batch_outer_product_2d(tf_obs, tf_actions), tf_obs, tf_actions_rep))
+            else:
+                raise Exception
 
             ### fully connected
             for num_outputs in self._hidden_layers:

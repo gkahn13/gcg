@@ -12,6 +12,7 @@ class MultiactionSeparatedcostRNNPolicy(MultiactionCombinedcostRNNPolicy, Serial
                  reward_hidden_layers,
                  value_hidden_layers,
                  rnn_state_dim,
+                 use_lstm,
                  activation,
                  rnn_activation,
                  **kwargs):
@@ -21,6 +22,7 @@ class MultiactionSeparatedcostRNNPolicy(MultiactionCombinedcostRNNPolicy, Serial
         :param reward_hidden_layers: layer sizes for processing the reward
         :param value_hidden_layers: layer sizes for processing the value
         :param rnn_state_dim: dimension of the hidden state
+        :param use_lstm: use lstm
         :param activation: string, e.g. 'tf.nn.relu'
         """
         Serializable.quick_init(self, locals())
@@ -32,6 +34,7 @@ class MultiactionSeparatedcostRNNPolicy(MultiactionCombinedcostRNNPolicy, Serial
                                                   action_hidden_layers=action_hidden_layers,
                                                   reward_hidden_layers=reward_hidden_layers,
                                                   rnn_state_dim=rnn_state_dim,
+                                                  use_lstm=use_lstm,
                                                   activation=activation,
                                                   rnn_activation=rnn_activation,
                                                   **kwargs)
@@ -61,7 +64,8 @@ class MultiactionSeparatedcostRNNPolicy(MultiactionCombinedcostRNNPolicy, Serial
             ### obs --> internal state
             with tf.name_scope('obs_to_istate'):
                 layer = tf_obs
-                for num_outputs in self._obs_hidden_layers + [self._rnn_state_dim]:
+                final_dim = self._rnn_state_dim if not self._use_lstm else 2 * self._rnn_state_dim
+                for num_outputs in self._obs_hidden_layers + [final_dim]:
                     layer = layers.fully_connected(layer, num_outputs=num_outputs, activation_fn=self._activation,
                                                    weights_regularizer=layers.l2_regularizer(1.))
                 istate = layer
@@ -84,12 +88,17 @@ class MultiactionSeparatedcostRNNPolicy(MultiactionCombinedcostRNNPolicy, Serial
             ### create rnn
             with tf.name_scope('rnn'):
                 with tf.variable_scope('rnn_vars'):
-                    rnn_cell = tf.nn.rnn_cell.BasicRNNCell(self._rnn_state_dim, activation=self._rnn_activation)
+                    if self._use_lstm:
+                        rnn_cell = tf.nn.rnn_cell.BasicLSTMCell(self._rnn_state_dim,
+                                                                state_is_tuple=False,
+                                                                activation=self._rnn_activation)
+                    else:
+                        rnn_cell = tf.nn.rnn_cell.BasicRNNCell(self._rnn_state_dim, activation=self._rnn_activation)
                     rnn_outputs, rnn_states = tf.nn.dynamic_rnn(rnn_cell, rnn_inputs, initial_state=istate)
 
-            ### internal states --> rewards
-            with tf.name_scope('istates_to_rewards'):
-                rewards = []
+            ### internal states --> reward sums
+            with tf.name_scope('istates_to_reward_sums'):
+                reward_sums = [0]
                 for h in range(self._N):
                     layer = rnn_outputs[:, h, :]
                     for i, num_outputs in enumerate(self._reward_hidden_layers + [1]):
@@ -100,10 +109,10 @@ class MultiactionSeparatedcostRNNPolicy(MultiactionCombinedcostRNNPolicy, Serial
                                                        weights_regularizer=layers.l2_regularizer(1.),
                                                        scope='rewards_i{0}'.format(i),
                                                        reuse=(h > 0))
-                    rewards.append(layer)
+                    reward_sums.append(layer)
 
-            ### last internal state --> terminal value
-            with tf.name_scope('last_istate_to_value'):
+            ### last internal state --> terminal value sum
+            with tf.name_scope('last_istate_to_value_sum'):
                 layer = rnn_outputs[:, -1, :]
                 for i, num_outputs in enumerate(self._value_hidden_layers + [1]):
                     activation = self._activation if i < len(self._value_hidden_layers) else None
@@ -113,9 +122,21 @@ class MultiactionSeparatedcostRNNPolicy(MultiactionCombinedcostRNNPolicy, Serial
                                                    weights_regularizer=layers.l2_regularizer(1.),
                                                    scope='values_i{0}'.format(i),
                                                    reuse=False)
-                value = layer
+                value_sum = layer
 
-            tf_rewards = tf.concat(1, rewards + [value])
+            ### convert sums to rewards and value
+            with tf.name_scope('sums_to_rewards_and_value'):
+                rewards_value_sums = reward_sums + [value_sum]
+                tf_rewards = []
+                for i in range(len(rewards_value_sums) - 1):
+                    tf_rewards.append(rewards_value_sums[i+1] - rewards_value_sums[i])
+                tf_rewards = tf.concat(1, tf_rewards)
+
+            # import numpy as np
+            # num_vars = np.sum([np.prod(v.get_shape()) for v in tf.trainable_variables()])
+            # print('num_vars: {0}'.format(num_vars))
+            # import IPython; IPython.embed()
+
             tf_rewards = self._graph_preprocess_outputs(tf_rewards, d_preprocess)
 
         return tf_rewards
