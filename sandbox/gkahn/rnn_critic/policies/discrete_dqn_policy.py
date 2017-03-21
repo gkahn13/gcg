@@ -150,7 +150,7 @@ class DiscreteDQNPolicy(Policy, Serializable):
             # self._tf_debug['tf_values'] = tf_values
 
             mse = tf.reduce_mean(tf.square(tf_values_ph +
-                                           tf_target_mask_ph * np.power(self._gamma,
+                                           self._use_target * tf_target_mask_ph * np.power(self._gamma,
                                                                         self._H) * tf_target_values_max -
                                            tf_values))
             if len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)) > 0:

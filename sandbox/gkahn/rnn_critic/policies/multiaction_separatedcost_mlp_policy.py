@@ -44,7 +44,11 @@ class MultiactionSeparatedcostMLPPolicy(MultiactionCombinedcostMLPPolicy, Serial
         tf_target_values_flat = tf.reshape(tf_target_values, (batch_size, -1))
         tf_target_values_max = tf.reduce_max(tf_target_values_flat, reduction_indices=1, keep_dims=True)
 
-        tf_rewards_ph_concat = tf.concat(1, [tf_rewards_ph, tf_target_values_max])
+        if self._use_target:
+            tf_rewards_ph_concat = tf.concat(1, [tf_rewards_ph, tf_target_values_max])
+        else:
+            tf_rewards_ph_concat = tf.concat(1, [tf_rewards_ph, 0])
+            tf_rewards[:, -1] = 0.
         mse = tf.reduce_mean(self._graph_calculate_values(tf.square(tf_rewards - tf_rewards_ph_concat)))
 
         if len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)) > 0:

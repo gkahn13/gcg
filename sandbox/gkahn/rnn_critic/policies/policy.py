@@ -26,6 +26,7 @@ class Policy(TfPolicy, Serializable):
                  cost_type,
                  gamma,
                  obs_history_len,
+                 use_target,
                  weight_decay,
                  lr_schedule,
                  grad_clip_norm,
@@ -40,6 +41,7 @@ class Policy(TfPolicy, Serializable):
         :param cost_type: combined or separated
         :param gamma: reward decay
         :param obs_history_len: how many previous obs to include when sampling? (=1 is only current observation)
+        :param use_target: include target network or not
         :param weight_decay
         :param lr_schedule: arguments for PiecewiseSchedule
         :param grad_clip_norm
@@ -58,6 +60,7 @@ class Policy(TfPolicy, Serializable):
         self._cost_type = cost_type
         self._gamma = gamma
         self._obs_history_len = obs_history_len
+        self._use_target = use_target
         self._weight_decay = weight_decay
         self._lr_schedule = schedules.PiecewiseSchedule(**lr_schedule)
         self._grad_clip_norm = grad_clip_norm
@@ -230,7 +233,7 @@ class Policy(TfPolicy, Serializable):
         tf_values = self._graph_calculate_values(tf_rewards)
 
         mse = tf.reduce_mean(tf.square(tf_values_ph +
-                                       tf_target_mask_ph * np.power(self._gamma, self._N)*tf_target_values_max -
+                                       self._use_target * tf_target_mask_ph * np.power(self._gamma, self._N)*tf_target_values_max -
                                        tf_values))
         if len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)) > 0:
             weight_decay = self._weight_decay * tf.add_n(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
