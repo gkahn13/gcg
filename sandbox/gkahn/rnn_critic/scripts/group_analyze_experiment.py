@@ -424,12 +424,20 @@ class PlotAnalyzeRNNCritic(object):
         ax = axes.ravel()[0]
         for analyze_group in self._analyze_groups:
             data_interp = DataAverageInterpolation()
+            min_step = max_step = None
             for analyze in analyze_group:
-                steps = analyze.progress['Step'][1:]
-                costs = analyze.progress['Cost'][1:]
+                steps = np.array(analyze.progress['Step'])
+                costs = np.array(analyze.progress['Cost'])
                 data_interp.add_data(steps, costs)
 
-            steps = np.r_[np.min(np.hstack(data_interp.xs)):np.max(np.hstack(data_interp.xs)):0.01]
+                if min_step is None:
+                    min_step = steps[0]
+                if max_step is None:
+                    max_step = steps[-1]
+                min_step = max(min_step, steps[0])
+                max_step = min(max_step, steps[-1])
+
+            steps = np.r_[min_step:max_step:1.]
             costs_mean, costs_std = data_interp.eval(steps)
 
             ax.plot(steps, costs_mean, color=analyze.plot['color'], label=analyze.plot['label'])
@@ -468,7 +476,7 @@ class PlotAnalyzeRNNCritic(object):
                 min_step = max(min_step, steps[0])
                 max_step = min(max_step, steps[-1])
 
-            steps = np.r_[min_step:max_step:50.]
+            steps = np.r_[min_step:max_step:50.][1:-1]
             cum_rewards_mean, cum_rewards_std = data_interp.eval(steps)
 
             ax.plot(steps, cum_rewards_mean, color=analyze.plot['color'], label=analyze.plot['label'])
@@ -507,7 +515,7 @@ if __name__ == '__main__':
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'DQNPolicy, target every 1e2',
-                                                  'color': 'r'
+                                                  'color': 'k'
                                               }))
     analyze_groups.append(analyze_group)
     ### NDQNPolicy, N=3
@@ -517,7 +525,7 @@ if __name__ == '__main__':
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'NstepDQNPolicy, N=3',
-                                                  'color': 'g'
+                                                  'color': 'r'
                                               }))
     analyze_groups.append(analyze_group)
     ### NDQNPolicy, N=6
@@ -537,7 +545,7 @@ if __name__ == '__main__':
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'MultiactionCombinedcostMLPPolicy, N=3',
-                                                  'color': 'y'
+                                                  'color': 'm'
                                               }))
     analyze_groups.append(analyze_group)
     ### MultiactionCombinedcostMLPPolicy, N=6
@@ -550,8 +558,48 @@ if __name__ == '__main__':
                                                   'color': 'c'
                                               }))
     analyze_groups.append(analyze_group)
+    ### MultiactionCombinedcostRNNPolicy, N=3
+    analyze_group = []
+    for i in range(740, 745):
+        print('\nexp {0}\n'.format(i))
+        analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
+                                              plot={
+                                                  'label': 'MultiactionCombinedcostRNNPolicy, N=3',
+                                                  'color': (1., 128./255., 0.) # orange
+                                              }))
+    analyze_groups.append(analyze_group)
+    ### MultiactionCombinedcostRNNPolicy, N=6
+    analyze_group = []
+    for i in range(745, 750):
+        print('\nexp {0}\n'.format(i))
+        analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
+                                              plot={
+                                                  'label': 'MultiactionCombinedcostRNNPolicy, N=6',
+                                                  'color': (128./255., 0., 1.) # purple
+                                              }))
+    analyze_groups.append(analyze_group)
+    ### MultiactionSeparatedcostRNNPolicy, N=3
+    analyze_group = []
+    for i in range(750, 755):
+        print('\nexp {0}\n'.format(i))
+        analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
+                                              plot={
+                                                  'label': 'MultiactionSeparatedcostRNNPolicy, N=3',
+                                                  'color': 'y'
+                                              }))
+    analyze_groups.append(analyze_group)
+    ### MultiactionSeparatedcostRNNPolicy, N=6
+    analyze_group = []
+    for i in range(755, 760):
+        print('\nexp {0}\n'.format(i))
+        analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
+                                              plot={
+                                                  'label': 'MultiactionSeparatedcostRNNPolicy, N=6',
+                                                  'color': (0., 191./255., 1.) # light blue
+                                              }))
+    analyze_groups.append(analyze_group)
 
 
-    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'cartpole_705_739', analyze_groups)
+    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'cartpole_705_759', analyze_groups)
     plotter.run()
 

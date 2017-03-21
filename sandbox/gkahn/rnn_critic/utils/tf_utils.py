@@ -61,7 +61,9 @@ def batch_outer_product_2d(X, Y):
     assert(U is not None)
     assert(V is not None)
 
-    return tf.mul(tf.tile(X, (1, V)), repeat_2d(Y, U, 1))
+    X_tile = tf.tile(X, (1, V))
+    Y_repeat = repeat_2d(Y, U, 1)
+    return tf.mul(X_tile, Y_repeat)
 
 def block_diagonal(matrices, dtype=tf.float32):
     """Constructs block-diagonal matrices from a list of batched 2D tensors.
