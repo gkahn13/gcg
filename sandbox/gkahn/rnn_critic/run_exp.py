@@ -5,7 +5,7 @@ from sandbox.gkahn.rnn_critic.scripts.analyze_experiment import main as analyze_
 
 if __name__ == '__main__':
     # exps = ['exp{0}'.format(i) for i in range(758, 760)]
-    exps = ['exp774']
+    exps = ['exp794']
 
     for exp in exps:
         try:

@@ -27,6 +27,7 @@ class Policy(TfPolicy, Serializable):
                  gamma,
                  obs_history_len,
                  use_target,
+                 separate_target_params,
                  weight_decay,
                  lr_schedule,
                  grad_clip_norm,
@@ -42,6 +43,7 @@ class Policy(TfPolicy, Serializable):
         :param gamma: reward decay
         :param obs_history_len: how many previous obs to include when sampling? (=1 is only current observation)
         :param use_target: include target network or not
+        :param separate_target_params: if True, have separate params that you copy over periodically
         :param weight_decay
         :param lr_schedule: arguments for PiecewiseSchedule
         :param grad_clip_norm
@@ -61,6 +63,7 @@ class Policy(TfPolicy, Serializable):
         self._gamma = gamma
         self._obs_history_len = obs_history_len
         self._use_target = use_target
+        self._separate_target_params = separate_target_params
         self._weight_decay = weight_decay
         self._lr_schedule = schedules.PiecewiseSchedule(**lr_schedule)
         self._grad_clip_norm = grad_clip_norm
@@ -272,25 +275,29 @@ class Policy(TfPolicy, Serializable):
                 tf_values = self._graph_calculate_values(tf_rewards)
 
             ### target network
-            with tf.variable_scope('target_network'):
-                d_preprocess_target = self._graph_preprocess_from_placeholders()
-                tf_obs_target_ph, tf_actions_target_ph, _ = self._graph_inputs_outputs_from_placeholders()
-                tf_target_mask_ph = tf.placeholder('float', [None], name='tf_target_mask_ph')
-                tf_target_rewards = self._graph_inference(tf_obs_target_ph, tf_actions_target_ph, d_preprocess_target)
-
-            if hasattr(tf.GraphKeys, 'GLOBAL_VARIABLES'):
-                var_collection_name = tf.GraphKeys.GLOBAL_VARIABLES
-            elif hasattr(tf.GraphKeys, 'VARIABLES'):
-                var_collection_name = tf.GraphKeys.VARIABLES
+            if self._separate_target_params:
+                with tf.variable_scope('target_network'):
+                    d_preprocess_target = self._graph_preprocess_from_placeholders()
+                    tf_obs_target_ph, tf_actions_target_ph, _ = self._graph_inputs_outputs_from_placeholders()
+                    tf_target_mask_ph = tf.placeholder('float', [None], name='tf_target_mask_ph')
+                    tf_target_rewards = self._graph_inference(tf_obs_target_ph, tf_actions_target_ph, d_preprocess_target)
             else:
-                raise Exception
-            policy_vars = sorted(tf.get_collection(var_collection_name, scope='policy'), key=lambda v: v.name)
-            target_network_vars = sorted(tf.get_collection(var_collection_name, scope='target_network'), key=lambda v: v.name)
-            update_target_fn = []
-            for var, var_target in zip(policy_vars, target_network_vars):
-                assert(var.name.replace('policy', '') == var_target.name.replace('target_network', ''))
-                update_target_fn.append(var_target.assign(var))
-            update_target_fn = tf.group(*update_target_fn)
+                with tf.variable_scope('target_network'):
+                    tf_obs_target_ph, tf_actions_target_ph, _ = self._graph_inputs_outputs_from_placeholders()
+                    tf_target_mask_ph = tf.placeholder('float', [None], name='tf_target_mask_ph')
+                with tf.variable_scope('policy', reuse=True):
+                    tf_target_rewards = self._graph_inference(tf_obs_target_ph, tf_actions_target_ph, d_preprocess)
+
+            policy_vars = sorted(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='policy'), key=lambda v: v.name)
+            if self._separate_target_params:
+                target_network_vars = sorted(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='target_network'), key=lambda v: v.name)
+                update_target_fn = []
+                for var, var_target in zip(policy_vars, target_network_vars):
+                    assert(var.name.replace('policy', '') == var_target.name.replace('target_network', ''))
+                    update_target_fn.append(var_target.assign(var))
+                update_target_fn = tf.group(*update_target_fn)
+            else:
+                update_target_fn = None
 
             ### optimization
             tf_cost, tf_mse = self._graph_cost(tf_rewards_ph, tf_actions_ph, tf_rewards,
@@ -340,7 +347,8 @@ class Policy(TfPolicy, Serializable):
           })
 
     def update_target(self):
-        self._tf_sess.run(self._update_target_fn)
+        if self._separate_target_params:
+            self._tf_sess.run(self._update_target_fn)
 
     def train_step(self, step, observations, actions, rewards, dones, use_target):
         batch_size = len(observations)
