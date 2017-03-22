@@ -110,10 +110,11 @@ class ClippedRewardsWrapper(gym.Wrapper):
 def wrap_pygame(env):
     # make end-of-life == end-of-episode
     env = EpisodicLifeEnv(env)
-    # max and skip env
-    env = MaxAndSkipEnv(env)
-    # make image black and white
-    env = BlackAndWhiteWrapper(env)
+    if 'ram' not in env.spec.id.lower():
+        # max and skip env
+        env = MaxAndSkipEnv(env)
+        # make image black and white
+        env = BlackAndWhiteWrapper(env)
     # clip rewards so just -1 0 +1
     env = ClippedRewardsWrapper(env)
     return env
