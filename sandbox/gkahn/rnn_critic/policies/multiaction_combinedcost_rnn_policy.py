@@ -45,7 +45,7 @@ class MultiactionCombinedcostRNNPolicy(Policy, Serializable):
 
     @property
     def N_output(self):
-        return self._N
+        return 1
 
     ###########################
     ### TF graph operations ###
@@ -85,27 +85,25 @@ class MultiactionCombinedcostRNNPolicy(Policy, Serializable):
                 with tf.variable_scope('rnn_vars'):
                     if self._use_lstm:
                         rnn_cell = tf.nn.rnn_cell.BasicLSTMCell(self._rnn_state_dim,
-                                                                state_is_tuple=False,
+                                                                state_is_tuple=True,
                                                                 activation=self._rnn_activation)
+                        istate = tf.nn.rnn_cell.LSTMStateTuple(*tf.split(1, 2, istate)) # so state_is_tuple=True
                     else:
                         rnn_cell = tf.nn.rnn_cell.BasicRNNCell(self._rnn_state_dim, activation=self._rnn_activation)
                     rnn_outputs, rnn_states = tf.nn.dynamic_rnn(rnn_cell, rnn_inputs, initial_state=istate)
 
-            ### internal states --> rewards
-            with tf.name_scope('istates_to_rewards'):
-                rewards = []
-                for h in range(self._N):
-                    layer = rnn_outputs[:, h, :]
-                    for i, num_outputs in enumerate(self._reward_hidden_layers + [1]):
-                        activation = self._activation if i < len(self._reward_hidden_layers) else None
-                        layer = layers.fully_connected(layer,
-                                                       num_outputs=num_outputs,
-                                                       activation_fn=activation,
-                                                       weights_regularizer=layers.l2_regularizer(1.),
-                                                       scope='rewards_i{0}'.format(i),
-                                                       reuse=(h > 0))
-                    rewards.append(layer)
-                tf_rewards = tf.concat(1, rewards)
+            ### final internal state --> reward
+            with tf.name_scope('final_istate_to_reward'):
+                layer = rnn_outputs[:, -1, :]
+                for i, num_outputs in enumerate(self._reward_hidden_layers + [1]):
+                    activation = self._activation if i < len(self._reward_hidden_layers) else None
+                    layer = layers.fully_connected(layer,
+                                                   num_outputs=num_outputs,
+                                                   activation_fn=activation,
+                                                   weights_regularizer=layers.l2_regularizer(1.),
+                                                   scope='rewards_i{0}'.format(i),
+                                                   reuse=False)
+                tf_rewards = layer
 
             tf_rewards = self._graph_preprocess_outputs(tf_rewards, d_preprocess)
 
