@@ -18,6 +18,7 @@ from sandbox.gkahn.rnn_critic.exploration_strategies.gaussian_strategy import Ga
 from sandbox.gkahn.rnn_critic.exploration_strategies.epsilon_greedy_strategy import EpsilonGreedyStrategy
 ### RNN critic
 from sandbox.gkahn.rnn_critic.algos.rnn_critic import RNNCritic
+from sandbox.gkahn.rnn_critic.algos.rnn_critic_offpolicy import RNNCriticOffpolicy
 from sandbox.gkahn.rnn_critic.policies.dqn_policy import DQNPolicy
 from sandbox.gkahn.rnn_critic.policies.discrete_dqn_policy import DiscreteDQNPolicy
 from sandbox.gkahn.rnn_critic.policies.nstep_dqn_policy import NstepDQNPolicy
@@ -65,22 +66,32 @@ def run_task(params):
     ### Create exploration strategy ###
     ###################################
 
-    es_params = params['alg'].pop('exploration_strategy')
-    es_class = es_params['class']
-    ESClass = eval(es_class)
-    exploration_strategy = ESClass(env_spec=env.spec, **es_params[es_class])
+    if 'exploration_strategy' in params['alg']:
+        es_params = params['alg'].pop('exploration_strategy')
+        es_class = es_params['class']
+        ESClass = eval(es_class)
+        exploration_strategy = ESClass(env_spec=env.spec, **es_params[es_class])
+    else:
+        exploration_strategy = None
 
     ########################
     ### Create algorithm ###
     ########################
 
-    algo = RNNCritic(
-        env=env,
-        policy=policy,
-        exploration_strategy=exploration_strategy,
-        max_path_length=env.horizon,
-        **params['alg']
-    )
+    if 'is_onpolicy' not in params['alg'].keys() or params['alg']['is_onpolicy']:
+        algo = RNNCritic(
+            env=env,
+            policy=policy,
+            exploration_strategy=exploration_strategy,
+            max_path_length=env.horizon,
+            **params['alg']
+        )
+    else:
+        algo = RNNCriticOffpolicy(
+            env=env,
+            policy=policy,
+            **params['alg']
+        )
     algo.train()
 
 

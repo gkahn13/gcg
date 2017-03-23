@@ -171,7 +171,7 @@ class AnalyzeRNNCritic(object):
 
     def _load_itr(self, itr):
         sess, graph = Policy.create_session_and_graph(gpu_device=self.params['policy']['gpu_device'],
-                                                               gpu_frac=self.params['policy']['gpu_frac'])
+                                                      gpu_frac=self.params['policy']['gpu_frac'])
         with graph.as_default(), sess.as_default():
             d = joblib.load(self._itr_file(itr))
             rollouts = d['rollouts']
@@ -208,7 +208,7 @@ class AnalyzeRNNCritic(object):
                 set_seed(self.params['seed'])
 
             sess, graph = Policy.create_session_and_graph(gpu_device=self.params['policy']['gpu_device'],
-                                                                   gpu_frac=self.params['policy']['gpu_frac'])
+                                                          gpu_frac=self.params['policy']['gpu_frac'])
             with graph.as_default(), sess.as_default():
                 env = env_itrs[itr // self._skip_itr]
                 policy = self._load_itr_policy(itr)
@@ -216,7 +216,7 @@ class AnalyzeRNNCritic(object):
                 print('Evaluating policy for itr {0}'.format(itr))
                 if isinstance(inner_env(env), GymEnv):
                     if 'Swimmer' in inner_env(env).env_id or 'Catcher' in inner_env(env).env_id:
-                        num_rollouts = 5
+                        num_rollouts = 10
                     else:
                         num_rollouts = 50
                     rollouts = [rollout_policy(env, policy, max_path_length=env.horizon) for _ in range(num_rollouts)]
@@ -250,7 +250,10 @@ class AnalyzeRNNCritic(object):
         elif isinstance(env, GymEnv) and 'CartPole' in env.env_id:
             self._plot_analyze_CartPole(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
         elif isinstance(env, GymEnv) and 'Catcher-ram' in env.env_id:
-            self._plot_analyze_CatcherRam(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
+            if 'is_onpolicy' not in self.params['alg'].keys() or self.params['alg']['is_onpolicy']:
+                self._plot_analyze_CatcherRam(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
+            else:
+                self._plot_analyze_CatcherRamOffpolicy(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
         elif isinstance(env, GymEnv) and 'Catcher' in env.env_id:
             self._plot_analyze_Catcher(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
         elif isinstance(env, GymEnv) and 'Swimmer' in env.env_id:
@@ -626,6 +629,58 @@ class AnalyzeRNNCritic(object):
         xfmt = ticker.ScalarFormatter()
         xfmt.set_powerlimits((0, 0))
         ax.xaxis.set_major_formatter(xfmt)
+
+        f.savefig(self._analyze_img_file, bbox_inches='tight')
+        plt.close(f)
+
+    def _plot_analyze_CatcherRamOffpolicy(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
+        f, axes = plt.subplots(2, 1, figsize=(20., 7.5), sharex=True)
+        f.tight_layout()
+
+        ### plot training cost
+        ax = axes[0]
+        costs = self.progress['Cost'][1:]
+        steps = self.progress['Step'][1:]
+        ax.plot(steps, costs, 'k-')
+        ax.set_ylabel('Cost')
+
+        end_step = self.params['alg']['total_steps']
+        save_step = self.params['alg']['save_every_n_steps']
+        itr_steps = np.r_[0:end_step:save_step][:len(eval_rollouts_itrs)]
+
+        def plot_episode_lengths(ax, episode_lengths):
+            color = 'k'
+            bp = ax.boxplot(episode_lengths,
+                            positions=itr_steps,
+                            widths=0.4 * self._skip_itr * save_step)
+            for key in ('boxes', 'medians', 'whiskers', 'fliers', 'caps'):
+                plt.setp(bp[key], color=color)
+            for cap_line, median_line in zip(bp['caps'][1::2], bp['medians']):
+                cx, cy = cap_line.get_xydata()[1]  # top of median line
+                mx, my = median_line.get_xydata()[1]
+                ax.text(cx, cy, '%.2f' % my,
+                        horizontalalignment='right',
+                        verticalalignment='bottom',
+                        color='r')  # draw above, centered
+            plt.setp(bp['fliers'], marker='_')
+            plt.setp(bp['fliers'], markeredgecolor=color)
+
+        ### plot eval episode lengths
+        ax = axes[1]
+        episode_lengths = [[len(rollout['rewards']) for rollout in rollouts] for rollouts in eval_rollouts_itrs]
+        plot_episode_lengths(ax, episode_lengths)
+        ax.set_ylabel('Eval episode lengths')
+
+        ### for last plot
+        ax.set_xlabel('Steps')
+        xfmt = ticker.ScalarFormatter()
+        xfmt.set_powerlimits((0, 0))
+        ax.xaxis.set_major_formatter(xfmt)
+
+        ### for all
+        for ax in axes:
+            ax.set_xlim((-save_step/2., end_step))
+            ax.set_xticks(itr_steps)
 
         f.savefig(self._analyze_img_file, bbox_inches='tight')
         plt.close(f)

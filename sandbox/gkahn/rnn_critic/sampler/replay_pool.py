@@ -135,9 +135,9 @@ class RNNCriticReplayPool(object):
         return self._encode_observation(self._index)
 
 
-    def store_effect(self, action, reward, done):
+    def store_effect(self, action, reward, done, flatten_action=True):
         observation = self._observations[self._index]
-        self._actions[self._index, :] = self._env_spec.action_space.flatten(action)
+        self._actions[self._index, :] = self._env_spec.action_space.flatten(action) if flatten_action else action
         self._rewards[self._index] = reward
         self._dones[self._index] = done
         self._index = (self._index + 1) % self._size
