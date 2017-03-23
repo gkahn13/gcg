@@ -223,14 +223,23 @@ class Policy(TfPolicy, Serializable):
         tf_values = tf.reduce_sum(gammas * tf_rewards, reduction_indices=1)
         return tf_values
 
-    def _graph_cost(self, tf_rewards_ph, tf_actions_ph, tf_rewards, tf_target_rewards, tf_target_mask_ph):
+    def _graph_cost(self, tf_rewards_ph, tf_actions_ph, tf_rewards,
+                    tf_target_rewards_select, tf_target_rewards_eval, tf_target_mask_ph):
         # for training, len(tf_obs_ph) == len(tf_actions_ph)
         # but len(tf_actions_target_ph) == N * len(tf_action_ph),
         # so need to be selective about what to take the max over
-        tf_target_values = self._graph_calculate_values(tf_target_rewards)
+
+        ### calculate values
+        tf_target_values_select = self._graph_calculate_values(tf_target_rewards_select)
+        tf_target_values_eval = self._graph_calculate_values(tf_target_rewards_eval)
+        ### flatten
         batch_size = tf.shape(tf_rewards_ph)[0]
-        tf_target_values_flat = tf.reshape(tf_target_values, (batch_size, -1))
-        tf_target_values_max = tf.reduce_max(tf_target_values_flat, reduction_indices=1)
+        tf_target_values_select_flat = tf.reshape(tf_target_values_select, (batch_size, -1))
+        tf_target_values_eval_flat = tf.reshape(tf_target_values_eval, (batch_size, -1))
+        ### mask selection and eval
+        tf_target_values_mask = tf.one_hot(tf.argmax(tf_target_values_select_flat, axis=1),
+                                           depth=tf.shape(tf_target_values_select_flat)[1])
+        tf_target_values_max = tf.reduce_sum(tf_target_values_mask * tf_target_values_eval_flat, reduction_indices=1)
 
         tf_values_ph = self._graph_calculate_values(tf_rewards_ph)
         tf_values = self._graph_calculate_values(tf_rewards)
@@ -274,19 +283,22 @@ class Policy(TfPolicy, Serializable):
                 tf_rewards = self._graph_inference(tf_obs_ph, tf_actions_ph, d_preprocess)
                 tf_values = self._graph_calculate_values(tf_rewards)
 
-            ### target network
+            ### eval target network
             if self._separate_target_params:
                 with tf.variable_scope('target_network'):
                     d_preprocess_target = self._graph_preprocess_from_placeholders()
                     tf_obs_target_ph, tf_actions_target_ph, _ = self._graph_inputs_outputs_from_placeholders()
                     tf_target_mask_ph = tf.placeholder('float', [None], name='tf_target_mask_ph')
-                    tf_target_rewards = self._graph_inference(tf_obs_target_ph, tf_actions_target_ph, d_preprocess_target)
+                    tf_target_rewards_eval = self._graph_inference(tf_obs_target_ph, tf_actions_target_ph, d_preprocess_target)
             else:
                 with tf.variable_scope('target_network'):
                     tf_obs_target_ph, tf_actions_target_ph, _ = self._graph_inputs_outputs_from_placeholders()
                     tf_target_mask_ph = tf.placeholder('float', [None], name='tf_target_mask_ph')
                 with tf.variable_scope('policy', reuse=True):
-                    tf_target_rewards = self._graph_inference(tf_obs_target_ph, tf_actions_target_ph, d_preprocess)
+                    tf_target_rewards_eval = self._graph_inference(tf_obs_target_ph, tf_actions_target_ph, d_preprocess)
+            ### selection target network
+            with tf.variable_scope('policy', reuse=True):
+                tf_target_rewards_select = self._graph_inference(tf_obs_target_ph, tf_actions_target_ph, d_preprocess)
 
             policy_vars = sorted(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='policy'), key=lambda v: v.name)
             if self._separate_target_params:
@@ -301,7 +313,7 @@ class Policy(TfPolicy, Serializable):
 
             ### optimization
             tf_cost, tf_mse = self._graph_cost(tf_rewards_ph, tf_actions_ph, tf_rewards,
-                                               tf_target_rewards, tf_target_mask_ph)
+                                               tf_target_rewards_select, tf_target_rewards_eval, tf_target_mask_ph)
             tf_opt, tf_lr_ph = self._graph_optimize(tf_cost, policy_vars)
 
             self._graph_init_vars(tf_sess)

@@ -112,52 +112,28 @@ class DiscreteDQNPolicy(Policy, Serializable):
         return tf_rewards # b/c network outputs values directly
 
     @overrides
-    def _graph_cost(self, tf_rewards_ph, tf_actions_ph, tf_rewards, tf_target_rewards, tf_target_mask_ph):
-        with tf.name_scope('cost'):
-            ### values of label rewards
-            gammas = np.power(self._gamma * np.ones(self._H), np.arange(self._H))
-            tf_values_ph = tf.reduce_sum(gammas * tf_rewards_ph, reduction_indices=1)
-            ## target network max
-            tf_target_values_max = tf.reduce_max(tf_target_rewards, reduction_indices=1)
+    def _graph_cost(self, tf_rewards_ph, tf_actions_ph, tf_rewards,
+                    tf_target_rewards_select, tf_target_rewards_eval, tf_target_mask_ph):
+        ### target: calculate values
+        tf_target_values_select = self._graph_calculate_values(tf_target_rewards_select)
+        tf_target_values_eval = self._graph_calculate_values(tf_target_rewards_eval)
+        ### target: mask selection and eval
+        tf_target_values_mask = tf.one_hot(tf.argmax(tf_target_values_select, axis=1),
+                                           depth=tf.shape(tf_target_values_select)[1])
+        tf_target_values_max = tf.reduce_sum(tf_target_values_mask * tf_target_values_eval, reduction_indices=1)
 
-            ### values of policy
-            action_dim = self._env_spec.action_space.flat_dim
-            with tf.name_scope('reward_idxs'):
-                # action_dim = 4
-                # H = 2
-                # tf_actions_ph
-                # [0, 0, 0, 1, 0, 0, 0, 1]
-                tf_b = tf.tile(tf.expand_dims(tf.range(action_dim), 0), (1, self._H)) * tf.cast(tf_actions_ph,
-                                                                                                tf.int32)
-                # [0, 0, 0, 3, 0, 0, 0, 3]
-                tf_c = tf_b * np.power(action_dim,
-                                       tf.constant(np.repeat(np.arange(self._H), (action_dim,)), dtype=tf.int32))
-                # [0, 0, 0, 3, 0, 0, 0, 12]
-                reward_idxs = tf.reduce_sum(tf_c, axis=1)
-                # [15]
+        ### policy:
+        tf_values_ph = tf.reduce_sum(tf_rewards_ph, reduction_indices=1)
+        tf_values = tf.reduce_sum(tf_actions_ph * tf_rewards, reduction_indices=1)
 
-            ### extract relevant sum of rewards
-            with tf.name_scope('gather_rewards'):
-                reward_idxs_flat = reward_idxs + tf.range(tf.shape(reward_idxs)[0]) * np.power(action_dim, self._H)
-                tf_values = tf.gather(tf.reshape(tf_rewards, [-1]), reward_idxs_flat)
-
-            # self._tf_debug['tf_actions_ph'] = tf_actions_ph
-            # self._tf_debug['tf_b'] = tf_b
-            # self._tf_debug['tf_c'] = tf_c
-            # self._tf_debug['reward_idxs'] = reward_idxs
-            # self._tf_debug['reward_idxs_flat'] = reward_idxs_flat
-            # self._tf_debug['tf_rewards'] = tf_rewards
-            # self._tf_debug['tf_values'] = tf_values
-
-            mse = tf.reduce_mean(tf.square(tf_values_ph +
-                                           self._use_target * tf_target_mask_ph * np.power(self._gamma,
-                                                                        self._H) * tf_target_values_max -
-                                           tf_values))
-            if len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)) > 0:
-                weight_decay = self._weight_decay * tf.add_n(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
-            else:
-                weight_decay = 0
-            cost = mse + weight_decay
+        mse = tf.reduce_mean(tf.square(tf_values_ph +
+                                       self._use_target * tf_target_mask_ph * np.power(self._gamma, self._H) * tf_target_values_max -
+                                       tf_values))
+        if len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)) > 0:
+            weight_decay = self._weight_decay * tf.add_n(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
+        else:
+            weight_decay = 0
+        cost = mse + weight_decay
 
         return cost, mse
 
