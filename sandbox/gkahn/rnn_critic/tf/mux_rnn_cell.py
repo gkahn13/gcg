@@ -1,20 +1,19 @@
 import tensorflow as tf
 
 ### inner python imports
-from tensorflow.python.ops.rnn_cell_impl import _RNNCell as RNNCell
+from tensorflow.python.ops.rnn_cell import RNNCell
 
 class BasicMuxRNNCell(RNNCell):
-    """The most basic RNN cell."""
+    def __init__(self, num_actions, num_units, activation=tf.tanh):
+        """
+        Each cell consists of num_actions BasicRNNCells, each with num_units
 
-    def __init__(self, num_actions, num_units, activation=tf.tanh, reuse=None):
-        self._rnn_cells = [tf.nn.rnn_cell.BasicRNNCell(num_units,
-                                                       activation=activation,
-                                                       reuse=reuse) for _ in range(num_actions)]
-
+        :param num_actions: assumes actions are one-hot vectors
+        """
+        self._rnn_cells = [tf.nn.rnn_cell.BasicRNNCell(num_units, activation=activation) for _ in range(num_actions)]
         self._num_actions = num_actions
         self._num_units = num_units
         self._activation = activation
-        self._reuse = reuse
 
     @property
     def state_size(self):
@@ -30,10 +29,56 @@ class BasicMuxRNNCell(RNNCell):
         Use inputs to mux with rnn_cell is outputted
         Inputs are one hot, use it to mux the outputs by masking
         """
-        outputs = [rnn_cell(tf.zeros(tf.shape(state), dtype=state.dtype), state, scope=scope)
-                   for rnn_cell in self._rnn_cells]
+        if scope is None:
+            scope = ''
+        hs, states = zip(*[rnn_cell(tf.zeros(tf.shape(state), dtype=state.dtype), state, scope=scope+'mux_{0}'.format(i))
+                         for i, rnn_cell in enumerate(self._rnn_cells)])
         masks = tf.split(split_dim=1, num_split=self._num_actions, value=inputs)
-        output = tf.add_n([mask * output for mask, output in zip(masks, outputs)])
+        new_h = tf.add_n([mask * h for mask, h in zip(masks, hs)])
+        new_state = tf.add_n([mask * state for mask, state in zip(masks, states)])
 
-        return output, output
+        return new_h, new_state
 
+class BasicMuxLSTMCell(RNNCell):
+    def __init__(self, num_actions, num_units, state_is_tuple=True, activation=tf.tanh):
+        """
+        Each cell consists of num_actions BasicRNNCells, each with num_units
+
+        :param num_actions: assumes actions are one-hot vectors
+        """
+        assert(state_is_tuple)
+        self._rnn_cells = [tf.nn.rnn_cell.BasicLSTMCell(num_units,
+                                                        state_is_tuple=state_is_tuple,
+                                                        activation=activation) for _ in range(num_actions)]
+
+        self._num_actions = num_actions
+        self._num_units = num_units
+        self._activation = activation
+
+    @property
+    def state_size(self):
+        return self._num_units
+
+
+    @property
+    def output_size(self):
+        return self._num_units
+
+    def __call__(self, inputs, state, scope=None):
+        """
+        Call each rnn_cell with the current state (and zero inputs)
+        Use inputs to mux with rnn_cell is outputted
+        Inputs are one hot, use it to mux the outputs by masking
+        ASSUMES state_is_tuple
+        """
+        if scope is None:
+            scope = ''
+        hs, states = zip(*[rnn_cell(tf.zeros(tf.shape(state[0]), dtype=state.dtype), state, scope=scope+'mux_{0}'.format(i))
+                         for i, rnn_cell in enumerate(self._rnn_cells)])
+        masks = tf.split(split_dim=1, num_split=self._num_actions, value=inputs)
+        new_h = tf.add_n([mask * h for mask, h in zip(masks, hs)])
+        new_state0 = tf.add_n([mask * state[0] for mask, state in zip(masks, states)])
+        new_state1 = tf.add_n([mask * state[1] for mask, state in zip(masks, states)])
+        new_state = tf.nn.rnn_cell.LSTMStateTuple(new_state0, new_state1)
+
+        return new_h, new_state

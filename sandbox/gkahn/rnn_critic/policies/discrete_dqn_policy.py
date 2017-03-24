@@ -143,19 +143,10 @@ class DiscreteDQNPolicy(Policy, Serializable):
 
     @overrides
     def update_preprocess(self, preprocess_stats):
-        """ Only observations """
-        obs_mean, obs_orth = \
-            preprocess_stats['observations_mean'], \
-            preprocess_stats['observations_orth'], \
-            # we assume if obs is im, the obs orth is the diagonal of the covariance
-        self._tf_sess.run([
-            self._d_preprocess['observations_mean_assign'],
-            self._d_preprocess['observations_orth_assign'],
-        ],
-            feed_dict={
-                self._d_preprocess['observations_mean_ph']: obs_mean,
-                self._d_preprocess['observations_orth_ph']: obs_orth,
-            })
+        for key in ('actions_mean', 'actions_orth',
+                    'rewards_mean', 'rewards_orth'):
+            assert(self._preprocess_params[key] is False)
+        Policy.update_preprocess(self, preprocess_stats)
 
     @overrides
     def train_step(self, step, observations, actions, rewards, dones, use_target):
