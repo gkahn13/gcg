@@ -53,6 +53,23 @@ class EpisodicLifeEnv(gym.Wrapper):
         self.lives = self.get_lives()
         return obs
 
+class EpisodicRewardEnv(EpisodicLifeEnv):
+    """Make non-zero reward == end-of-episode, but only reset on true game over."""
+
+    def _step(self, action):
+        obs, reward, done, info = self.env.step(action)
+        self.was_real_done = done
+        # check current lives, make loss of life terminal,
+        # then update lives to handle bonus lives
+        lives = self.get_lives()
+        if abs(reward) > 1e-5:
+            # for Qbert somtimes we stay in lives == 0 condtion for a few frames
+            # so its important to keep lives > 0, so that we only reset once
+            # the environment advertises done.
+            done = True
+        self.lives = lives
+        return obs, reward, done, info
+
 class MaxAndSkipEnv(gym.Wrapper):
     def __init__(self, env=None, skip=4):
         """Return only every `skip`-th frame"""
@@ -109,7 +126,10 @@ class ClippedRewardsWrapper(gym.Wrapper):
 
 def wrap_pygame(env):
     # make end-of-life == end-of-episode
-    env = EpisodicLifeEnv(env)
+    if 'catcher' in env.spec.id.lower():
+        env = EpisodicRewardEnv(env)
+    else:
+        env = EpisodicLifeEnv(env)
     if 'ram' not in env.spec.id.lower():
         # max and skip env
         env = MaxAndSkipEnv(env)

@@ -597,13 +597,13 @@ class AnalyzeRNNCritic(object):
         ax.plot(steps, costs, 'k-')
         ax.set_ylabel('Cost')
 
-        ### plot training rollout length vs step
+        ### plot final reward vs step
         ax = axes[1]
         rollouts = list(itertools.chain(*train_rollouts_itrs))
-        rollout_lens = [len(r['observations']) for r in rollouts]
+        final_rewards = [r['rewards'][-1] for r in rollouts]
         steps = [r['steps'][-1] for r in rollouts]
-        steps, rollout_lens = zip(*sorted(zip(steps, rollout_lens), key=lambda x: x[0]))
-        ax.plot(steps, rollout_lens, color='k', marker='|', linestyle='', markersize=10.)
+        steps, final_rewards = zip(*sorted(zip(steps, final_rewards), key=lambda x: x[0]))
+        ax.plot(steps, final_rewards, color='k', marker='|', linestyle='', markersize=10.)
 
         ### plot training rollout length vs step smoothed
         ax = axes[2]
@@ -613,16 +613,17 @@ class AnalyzeRNNCritic(object):
                 means.append(np.mean(data[i-window:i]))
                 stds.append(np.std(data[i - window:i]))
             return idxs[:-window], np.asarray(means), np.asarray(stds)
-        moving_steps, rollout_lens_mean, rollout_lens_std = moving_avg_std(steps, rollout_lens, 5)
-        ax.plot(moving_steps, rollout_lens_mean, 'k-')
-        ax.fill_between(moving_steps, rollout_lens_mean - rollout_lens_std, rollout_lens_mean + rollout_lens_std,
+        moving_steps, final_rewards_mean, final_rewards_std = moving_avg_std(steps, final_rewards, 500)
+        ax.plot(moving_steps, final_rewards_mean, 'k-')
+        ax.fill_between(moving_steps, final_rewards_mean - final_rewards_std, final_rewards_mean + final_rewards_std,
                         color='k', alpha=0.4)
 
         for ax in axes.ravel()[1:]:
-            ax.set_ylim((-100, 10500))
-            ax.vlines(self.params['alg']['learn_after_n_steps'], 0, ax.get_ylim()[1], colors='g', linestyles='dashed')
-            ax.hlines(10000, steps[0], steps[-1], color='k', alpha=0.5, linestyle='dashed')
-            ax.set_ylabel('Rollout length')
+            ax.set_ylim((-1.5, 1.5))
+            ax.vlines(self.params['alg']['learn_after_n_steps'], ax.get_ylim()[0], ax.get_ylim()[1], colors='g', linestyles='dashed')
+            ax.hlines(1, steps[0], steps[-1], color='k', alpha=0.5, linestyle='dashed')
+            ax.hlines(-1, steps[0], steps[-1], color='k', alpha=0.5, linestyle='dashed')
+            ax.set_ylabel('Final reward')
 
         ### for all plots
         ax.set_xlabel('Steps')
