@@ -64,7 +64,8 @@ class MultiactionCombinedcostMuxRNNPolicy(Policy, Serializable):
                 final_dim = self._rnn_state_dim if not self._use_lstm else 2 * self._rnn_state_dim
                 for num_outputs in self._obs_hidden_layers + [final_dim]:
                     layer = layers.fully_connected(layer, num_outputs=num_outputs, activation_fn=self._activation,
-                                                   weights_regularizer=layers.l2_regularizer(1.))
+                                                   weights_regularizer=layers.l2_regularizer(1.),
+                                                   weights_initializer=tf.contrib.layers.xavier_initializer())
                 istate = layer
 
             ### actions --> rnn input at each time step
@@ -83,6 +84,10 @@ class MultiactionCombinedcostMuxRNNPolicy(Policy, Serializable):
                     else:
                         rnn_cell = BasicMuxRNNCell(ac_dim, self._rnn_state_dim, activation=self._rnn_activation)
                     rnn_outputs, rnn_states = tf.nn.dynamic_rnn(rnn_cell, rnn_inputs, initial_state=istate)
+                rnn_vars = [v for v in tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
+                            if 'rnn_vars' in v.name and 'B' not in v.name]
+                for v in rnn_vars:
+                    tf.add_to_collection(tf.GraphKeys.REGULARIZATION_LOSSES, tf.nn.l2_loss(v))
 
             ### final internal state --> reward
             with tf.name_scope('final_istate_to_reward'):
@@ -93,6 +98,7 @@ class MultiactionCombinedcostMuxRNNPolicy(Policy, Serializable):
                                                    num_outputs=num_outputs,
                                                    activation_fn=activation,
                                                    weights_regularizer=layers.l2_regularizer(1.),
+                                                   weights_initializer=tf.contrib.layers.xavier_initializer(),
                                                    scope='rewards_i{0}'.format(i),
                                                    reuse=False)
                 tf_rewards = layer

@@ -75,7 +75,7 @@ class Policy(TfPolicy, Serializable):
 
         self._tf_debug = dict()
         self._tf_graph, self._tf_sess, self._d_preprocess, \
-            self._tf_obs_ph, self._tf_actions_ph, self._tf_rewards_ph, self._tf_values, self._tf_cost, self._tf_opt, self._tf_lr_ph, \
+            self._tf_obs_ph, self._tf_actions_ph, self._tf_rewards_ph, self._tf_values, self._tf_cost, self._tf_mse, self._tf_opt, self._tf_lr_ph, \
             self._tf_obs_target_ph, self._tf_actions_target_ph, self._tf_target_mask_ph, self._update_target_fn = \
             self._graph_setup()
 
@@ -322,7 +322,7 @@ class Policy(TfPolicy, Serializable):
             # writer = tf.train.SummaryWriter('/tmp', graph_def=tf_sess.graph_def)
 
         return tf_graph, tf_sess, d_preprocess, \
-               tf_obs_ph, tf_actions_ph, tf_rewards_ph, tf_values, tf_cost, tf_opt, tf_lr_ph, \
+               tf_obs_ph, tf_actions_ph, tf_rewards_ph, tf_values, tf_cost, tf_mse, tf_opt, tf_lr_ph, \
                tf_obs_target_ph, tf_actions_target_ph, tf_target_mask_ph, update_target_fn
 
     ################
@@ -343,7 +343,7 @@ class Policy(TfPolicy, Serializable):
                     'actions_mean', 'actions_orth',
                     'rewards_mean', 'rewards_orth'):
             if self._preprocess_params[key]:
-                tf_assigns.append(self._preprocess_params[key + '_assign'])
+                tf_assigns.append(self._d_preprocess[key + '_assign'])
 
         # we assume if obs is im, the obs orth is the diagonal of the covariance
         self._tf_sess.run(tf_assigns,
@@ -391,11 +391,12 @@ class Policy(TfPolicy, Serializable):
             self._tf_actions_target_ph: target_actions,
             self._tf_target_mask_ph: float(use_target) * (1 - dones[:, self._H].astype(float))
         }
-        cost, _ = self._tf_sess.run([self._tf_cost, self._tf_opt], feed_dict=feed_dict)
+        cost, mse, _ = self._tf_sess.run([self._tf_cost, self._tf_mse, self._tf_opt], feed_dict=feed_dict)
 
         assert(np.isfinite(cost))
 
         self._log_stats['Cost'].append(cost)
+        self._log_stats['mse/cost'].append(mse/cost)
 
     ######################
     ### Policy methods ###

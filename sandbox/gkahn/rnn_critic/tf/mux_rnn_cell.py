@@ -40,16 +40,18 @@ class BasicMuxRNNCell(RNNCell):
         return new_h, new_state
 
 class BasicMuxLSTMCell(RNNCell):
-    def __init__(self, num_actions, num_units, state_is_tuple=True, activation=tf.tanh):
+    def __init__(self, num_actions, num_units, state_is_tuple=True, activation=tf.tanh,
+                 initializer=tf.contrib.layers.xavier_initializer()):
         """
         Each cell consists of num_actions BasicRNNCells, each with num_units
 
         :param num_actions: assumes actions are one-hot vectors
         """
         assert(state_is_tuple)
-        self._rnn_cells = [tf.nn.rnn_cell.BasicLSTMCell(num_units,
-                                                        state_is_tuple=state_is_tuple,
-                                                        activation=activation) for _ in range(num_actions)]
+        self._rnn_cells = [tf.nn.rnn_cell.LSTMCell(num_units,
+                                                   state_is_tuple=state_is_tuple,
+                                                   activation=activation,
+                                                   initializer=initializer) for _ in range(num_actions)]
 
         self._num_actions = num_actions
         self._num_units = num_units
@@ -58,7 +60,6 @@ class BasicMuxLSTMCell(RNNCell):
     @property
     def state_size(self):
         return self._num_units
-
 
     @property
     def output_size(self):
