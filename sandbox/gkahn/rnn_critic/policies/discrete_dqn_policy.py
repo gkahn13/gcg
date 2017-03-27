@@ -104,6 +104,7 @@ class DiscreteDQNPolicy(Policy, Serializable):
 
             # num_vars = np.sum([np.prod(v.get_shape()) for v in tf.trainable_variables()])
             # print('num_vars: {0}'.format(num_vars))
+            # import IPython; IPython.embed()
 
         return tf_rewards
 

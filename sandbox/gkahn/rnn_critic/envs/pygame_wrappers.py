@@ -131,8 +131,8 @@ def wrap_pygame(env):
     else:
         env = EpisodicLifeEnv(env)
     if 'ram' not in env.spec.id.lower():
-        # max and skip env
-        env = MaxAndSkipEnv(env)
+        # # max and skip env
+        # env = MaxAndSkipEnv(env)
         # make image black and white
         env = BlackAndWhiteWrapper(env)
     # clip rewards so just -1 0 +1

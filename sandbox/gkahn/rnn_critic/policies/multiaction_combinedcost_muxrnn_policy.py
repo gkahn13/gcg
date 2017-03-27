@@ -15,6 +15,10 @@ class MultiactionCombinedcostMuxRNNPolicy(Policy, Serializable):
                  use_lstm,
                  activation,
                  rnn_activation,
+                 conv_hidden_layers=None,
+                 conv_kernels=None,
+                 conv_strides=None,
+                 conv_activation=None,
                  **kwargs):
         """
         :param obs_hidden_layers: layer sizes for preprocessing the observation
@@ -32,6 +36,14 @@ class MultiactionCombinedcostMuxRNNPolicy(Policy, Serializable):
         self._use_lstm = use_lstm
         self._activation = eval(activation)
         self._rnn_activation = eval(rnn_activation)
+        self._use_conv = (conv_hidden_layers is not None) and (conv_kernels is not None) and \
+                         (conv_strides is not None) and (conv_activation is not None)
+        if self._use_conv:
+            self._conv_hidden_layers = list(conv_hidden_layers)
+            self._conv_kernels = list(conv_kernels)
+            self._conv_strides = list(conv_strides)
+            self._conv_activation = eval(conv_activation)
+
 
         Policy.__init__(self, **kwargs)
 
@@ -58,9 +70,26 @@ class MultiactionCombinedcostMuxRNNPolicy(Policy, Serializable):
         with tf.name_scope('inference'):
             tf_obs, tf_actions = self._graph_preprocess_inputs(tf_obs_ph, tf_actions_ph, d_preprocess)
 
+            ### obs --> lower dimensional space
+            with tf.name_scope('obs_to_lowd'):
+                if self._use_conv:
+                    obs_shape = list(self._env_spec.observation_space.shape)
+                    obs_shape[-1] = self._obs_history_len
+                    layer = tf.reshape(tf_obs, [-1] + list(obs_shape))
+                    for num_outputs, kernel_size, stride in zip(self._conv_hidden_layers,
+                                                                self._conv_kernels,
+                                                                self._conv_strides):
+                        layer = layers.convolution2d(layer,
+                                                     num_outputs=num_outputs,
+                                                     kernel_size=kernel_size,
+                                                     stride=stride,
+                                                     activation_fn=self._conv_activation)
+                    layer = layers.flatten(layer)
+                else:
+                    layer = layers.flatten(tf_obs)
+
             ### obs --> internal state
             with tf.name_scope('obs_to_istate'):
-                layer = tf_obs
                 final_dim = self._rnn_state_dim if not self._use_lstm else 2 * self._rnn_state_dim
                 for num_outputs in self._obs_hidden_layers + [final_dim]:
                     layer = layers.fully_connected(layer, num_outputs=num_outputs, activation_fn=self._activation,
@@ -104,5 +133,10 @@ class MultiactionCombinedcostMuxRNNPolicy(Policy, Serializable):
                 tf_rewards = layer
 
             tf_rewards = self._graph_preprocess_outputs(tf_rewards, d_preprocess)
+
+            # import numpy as np
+            # num_vars = np.sum([np.prod(v.get_shape()) for v in tf.trainable_variables()])
+            # print('num_vars: {0}'.format(num_vars))
+            # import IPython; IPython.embed()
 
         return tf_rewards
