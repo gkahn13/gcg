@@ -251,7 +251,7 @@ class AnalyzeRNNCritic(object):
             self._plot_analyze_CartPole(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
         elif isinstance(env, GymEnv) and 'Catcher-ram' in env.env_id:
             if 'is_onpolicy' not in self.params['alg'].keys() or self.params['alg']['is_onpolicy']:
-                self._plot_analyze_CatcherRam(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
+                self._plot_analyze_Catcher(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
             else:
                 self._plot_analyze_CatcherRamOffpolicy(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
         elif isinstance(env, GymEnv) and 'Catcher' in env.env_id:
@@ -586,7 +586,7 @@ class AnalyzeRNNCritic(object):
         f.savefig(self._analyze_img_file, bbox_inches='tight')
         plt.close(f)
 
-    def _plot_analyze_CatcherRam(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
+    def _plot_analyze_Catcher(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
         f, axes = plt.subplots(3, 1, figsize=(20., 7.5), sharex=True)
         f.tight_layout()
 
@@ -673,47 +673,6 @@ class AnalyzeRNNCritic(object):
         ax.set_ylabel('Eval episode lengths')
 
         ### for last plot
-        ax.set_xlabel('Steps')
-        xfmt = ticker.ScalarFormatter()
-        xfmt.set_powerlimits((0, 0))
-        ax.xaxis.set_major_formatter(xfmt)
-
-        ### for all
-        for ax in axes:
-            ax.set_xlim((-save_step/2., end_step))
-            ax.set_xticks(itr_steps)
-
-        f.savefig(self._analyze_img_file, bbox_inches='tight')
-        plt.close(f)
-
-    def _plot_analyze_Catcher(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
-        f, axes = plt.subplots(2, 1, figsize=(5 * len(train_rollouts_itrs), 10), sharex=True)
-        f.tight_layout()
-
-        ### plot training cost
-        ax = axes[0]
-        costs = self.progress['Cost'][1:]
-        steps = self.progress['Step'][1:]
-        ax.plot(steps, costs, 'k-')
-        ax.set_ylabel('Cost')
-
-        ### plot episode length
-        ax = axes[1]
-        idxs = np.nonzero(np.isfinite(self.progress['EpisodeLengthMean']))[0]
-        episode_length_means = self.progress['EpisodeLengthMean'][idxs]
-        episode_length_stds = self.progress['EpisodeLengthStd'][idxs]
-        steps = np.array(self.progress['Step'][idxs])
-        ax.plot(steps, episode_length_means, 'k-')
-        ax.fill_between(steps, episode_length_means - episode_length_stds, episode_length_means + episode_length_stds,
-                        color='k', alpha=0.4)
-        ax.set_ylabel('Episode Length')
-
-        start_step = self.params['alg']['learn_after_n_steps']
-        end_step = steps[-1] # self.params['alg']['total_steps']
-        save_step = self.params['alg']['save_every_n_steps']
-        first_save_step = save_step * np.floor(start_step / float(save_step))
-        itr_steps = np.r_[first_save_step:end_step:save_step]
-
         ax.set_xlabel('Steps')
         xfmt = ticker.ScalarFormatter()
         xfmt.set_powerlimits((0, 0))

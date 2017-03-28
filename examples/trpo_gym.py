@@ -7,7 +7,7 @@ from rllab.policies.gaussian_mlp_policy import GaussianMLPPolicy
 
 
 def run_task(*_):
-    env = normalize(GymEnv("Pendulum-v0"))
+    env = normalize(GymEnv("Pendulum-v0", record_video=False))
 
     policy = GaussianMLPPolicy(
         env_spec=env.spec,
@@ -42,4 +42,6 @@ run_experiment_lite(
     # will be used
     seed=1,
     # plot=True,
+    mode='local_docker',
+    docker_image='rllab-gkahn'
 )

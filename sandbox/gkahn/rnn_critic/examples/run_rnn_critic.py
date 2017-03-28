@@ -22,6 +22,7 @@ from sandbox.gkahn.rnn_critic.algos.rnn_critic_offpolicy import RNNCriticOffpoli
 from sandbox.gkahn.rnn_critic.policies.dqn_policy import DQNPolicy
 from sandbox.gkahn.rnn_critic.policies.discrete_dqn_policy import DiscreteDQNPolicy
 from sandbox.gkahn.rnn_critic.policies.nstep_dqn_policy import NstepDQNPolicy
+from sandbox.gkahn.rnn_critic.policies.nstep_discrete_dqn_policy import NstepDiscreteDQNPolicy
 from sandbox.gkahn.rnn_critic.policies.multiaction_combinedcost_mlp_policy import MultiactionCombinedcostMLPPolicy
 from sandbox.gkahn.rnn_critic.policies.multiaction_combinedcost_rnn_policy import MultiactionCombinedcostRNNPolicy
 from sandbox.gkahn.rnn_critic.policies.multiaction_combinedcost_muxrnn_policy import MultiactionCombinedcostMuxRNNPolicy
@@ -30,7 +31,7 @@ from sandbox.gkahn.rnn_critic.policies.multiaction_separatedcost_rnn_policy impo
 
 def run_task(params):
     # copy yaml for posterity
-    shutil.copy(params['yaml_path'], os.path.join(logger.get_snapshot_dir(), os.path.basename(params['yaml_path'])))
+    # shutil.copy(params['yaml_path'], os.path.join(logger.get_snapshot_dir(), os.path.basename(params['yaml_path'])))
 
     from rllab.envs.gym_env import GymEnv
     from sandbox.gkahn.rnn_critic.envs.premade_gym_env import PremadeGymEnv
@@ -108,7 +109,10 @@ def main(yaml_file):
         lambda x: run_task(params), # HACK
         snapshot_mode="all",
         exp_name=params['exp_name'],
-        exp_prefix=params['exp_prefix']
+        exp_prefix=params['exp_prefix'],
+        # use_gpu=True,
+        # mode='local_docker',
+        # docker_image='rllab-gkahn'
     )
 
 if __name__ == '__main__':

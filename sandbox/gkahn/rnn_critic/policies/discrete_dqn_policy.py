@@ -124,11 +124,11 @@ class DiscreteDQNPolicy(Policy, Serializable):
         tf_target_values_max = tf.reduce_sum(tf_target_values_mask * tf_target_values_eval, reduction_indices=1)
 
         ### policy:
-        tf_values_ph = tf.reduce_sum(tf_rewards_ph, reduction_indices=1)
+        tf_values_ph = tf.reduce_sum(np.power(self._gamma, np.arange(self._N)) * tf_rewards_ph, reduction_indices=1)
         tf_values = tf.reduce_sum(tf_actions_ph * tf_rewards, reduction_indices=1)
 
         mse = tf.reduce_mean(tf.square(tf_values_ph +
-                                       self._use_target * tf_target_mask_ph * np.power(self._gamma, self._H) * tf_target_values_max -
+                                       self._use_target * tf_target_mask_ph * np.power(self._gamma, self._N) * tf_target_values_max -
                                        tf_values))
         if len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)) > 0:
             weight_decay = self._weight_decay * tf.add_n(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
@@ -170,11 +170,12 @@ class DiscreteDQNPolicy(Policy, Serializable):
             self._tf_obs_target_ph: target_observations,
             self._tf_target_mask_ph: float(use_target) * (1 - dones[:, self._H].astype(float))
         }
-        cost, _ = self._tf_sess.run([self._tf_cost, self._tf_opt], feed_dict=feed_dict)
+        cost, mse, _ = self._tf_sess.run([self._tf_cost, self._tf_mse, self._tf_opt], feed_dict=feed_dict)
 
         assert (np.isfinite(cost))
 
         self._log_stats['Cost'].append(cost)
+        self._log_stats['mse/cost'].append(mse / cost)
 
     ######################
     ### Policy methods ###
