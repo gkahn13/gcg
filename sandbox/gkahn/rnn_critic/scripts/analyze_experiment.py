@@ -97,13 +97,15 @@ def inner_env(env):
 ################
 
 class AnalyzeRNNCritic(object):
-    def __init__(self, folder, skip_itr=1, max_itr=sys.maxsize, plot=dict()):
+    def __init__(self, folder, skip_itr=1, max_itr=sys.maxsize, plot=dict(), create_new_envs=True, clear_obs=False):
         """
         :param kwargs: holds random extra properties
         """
         self._folder = folder
         self._skip_itr = skip_itr
         self._max_itr = max_itr
+        self._create_new_envs = create_new_envs
+        self._clear_obs = clear_obs
 
         ### load data
         self.name = os.path.basename(self._folder)
@@ -178,7 +180,11 @@ class AnalyzeRNNCritic(object):
             env = d['env']
             d['policy'].terminate()
 
-        if env is None:
+        if self._clear_obs:
+            for rollout in d['rollouts']:
+                rollout['observations'] = None
+
+        if env is None and self._create_new_envs:
             inner_env = eval(self.params['alg']['env'])
             env = TfEnv(normalize(inner_env))
 

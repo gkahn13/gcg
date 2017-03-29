@@ -31,7 +31,7 @@ from sandbox.gkahn.rnn_critic.policies.multiaction_separatedcost_rnn_policy impo
 
 def run_task(params):
     # copy yaml for posterity
-    # shutil.copy(params['yaml_path'], os.path.join(logger.get_snapshot_dir(), os.path.basename(params['yaml_path'])))
+    shutil.copy(params['yaml_path'], os.path.join(logger.get_snapshot_dir(), os.path.basename(params['yaml_path'])))
 
     from rllab.envs.gym_env import GymEnv
     from sandbox.gkahn.rnn_critic.envs.premade_gym_env import PremadeGymEnv

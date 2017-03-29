@@ -595,45 +595,58 @@ if __name__ == '__main__':
     analyze_groups = []
     ### DiscreteDQNPolicy
     analyze_group = []
-    for i in range(835, 840):
+    for i in [855, 856, 858, 859]:
         print('\nexp {0}\n'.format(i))
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'DiscreteDQNPolicy',
                                                   'color': 'k'
-                                              }))
+                                              },
+                                              clear_obs=True))
     analyze_groups.append(analyze_group)
+    # ### NstepDiscreteDQNPolicy N=3
+    # analyze_group = []
+    # for i in range(880, 884):
+    #     print('\nexp {0}\n'.format(i))
+    #     analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
+    #                                           plot={
+    #                                               'label': 'NstepDiscreteDQNPolicy, N=3',
+    #                                               'color': 'r'
+    #                                           }))
+    # analyze_groups.append(analyze_group)
+    # ### NstepDiscreteDQNPolicy N=5
+    # analyze_group = []
+    # for i in range(885, 890):
+    #     print('\nexp {0}\n'.format(i))
+    #     analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
+    #                                           plot={
+    #                                               'label': 'NstepDiscreteDQNPolicy, N=5',
+    #                                               'color': 'b'
+    #                                           }))
+    # analyze_groups.append(analyze_group)
     ### MultiactionCombinedcostMuxRNNPolicy N=3
     analyze_group = []
-    for i in range(840, 845):
+    for i in range(860, 865):
         print('\nexp {0}\n'.format(i))
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'MultiactionCombinedcostMuxRNNPolicy, N=3',
-                                                  'color': 'r'
-                                              }))
+                                                  'color': 'm'
+                                              },
+                                              clear_obs=True))
     analyze_groups.append(analyze_group)
     ### MultiactionCombinedcostMuxRNNPolicy N=5
     analyze_group = []
-    for i in range(845, 850):
+    for i in range(865, 868):
         print('\nexp {0}\n'.format(i))
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'MultiactionCombinedcostMuxRNNPolicy, N=5',
-                                                  'color': 'g'
-                                              }))
-    analyze_groups.append(analyze_group)
-    ### MultiactionCombinedcostMuxRNNPolicy N=10
-    analyze_group = []
-    for i in range(850, 855):
-        print('\nexp {0}\n'.format(i))
-        analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
-                                              plot={
-                                                  'label': 'MultiactionCombinedcostMuxRNNPolicy, N=10',
-                                                  'color': 'b'
-                                              }))
+                                                  'color': 'c'
+                                              },
+                                              clear_obs=True))
     analyze_groups.append(analyze_group)
 
-    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'catcher_835_854', analyze_groups)
+    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'catcher_dqn_nstep_multiaction', analyze_groups)
     plotter.run()
 
