@@ -369,7 +369,7 @@ class Policy(TfPolicy, Serializable):
         policy_observations = observations[:, 0, :]
         policy_actions = actions[:, :self._H, :].reshape((batch_size, self._H * action_dim))
         policy_rewards = rewards[:, :self._N]
-        target_observations = observations[:, self._H, :]
+        target_observations = observations[:, self._N, :]
 
         if self._get_action_params['type'] == 'random':
             target_actions = self._get_random_action(self._get_action_params['K'])
@@ -389,7 +389,7 @@ class Policy(TfPolicy, Serializable):
             ### target network
             self._tf_obs_target_ph: target_observations,
             self._tf_actions_target_ph: target_actions,
-            self._tf_target_mask_ph: float(use_target) * (1 - dones[:, self._H].astype(float))
+            self._tf_target_mask_ph: float(use_target) * (1 - dones[:, self._N].astype(float))
         }
         cost, mse, _ = self._tf_sess.run([self._tf_cost, self._tf_mse, self._tf_opt], feed_dict=feed_dict)
 
