@@ -44,7 +44,6 @@ class MultiactionCombinedcostMuxRNNPolicy(Policy, Serializable):
             self._conv_strides = list(conv_strides)
             self._conv_activation = eval(conv_activation)
 
-
         Policy.__init__(self, **kwargs)
 
         # assert(self._N > 1)
@@ -96,6 +95,9 @@ class MultiactionCombinedcostMuxRNNPolicy(Policy, Serializable):
                                                    weights_regularizer=layers.l2_regularizer(1.),
                                                    weights_initializer=tf.contrib.layers.xavier_initializer())
                 istate = layer
+
+            ### replicate istate if needed
+            istate = self._graph_match_actions(istate, tf_actions)
 
             ### actions --> rnn input at each time step
             with tf.name_scope('actions_to_rnn_input'):

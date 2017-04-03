@@ -6,12 +6,26 @@ import scipy
 import matplotlib.pyplot as plt
 from matplotlib import ticker
 
+from sandbox.rocky.tf.envs.base import TfEnv
+from rllab.envs.normalized_env import normalize
+
 from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
 from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
 from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
 from rllab.envs.gym_env import GymEnv
 
 from analyze_experiment import AnalyzeRNNCritic
+
+### environments
+import gym
+from sandbox.gkahn.rnn_critic.envs.atari_wrappers import wrap_deepmind
+from sandbox.gkahn.rnn_critic.envs.pygame_wrappers import wrap_pygame
+from rllab.envs.gym_env import GymEnv
+from sandbox.gkahn.rnn_critic.envs.premade_gym_env import PremadeGymEnv
+import gym_ple
+from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
+from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
+from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
 
 ##################
 ### Processing ###
@@ -49,6 +63,9 @@ class PlotAnalyzeRNNCritic(object):
         self._analyze_groups = analyze_groups
 
         env = analyze_groups[0][0].env_itrs[0]
+        if env is None:
+            inner_env = eval(analyze_groups[0][0].params['alg']['env'])
+            env = TfEnv(normalize(inner_env))
         while hasattr(env, 'wrapped_env'):
             env = env.wrapped_env
         self._env = env
@@ -595,58 +612,65 @@ if __name__ == '__main__':
     analyze_groups = []
     ### DiscreteDQNPolicy
     analyze_group = []
-    for i in [855, 856, 858, 859]:
+    for i in range(835, 840):
         print('\nexp {0}\n'.format(i))
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'DiscreteDQNPolicy',
                                                   'color': 'k'
                                               },
-                                              clear_obs=True))
+                                              clear_obs=True,
+                                              create_new_envs=False))
     analyze_groups.append(analyze_group)
-    # ### NstepDiscreteDQNPolicy N=3
-    # analyze_group = []
-    # for i in range(880, 884):
-    #     print('\nexp {0}\n'.format(i))
-    #     analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
-    #                                           plot={
-    #                                               'label': 'NstepDiscreteDQNPolicy, N=3',
-    #                                               'color': 'r'
-    #                                           }))
-    # analyze_groups.append(analyze_group)
-    # ### NstepDiscreteDQNPolicy N=5
-    # analyze_group = []
-    # for i in range(885, 890):
-    #     print('\nexp {0}\n'.format(i))
-    #     analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
-    #                                           plot={
-    #                                               'label': 'NstepDiscreteDQNPolicy, N=5',
-    #                                               'color': 'b'
-    #                                           }))
-    # analyze_groups.append(analyze_group)
+    ### NstepDiscreteDQNPolicy N=3
+    analyze_group = []
+    for i in range(880, 885):
+        print('\nexp {0}\n'.format(i))
+        analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
+                                              plot={
+                                                  'label': 'NstepDiscreteDQNPolicy, N=3',
+                                                  'color': 'r'
+                                              },
+                                              clear_obs=True,
+                                              create_new_envs=False))
+    analyze_groups.append(analyze_group)
+    ### NstepDiscreteDQNPolicy N=5
+    analyze_group = []
+    for i in range(885, 890):
+        print('\nexp {0}\n'.format(i))
+        analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
+                                              plot={
+                                                  'label': 'NstepDiscreteDQNPolicy, N=5',
+                                                  'color': 'b'
+                                              },
+                                              clear_obs=True,
+                                              create_new_envs=False))
+    analyze_groups.append(analyze_group)
     ### MultiactionCombinedcostMuxRNNPolicy N=3
     analyze_group = []
-    for i in range(860, 865):
+    for i in range(840, 845):
         print('\nexp {0}\n'.format(i))
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'MultiactionCombinedcostMuxRNNPolicy, N=3',
                                                   'color': 'm'
                                               },
-                                              clear_obs=True))
+                                              clear_obs=True,
+                                              create_new_envs=False))
     analyze_groups.append(analyze_group)
     ### MultiactionCombinedcostMuxRNNPolicy N=5
     analyze_group = []
-    for i in range(865, 868):
+    for i in range(845, 850):
         print('\nexp {0}\n'.format(i))
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'MultiactionCombinedcostMuxRNNPolicy, N=5',
                                                   'color': 'c'
                                               },
-                                              clear_obs=True))
+                                              clear_obs=True,
+                                              create_new_envs=False))
     analyze_groups.append(analyze_group)
 
-    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'catcher_dqn_nstep_multiaction', analyze_groups)
+    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'catcher_ram_dqn_nstep_multiaction', analyze_groups)
     plotter.run()
 

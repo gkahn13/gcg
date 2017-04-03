@@ -199,15 +199,18 @@ class Policy(TfPolicy, Serializable):
             tf_actions_whitened = tf.matmul(tf_actions_ph - d_preprocess['actions_mean_var'],
                                             d_preprocess['actions_orth_var'])
 
-        num_obs = tf.shape(tf_obs_whitened)[0]
-        num_action = tf.shape(tf_actions_whitened)[0]
+        return tf_obs_whitened, tf_actions_whitened
+
+    def _graph_match_actions(self, layer, tf_actions):
+        num_layer = tf.shape(layer)[0]
+        num_action = tf.shape(tf_actions)[0]
 
         # assumes num_action is a multiple of num_obs
-        tf_obs_whitened_cond = tf.cond(tf.not_equal(num_obs, num_action),
-                                       lambda: tf_utils.repeat_2d(tf_obs_whitened, num_action // num_obs, 0),
-                                       lambda: tf_obs_whitened)
+        layer_cond = tf.cond(tf.not_equal(num_layer, num_action),
+                             lambda: tf_utils.repeat_2d(layer, num_action // num_layer, 0),
+                             lambda: layer)
 
-        return tf_obs_whitened_cond, tf_actions_whitened
+        return layer_cond
 
     def _graph_preprocess_outputs(self, tf_rewards, d_preprocess):
         return tf.add(tf.matmul(tf_rewards, tf.transpose(d_preprocess['rewards_orth_var'])),

@@ -144,9 +144,9 @@ class RNNCritic(RLAlgorithm):
                     self._policy.log()
                     logger.dump_tabular(with_prefix=False)
                     timeit.stop('total')
-                    # print('')
-                    # print(str(timeit))
-                    # print('')
+                    print('')
+                    print(str(timeit))
+                    print('')
                     timeit.reset()
                     timeit.start('total')
 

@@ -75,7 +75,7 @@ class MaxAndSkipEnv(gym.Wrapper):
         """Return only every `skip`-th frame"""
         super(MaxAndSkipEnv, self).__init__(env)
         # most recent raw observations (for max pooling across time steps)
-        self._obs_buffer = deque(maxlen=2)
+        self._obs_buffer = deque(maxlen=skip) # TODO
         self._skip       = skip
 
     def _step(self, action):
@@ -125,6 +125,17 @@ class ClippedRewardsWrapper(gym.Wrapper):
         return obs, np.sign(reward), done, info
 
 def wrap_pygame(env):
+    # # make end-of-life == end-of-episode
+    # # env = EpisodicLifeEnv(env)
+    # env = EpisodicRewardEnv(env)
+    # # max and skip env
+    # env = MaxAndSkipEnv(env, skip=4)
+    # # make image black and white
+    # env = BlackAndWhiteWrapper(env)
+    # # clip rewards so just -1 0 +1
+    # env = ClippedRewardsWrapper(env)
+    # return env
+
     # make end-of-life == end-of-episode
     if 'catcher' in env.spec.id.lower():
         env = EpisodicRewardEnv(env)

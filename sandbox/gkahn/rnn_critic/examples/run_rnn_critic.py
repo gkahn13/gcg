@@ -48,6 +48,25 @@ def run_task(params):
         if isinstance(inner_env, GymEnv):
             inner_env.env.seed(params['seed'])
 
+    # import matplotlib.pyplot as plt
+    # f = plt.figure()
+    # done = True
+    # while True:
+    #     if done:
+    #         o = env.reset()
+    #         done = False
+    #     else:
+    #         o, r, done, _ = env.step(0)
+    #
+    #     plt.imshow(o, cmap='Greys_r')
+    #     plt.show(block=False)
+    #     plt.pause(0.05)
+    #     input('done: {0}'.format(done))
+    #     plt.clf()
+    #     plt.cla()
+    #
+    # import IPython; IPython.embed()
+
     #####################
     ### Create policy ###
     #####################
