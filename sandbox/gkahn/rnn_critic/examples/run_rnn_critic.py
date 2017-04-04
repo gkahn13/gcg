@@ -137,7 +137,8 @@ def main(yaml_file):
         exp_prefix=params['exp_prefix'],
         use_gpu=True,
         mode='local_docker',
-        docker_image='rllab-gkahn'
+        docker_image='rllab-gkahn',
+        docker_args=' --name {0} '.format(params['exp_name'])
     )
 
 if __name__ == '__main__':
