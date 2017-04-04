@@ -5,7 +5,7 @@ from sandbox.gkahn.rnn_critic.scripts.analyze_experiment import main as analyze_
 
 if __name__ == '__main__':
     # exps = ['exp{0}'.format(i) for i in range(896, 900)]
-    exps = ['test_catcher_speed']
+    exps = ['test_catcher']
 
     for exp in exps:
         try:

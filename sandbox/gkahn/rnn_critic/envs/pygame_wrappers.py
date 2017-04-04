@@ -59,16 +59,34 @@ class EpisodicRewardEnv(EpisodicLifeEnv):
     def _step(self, action):
         obs, reward, done, info = self.env.step(action)
         self.was_real_done = done
-        # check current lives, make loss of life terminal,
-        # then update lives to handle bonus lives
         lives = self.get_lives()
         if abs(reward) > 1e-5:
-            # for Qbert somtimes we stay in lives == 0 condtion for a few frames
-            # so its important to keep lives > 0, so that we only reset once
-            # the environment advertises done.
             done = True
         self.lives = lives
         return obs, reward, done, info
+
+class ShiftedObservationEnv(gym.Wrapper):
+    def __init__(self, env=None, shift=1):
+        super(ShiftedObservationEnv, self).__init__(env)
+        self._shift = shift
+        self._obs_buffer = deque(maxlen=shift)  # TODO
+        self._noop_action = 2 # TODO
+
+    def _step(self, action):
+        new_obs, reward, done, info = super(ShiftedObservationEnv, self)._step(action)
+        obs = self._obs_buffer.popleft()
+        self._obs_buffer.append(new_obs)
+        return obs, reward, done, info
+
+    def _reset(self):
+        obs = super(ShiftedObservationEnv, self)._reset()
+        self._obs_buffer.append(obs)
+
+        for _ in range(self._shift - 1):
+            obs, _, _, _ = super(ShiftedObservationEnv, self).step(self._noop_action)
+            self._obs_buffer.append(obs)
+
+        return obs
 
 class MaxAndSkipEnv(gym.Wrapper):
     def __init__(self, env=None, skip=4):
@@ -128,8 +146,10 @@ def wrap_pygame(env):
     # # make end-of-life == end-of-episode
     # # env = EpisodicLifeEnv(env)
     # env = EpisodicRewardEnv(env)
-    # # max and skip env
-    # env = MaxAndSkipEnv(env, skip=4)
+    # # # max and skip env
+    # # env = MaxAndSkipEnv(env, skip=4)
+    # # # shift observation
+    # # env = ShiftedObservationEnv(env, shift=3)
     # # make image black and white
     # env = BlackAndWhiteWrapper(env)
     # # clip rewards so just -1 0 +1

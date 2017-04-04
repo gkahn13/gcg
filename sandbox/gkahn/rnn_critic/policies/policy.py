@@ -2,6 +2,7 @@ import abc
 import os
 from collections import defaultdict
 import itertools
+import time
 
 import numpy as np
 import scipy.linalg
@@ -128,14 +129,15 @@ class Policy(TfPolicy, Serializable):
 
         tf_graph = tf.Graph()
         os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_device)
-        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
-        config = tf.ConfigProto(gpu_options=gpu_options,
-                                log_device_placement=False,
-                                allow_soft_placement=True)
-        # os.environ["CUDA_VISIBLE_DEVICES"] = ''
-        # config = tf.ConfigProto(
-        #     device_count={'GPU': 0}
-        # )
+        if len(str(gpu_device)) > 0:
+            gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
+            config = tf.ConfigProto(gpu_options=gpu_options,
+                                    log_device_placement=False,
+                                    allow_soft_placement=True)
+        else:
+            config = tf.ConfigProto(
+                device_count={'GPU': 0}
+            )
         tf_sess = tf.Session(graph=tf_graph, config=config)
         return tf_sess, tf_graph
 
@@ -243,13 +245,15 @@ class Policy(TfPolicy, Serializable):
         tf_target_values_mask = tf.one_hot(tf.argmax(tf_target_values_select_flat, axis=1),
                                            depth=tf.shape(tf_target_values_select_flat)[1])
         tf_target_values_max = tf.reduce_sum(tf_target_values_mask * tf_target_values_eval_flat, reduction_indices=1)
+        if self._use_target:
+            tf_target_bootstrap = tf_target_mask_ph * np.power(self._gamma, self._N)*tf_target_values_max
+        else:
+            tf_target_bootstrap = 0
 
         tf_values_ph = self._graph_calculate_values(tf_rewards_ph)
         tf_values = self._graph_calculate_values(tf_rewards)
 
-        mse = tf.reduce_mean(tf.square(tf_values_ph +
-                                       self._use_target * tf_target_mask_ph * np.power(self._gamma, self._N)*tf_target_values_max -
-                                       tf_values))
+        mse = tf.reduce_mean(tf.square(tf_values_ph + tf_target_bootstrap - tf_values))
         if len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)) > 0:
             weight_decay = self._weight_decay * tf.add_n(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
         else:
@@ -394,12 +398,15 @@ class Policy(TfPolicy, Serializable):
             self._tf_actions_target_ph: target_actions,
             self._tf_target_mask_ph: float(use_target) * (1 - dones[:, self._N].astype(float))
         }
+        start = time.time()
         cost, mse, _ = self._tf_sess.run([self._tf_cost, self._tf_mse, self._tf_opt], feed_dict=feed_dict)
+        elapsed = time.time() - start
 
         assert(np.isfinite(cost))
 
         self._log_stats['Cost'].append(cost)
         self._log_stats['mse/cost'].append(mse/cost)
+        self._log_stats['sess_run_time'].append(elapsed)
 
     ######################
     ### Policy methods ###
@@ -439,7 +446,7 @@ class Policy(TfPolicy, Serializable):
         u_dim = self._env_spec.action_space.flat_dim
         if isinstance(self._env_spec.action_space, Discrete):
             actions = np.random.randint(0, u_dim, size=(N, self._H))
-            actions = (np.arange(actions.max() + 1) == actions[:, :, None]).astype(int)
+            actions = (np.arange(u_dim) == actions[:, :, None]).astype(int)
             actions = actions.reshape(N, self._H * u_dim).astype(float)
         else:
             action_lower, action_upper = self._env_spec.action_space.bounds

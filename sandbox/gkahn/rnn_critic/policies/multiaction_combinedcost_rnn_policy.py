@@ -115,50 +115,13 @@ class MultiactionCombinedcostRNNPolicy(Policy, Serializable):
             with tf.name_scope('rnn'):
                 with tf.variable_scope('rnn_vars'):
                     if self._use_lstm:
-                        from tensorflow.contrib.cudnn_rnn import CudnnLSTM
-                        cudnn_lstm = CudnnLSTM(num_layers=self._N,
-                                               num_units=self._rnn_state_dim,
-                                               input_size=self._rnn_state_dim)
-                        # TODO: hack
-                        istate_h_0, istate_c_0 = tf.split(split_dim=1, num_split=2, value=istate)
-                        # istate_h
-                        istate_h_gt0 = tf.get_variable(name='istate_h_gt0',
-                                                       initializer=tf.random_uniform([tf.shape(istate_h_0)[0],
-                                                                                       self._N-1,
-                                                                                       self._rnn_state_dim]),
-                                                       validate_shape=False)
-                        istate_h = tf.concat(1, [tf.expand_dims(istate_h_0, 1), istate_h_gt0])
-                        istate_h.set_shape([None, self._N, self._rnn_state_dim])
-                        # istate_c
-                        istate_c_gt0 = tf.get_variable(name='istate_c_gt0',
-                                                       initializer=tf.random_uniform([tf.shape(istate_c_0)[0],
-                                                                                      self._N - 1,
-                                                                                      self._rnn_state_dim]),
-                                                       validate_shape=False)
-                        istate_c = tf.concat(1, [tf.expand_dims(istate_c_0, 1), istate_c_gt0])
-                        istate_c.set_shape([None, self._N, self._rnn_state_dim])
-                        # cudnn params
-                        cudnn_lstm_params = tf.get_variable(name='cudnn_lstm_params',
-                                                            # shape=cudnn_lstm.params_size(),
-                                                            initializer=tf.random_uniform([cudnn_lstm.params_size()]),
-                                                            validate_shape=False)
-                        # create rnn
-                        rnn_outputs, _, _ = cudnn_lstm(
-                            input_data=rnn_inputs,
-                            input_h=istate_h,
-                            input_c=istate_c,
-                            params=cudnn_lstm_params)
-                        # import IPython; IPython.embed()
-
-
-                        # rnn_cell = tf.nn.rnn_cell.BasicLSTMCell(self._rnn_state_dim,
-                        #                                         state_is_tuple=True,
-                        #                                         activation=self._rnn_activation)
-                        # istate = tf.nn.rnn_cell.LSTMStateTuple(*tf.split(1, 2, istate)) # so state_is_tuple=True
+                        rnn_cell = tf.nn.rnn_cell.BasicLSTMCell(self._rnn_state_dim,
+                                                                state_is_tuple=True,
+                                                                activation=self._rnn_activation)
+                        istate = tf.nn.rnn_cell.LSTMStateTuple(*tf.split(1, 2, istate)) # so state_is_tuple=True
                     else:
                         rnn_cell = tf.nn.rnn_cell.BasicRNNCell(self._rnn_state_dim, activation=self._rnn_activation)
-                        rnn_outputs, rnn_states = tf.nn.dynamic_rnn(rnn_cell, rnn_inputs, initial_state=istate)
-                    # rnn_outputs, rnn_states = tf.nn.dynamic_rnn(rnn_cell, rnn_inputs, initial_state=istate)
+                    rnn_outputs, rnn_states = tf.nn.dynamic_rnn(rnn_cell, rnn_inputs, initial_state=istate)
 
             ### final internal state --> reward
             with tf.name_scope('final_istate_to_reward'):

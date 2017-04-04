@@ -31,7 +31,10 @@ from sandbox.gkahn.rnn_critic.policies.multiaction_separatedcost_rnn_policy impo
 
 def run_task(params):
     # copy yaml for posterity
-    shutil.copy(params['yaml_path'], os.path.join(logger.get_snapshot_dir(), os.path.basename(params['yaml_path'])))
+    try:
+        shutil.copy(params['yaml_path'], os.path.join(logger.get_snapshot_dir(), os.path.basename(params['yaml_path'])))
+    except:
+        pass
 
     from rllab.envs.gym_env import GymEnv
     from sandbox.gkahn.rnn_critic.envs.premade_gym_env import PremadeGymEnv
@@ -54,14 +57,15 @@ def run_task(params):
     # while True:
     #     if done:
     #         o = env.reset()
+    #         r = 0
     #         done = False
     #     else:
     #         o, r, done, _ = env.step(0)
     #
-    #     plt.imshow(o, cmap='Greys_r')
+    #     plt.imshow(o[:,:,0], cmap='Greys_r')
     #     plt.show(block=False)
     #     plt.pause(0.05)
-    #     input('done: {0}'.format(done))
+    #     input('done: {0}, r: {1}'.format(done, r))
     #     plt.clf()
     #     plt.cla()
     #
@@ -124,14 +128,16 @@ def main(yaml_file):
 
     os.environ["CUDA_VISIBLE_DEVICES"] = str(params['policy']['gpu_device']) # TODO: hack so don't double GPU
 
+    from rllab import config
+    config.USE_TF = True
     run_experiment_lite(
         lambda x: run_task(params), # HACK
         snapshot_mode="all",
         exp_name=params['exp_name'],
         exp_prefix=params['exp_prefix'],
-        # use_gpu=True,
-        # mode='local_docker',
-        # docker_image='rllab-gkahn'
+        use_gpu=True,
+        mode='local_docker',
+        docker_image='rllab-gkahn'
     )
 
 if __name__ == '__main__':
