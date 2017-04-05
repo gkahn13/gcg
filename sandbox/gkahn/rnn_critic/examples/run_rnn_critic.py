@@ -32,11 +32,14 @@ from sandbox.gkahn.rnn_critic.policies.multiaction_separatedcost_rnn_policy impo
 ### RNN analyze
 from sandbox.gkahn.rnn_critic.examples.analyze_experiment import AnalyzeRNNCritic
 
-def run_rnn_critic(params, params_txt, analyze_only=False):
+def run_rnn_critic(params, params_txt):
     # copy yaml for posterity
     yaml_path = os.path.join(logger.get_snapshot_dir(), '{0}.yaml'.format(params['exp_name']))
     with open(yaml_path, 'w') as f:
         f.write(params_txt)
+
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(params['policy']['gpu_device'])  # TODO: hack so don't double GPU
+    config.USE_TF = True
 
     from rllab.envs.gym_env import GymEnv
     from sandbox.gkahn.rnn_critic.envs.premade_gym_env import PremadeGymEnv
@@ -105,59 +108,30 @@ def run_rnn_critic(params, params_txt, analyze_only=False):
     ### Create algorithm ###
     ########################
 
-    if not analyze_only:
-        if 'is_onpolicy' not in params['alg'].keys() or params['alg']['is_onpolicy']:
-            algo = RNNCritic(
-                env=env,
-                policy=policy,
-                exploration_strategy=exploration_strategy,
-                max_path_length=env.horizon,
-                **params['alg']
-            )
-        else:
-            algo = RNNCriticOffpolicy(
-                env=env,
-                policy=policy,
-                **params['alg']
-            )
-        algo.train()
+    if 'is_onpolicy' not in params['alg'].keys() or params['alg']['is_onpolicy']:
+        algo = RNNCritic(
+            env=env,
+            policy=policy,
+            exploration_strategy=exploration_strategy,
+            max_path_length=env.horizon,
+            **params['alg']
+        )
+    else:
+        algo = RNNCriticOffpolicy(
+            env=env,
+            policy=policy,
+            **params['alg']
+        )
+    algo.train()
 
     ###############
     ### Analyze ###
     ###############
 
+    import traceback
     logger.log('Analyzing experiment {0}'.format(logger.get_snapshot_dir()))
-    analyze = AnalyzeRNNCritic(logger.get_snapshot_dir())
-    analyze.run()
-
-def main(yaml_file, docker_image=None):
-    assert (os.path.exists(yaml_file))
-    with open(yaml_file, 'r') as f:
-        params = yaml.load(f)
-    params['yaml_path'] = yaml_file
-
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(params['policy']['gpu_device']) # TODO: hack so don't double GPU
-    config.USE_TF = True
-
-    kwargs = dict()
-    if docker_image is not None:
-        kwargs['mode'] = 'local_docker'
-        kwargs['docker_image'] = docker_image
-        kwargs['docker_args'] = ' --name {0} -u `id -u $USER`'.format(params['exp_name'])
-        kwargs['post_commands'] = ' sleep 1 '
-
-    run_experiment_lite(
-        lambda x: run_rnn_critic(params), # HACK
-        snapshot_mode="all",
-        exp_name=params['exp_name'],
-        exp_prefix=params['exp_prefix'],
-        use_gpu=True,
-        **kwargs
-    )
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('yaml', type=str)
-    args = parser.parse_args()
-
-    main(args.yaml)
+    try:
+        analyze = AnalyzeRNNCritic(logger.get_snapshot_dir())
+        analyze.run()
+    except:
+        logger.log(traceback.format_exc())

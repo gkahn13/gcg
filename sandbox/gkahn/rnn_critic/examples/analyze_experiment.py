@@ -7,6 +7,7 @@ import time
 
 import numpy as np
 import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib import ticker
 from sklearn.utils.extmath import cartesian
@@ -16,6 +17,7 @@ from rllab.envs.normalized_env import normalize
 from rllab.envs.gym_env import GymEnv
 import gym_ple
 from rllab.misc.ext import set_seed
+import rllab.misc.logger as logger
 # from rllab.misc import tensor_utils
 from sandbox.rocky.tf.misc import tensor_utils
 
@@ -108,20 +110,28 @@ class AnalyzeRNNCritic(object):
         self._clear_obs = clear_obs
 
         ### load data
-        self.name = os.path.basename(self._folder)
+        logger.log('AnalyzeRNNCritic: Loading data')
+        # self.name = os.path.basename(self._folder)
         self.plot = plot
+        logger.log('AnalyzeRNNCritic: params_file: {0}'.format(self._params_file))
         with open(self._params_file, 'r') as f:
             self.params = yaml.load(f)
+        logger.log('AnalyzeRNNCritic: Loading csv')
         self.progress = pandas.read_csv(self._progress_file)
+        logger.log('AnalyzeRNNCritic: Loaded csv')
 
         self.train_rollouts_itrs, self.env_itrs = self._load_all_itrs()
+        logger.log('AnalyzeRNNCritic: Loaded all itrs')
         # self.eval_rollouts_itrs = []
         if not os.path.exists(self._eval_rollouts_itrs_file):
             eval_rollouts_itrs = self._eval_all_policies(self.env_itrs)
+            logger.log('AnalyzeRNNCritic: Eval all policies')
             with open(self._eval_rollouts_itrs_file, 'wb') as f:
                 pickle.dump(eval_rollouts_itrs, f)
+            logger.log('AnalyzeRNNCritic: Loaded eval rollouts')
         with open(self._eval_rollouts_itrs_file, 'rb') as f:
             self.eval_rollouts_itrs = pickle.load(f)
+        logger.log('AnalyzeRNNCritic: Finished loading data')
 
     #############
     ### Files ###
@@ -140,7 +150,9 @@ class AnalyzeRNNCritic(object):
 
     @property
     def _params_file(self):
-        return os.path.join(self._folder, os.path.basename(self._folder)+'.yaml')
+        yamls = [fname for fname in os.listdir(self._folder) if '.yaml' in fname]
+        assert(len(yamls) == 1)
+        return os.path.join(self._folder, yamls[0])
 
     @property
     def _analyze_img_file(self):
@@ -1168,14 +1180,16 @@ class AnalyzeRNNCritic(object):
     ###########
 
     def run(self):
+        logger.log('AnalyzeRNNCritic: plot_analyze')
         self._plot_analyze(self.train_rollouts_itrs, self.eval_rollouts_itrs, self.env_itrs)
+        logger.log('AnalyzeRNNCritic: plot_rollouts')
         self._plot_rollouts(self.train_rollouts_itrs, self.eval_rollouts_itrs, self.env_itrs,
                             is_train=False, plot_prior=False)
         self._plot_rollouts(self.train_rollouts_itrs, self.eval_rollouts_itrs, self.env_itrs,
                             is_train=True, plot_prior=False)
         # self._plot_policies(self.train_rollouts_itrs, self.env_itrs)
         # self._plot_value_function(self.env_itrs)
-        self._plot_Q_function(self.env_itrs)
+        # self._plot_Q_function(self.env_itrs)
 
 
 def main(folder, skip_itr, max_itr):
