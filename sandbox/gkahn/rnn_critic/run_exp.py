@@ -1,17 +1,60 @@
 import os
+import argparse
+import yaml
 
-from sandbox.gkahn.rnn_critic.examples.run_rnn_critic import main as run_main
-from sandbox.gkahn.rnn_critic.scripts.analyze_experiment import main as analyze_main
+from rllab import config
+from rllab.misc.instrument import run_experiment_lite
+
+from sandbox.gkahn.rnn_critic.examples.run_rnn_critic import run_rnn_critic
+
+# if __name__ == '__main__':
+#     parser = argparse.ArgumentParser()
+#     parser.add_argument('--exps', nargs='+')
+#     parser.add_argument('-docker_image', type=str, default=None)
+#     args = parser.parse_args()
+#
+#     for exp in args.exps:
+#         try:
+#             print('Running {0}'.format(exp))
+#             run_main(os.path.abspath('examples/yamls/{0}.yaml'.format(exp)), docker_image=args.docker_image)
+#             print('Analyzing {0}'.format(exp))
+#             analyze_main(exp, skip_itr=1, max_itr=int(1e4))
+#         except:
+#             print('Error analyzing {0}'.format(exp))
+
 
 if __name__ == '__main__':
-    # exps = ['exp{0}'.format(i) for i in range(896, 900)]
-    exps = ['test_catcher']
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--exps', nargs='+')
+    parser.add_argument('-docker_image', type=str, default=None)
+    parser.add_argument('--analyze_only', type=bool, default=False)
+    args = parser.parse_args()
 
-    for exp in exps:
-        try:
-            print('Running {0}'.format(exp))
-            run_main(os.path.abspath('examples/yamls/{0}.yaml'.format(exp)))
-            print('Analyzing {0}'.format(exp))
-            analyze_main(exp, skip_itr=1, max_itr=int(1e4))
-        except:
-            print('Error analyzing {0}'.format(exp))
+    for exp in args.exps:
+        yaml_path = os.path.abspath('examples/yamls/{0}.yaml'.format(exp))
+        assert(os.path.exists(yaml_path))
+        with open(yaml_path, 'r') as f:
+            params = yaml.load(f)
+        with open(yaml_path, 'r') as f:
+            params_txt = ''.join(f.readlines())
+
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(params['policy']['gpu_device'])  # TODO: hack so don't double GPU
+        config.USE_TF = True
+
+        kwargs = dict()
+        if args.docker_image is not None:
+            kwargs['mode'] = 'local_docker'
+            kwargs['docker_image'] = args.docker_image
+            kwargs['docker_args'] = ' --name {0} '.format(params['exp_name'])
+
+        run_experiment_lite(
+            lambda x: run_rnn_critic(params,
+                                     params_txt=params_txt,
+                                     analyze_only=args.analyze_only),  # HACK
+            snapshot_mode="all",
+            exp_name=params['exp_name'],
+            exp_prefix=params['exp_prefix'],
+            use_gpu=True,
+            **kwargs
+        )
+

@@ -7,6 +7,7 @@ import tensorflow as tf
 from rllab.misc.instrument import run_experiment_lite
 import rllab.misc.logger as logger
 from rllab.misc.ext import set_seed
+from rllab import config
 ### environments
 import gym
 from sandbox.rocky.tf.envs.base import TfEnv
@@ -28,13 +29,14 @@ from sandbox.gkahn.rnn_critic.policies.multiaction_combinedcost_rnn_policy impor
 from sandbox.gkahn.rnn_critic.policies.multiaction_combinedcost_muxrnn_policy import MultiactionCombinedcostMuxRNNPolicy
 from sandbox.gkahn.rnn_critic.policies.multiaction_separatedcost_mlp_policy import MultiactionSeparatedcostMLPPolicy
 from sandbox.gkahn.rnn_critic.policies.multiaction_separatedcost_rnn_policy import MultiactionSeparatedcostRNNPolicy
+### RNN analyze
+from sandbox.gkahn.rnn_critic.examples.analyze_experiment import AnalyzeRNNCritic
 
-def run_task(params):
+def run_rnn_critic(params, params_txt, analyze_only=False):
     # copy yaml for posterity
-    try:
-        shutil.copy(params['yaml_path'], os.path.join(logger.get_snapshot_dir(), os.path.basename(params['yaml_path'])))
-    except:
-        pass
+    yaml_path = os.path.join(logger.get_snapshot_dir(), '{0}.yaml'.format(params['exp_name']))
+    with open(yaml_path, 'w') as f:
+        f.write(params_txt)
 
     from rllab.envs.gym_env import GymEnv
     from sandbox.gkahn.rnn_critic.envs.premade_gym_env import PremadeGymEnv
@@ -103,42 +105,54 @@ def run_task(params):
     ### Create algorithm ###
     ########################
 
-    if 'is_onpolicy' not in params['alg'].keys() or params['alg']['is_onpolicy']:
-        algo = RNNCritic(
-            env=env,
-            policy=policy,
-            exploration_strategy=exploration_strategy,
-            max_path_length=env.horizon,
-            **params['alg']
-        )
-    else:
-        algo = RNNCriticOffpolicy(
-            env=env,
-            policy=policy,
-            **params['alg']
-        )
-    algo.train()
+    if not analyze_only:
+        if 'is_onpolicy' not in params['alg'].keys() or params['alg']['is_onpolicy']:
+            algo = RNNCritic(
+                env=env,
+                policy=policy,
+                exploration_strategy=exploration_strategy,
+                max_path_length=env.horizon,
+                **params['alg']
+            )
+        else:
+            algo = RNNCriticOffpolicy(
+                env=env,
+                policy=policy,
+                **params['alg']
+            )
+        algo.train()
 
+    ###############
+    ### Analyze ###
+    ###############
 
-def main(yaml_file):
+    logger.log('Analyzing experiment {0}'.format(logger.get_snapshot_dir()))
+    analyze = AnalyzeRNNCritic(logger.get_snapshot_dir())
+    analyze.run()
+
+def main(yaml_file, docker_image=None):
     assert (os.path.exists(yaml_file))
     with open(yaml_file, 'r') as f:
         params = yaml.load(f)
     params['yaml_path'] = yaml_file
 
     os.environ["CUDA_VISIBLE_DEVICES"] = str(params['policy']['gpu_device']) # TODO: hack so don't double GPU
-
-    from rllab import config
     config.USE_TF = True
+
+    kwargs = dict()
+    if docker_image is not None:
+        kwargs['mode'] = 'local_docker'
+        kwargs['docker_image'] = docker_image
+        kwargs['docker_args'] = ' --name {0} -u `id -u $USER`'.format(params['exp_name'])
+        kwargs['post_commands'] = ' sleep 1 '
+
     run_experiment_lite(
-        lambda x: run_task(params), # HACK
+        lambda x: run_rnn_critic(params), # HACK
         snapshot_mode="all",
         exp_name=params['exp_name'],
         exp_prefix=params['exp_prefix'],
         use_gpu=True,
-        mode='local_docker',
-        docker_image='rllab-gkahn',
-        docker_args=' --name {0} '.format(params['exp_name'])
+        **kwargs
     )
 
 if __name__ == '__main__':
