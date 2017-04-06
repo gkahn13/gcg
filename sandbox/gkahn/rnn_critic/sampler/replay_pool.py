@@ -135,7 +135,6 @@ class RNNCriticReplayPool(object):
     def encode_recent_observation(self):
         return self._encode_observation(self._index)
 
-
     def store_effect(self, action, reward, done, flatten_action=True):
         observation = self._observations[self._index]
         self._actions[self._index, :] = self._env_spec.action_space.flatten(action) if flatten_action else action
@@ -146,20 +145,6 @@ class RNNCriticReplayPool(object):
 
         ### update log stats
         self._update_log_stats(observation, action, reward, done)
-
-    # def add(self, step, observation, action, reward, done):
-    #     assert(observation.dtype == self._observations.dtype)
-    #
-    #     self._steps[self._index] = step
-    #     self._observations[self._index, :] = self._env_spec.observation_space.flatten(observation)
-    #     self._actions[self._index, :] = self._env_spec.action_space.flatten(action)
-    #     self._rewards[self._index] = reward
-    #     self._dones[self._index] = done
-    #     self._index = (self._index + 1) % self._size
-    #     self._curr_size = max(self._curr_size, self._index)
-    #
-    #     ### update log stats
-    #     self._update_log_stats(observation, action, reward, done)
 
     ########################
     ### Sample from pool ###

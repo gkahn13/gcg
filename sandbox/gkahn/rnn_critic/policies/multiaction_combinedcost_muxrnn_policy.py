@@ -72,9 +72,8 @@ class MultiactionCombinedcostMuxRNNPolicy(Policy, Serializable):
             ### obs --> lower dimensional space
             with tf.name_scope('obs_to_lowd'):
                 if self._use_conv:
-                    obs_shape = list(self._env_spec.observation_space.shape)
-                    obs_shape[-1] = self._obs_history_len
-                    layer = tf.reshape(tf_obs, [-1] + list(obs_shape))
+                    obs_shape = [self._obs_history_len] + list(self._env_spec.observation_space.shape)[:2]
+                    layer = tf.transpose(tf.reshape(tf_obs, [-1] + list(obs_shape)), perm=(0, 2, 3, 1))
                     for num_outputs, kernel_size, stride in zip(self._conv_hidden_layers,
                                                                 self._conv_kernels,
                                                                 self._conv_strides):

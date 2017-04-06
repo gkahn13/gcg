@@ -61,9 +61,8 @@ class DQNPolicy(Policy, Serializable):
             if self._use_conv:
                 tf_obs, tf_actions = self._graph_preprocess_inputs(tf_obs_ph, tf_actions_ph, d_preprocess)
 
-                obs_shape = list(self._env_spec.observation_space.shape)
-                obs_shape[-1] = self._obs_history_len
-                layer = tf.reshape(tf_obs, [-1] + list(obs_shape))
+                obs_shape = [self._obs_history_len] + list(self._env_spec.observation_space.shape)[:2]
+                layer = tf.transpose(tf.reshape(tf_obs, [-1] + list(obs_shape)), perm=(0, 2, 3, 1))
                 for num_outputs, kernel_size, stride in zip(self._conv_hidden_layers,
                                                             self._conv_kernels,
                                                             self._conv_strides):
