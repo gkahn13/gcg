@@ -14,7 +14,8 @@ from sandbox.gkahn.rnn_critic.envs.single_env_executor import SingleEnvExecutor
 from sandbox.gkahn.rnn_critic.utils.utils import timeit
 
 class RNNCriticSampler(object):
-    def __init__(self, policy, env, n_envs, replay_pool_size, max_path_length, save_rollouts=False):
+    def __init__(self, policy, env, n_envs, replay_pool_size, max_path_length,
+                 save_rollouts=False, save_rollouts_observations=True):
         self._policy = policy
         self._n_envs = n_envs
 
@@ -22,7 +23,8 @@ class RNNCriticSampler(object):
                                                   policy.N,
                                                   replay_pool_size // n_envs,
                                                   obs_history_len=policy.obs_history_len,
-                                                  save_rollouts=save_rollouts)
+                                                  save_rollouts=save_rollouts,
+                                                  save_rollouts_observations=save_rollouts_observations)
                               for _ in range(n_envs)]
         if self._n_envs > 1:
             envs = [pickle.loads(pickle.dumps(env)) for _ in range(self._n_envs)]

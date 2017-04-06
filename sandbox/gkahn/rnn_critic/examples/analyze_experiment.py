@@ -26,6 +26,7 @@ from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
 from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
 from sandbox.gkahn.rnn_critic.policies.policy import Policy
 from sandbox.gkahn.rnn_critic.sampler.vectorized_rollout_sampler import RNNCriticVectorizedRolloutSampler
+from sandbox.gkahn.rnn_critic.sampler.sampler import RNNCriticSampler
 
 ### environments
 import gym
@@ -231,24 +232,22 @@ class AnalyzeRNNCritic(object):
                 env = env_itrs[itr // self._skip_itr]
                 policy = self._load_itr_policy(itr)
 
-                print('Evaluating policy for itr {0}'.format(itr))
-                if isinstance(inner_env(env), GymEnv):
-                    if 'Swimmer' in inner_env(env).env_id or 'Catcher' in inner_env(env).env_id:
-                        num_rollouts = 10
-                    else:
-                        num_rollouts = 50
-                    rollouts = [rollout_policy(env, policy, max_path_length=env.horizon) for _ in range(num_rollouts)]
-                else:
-                    sampler = RNNCriticVectorizedRolloutSampler(
-                        env=env,
-                        policy=policy,
-                        n_envs=8,
-                        max_path_length=env.horizon,
-                        rollouts_per_sample=50
-                    )
-                    sampler.start_worker()
-                    rollouts, _ = sampler.obtain_samples()
-                    sampler.shutdown_worker()
+                logger.log('Evaluating policy for itr {0}'.format(itr))
+                n_envs = 8
+                sampler = RNNCriticSampler(
+                    policy=policy,
+                    env=env,
+                    n_envs=n_envs,
+                    replay_pool_size=int(1e4),
+                    max_path_length=env.horizon,
+                    save_rollouts=True
+                )
+                rollouts = []
+                step = 0
+                while len(rollouts) < 25:
+                    sampler.step(step)
+                    step += n_envs
+                    rollouts += sampler.get_recent_paths()
 
             rollouts_itrs.append(rollouts)
             itr += self._skip_itr
@@ -756,14 +755,21 @@ class AnalyzeRNNCritic(object):
         ax.plot(steps, costs, 'k-')
         ax.set_ylabel('Cost')
 
-        ### plot cum reward
+        ### plot cum reward moving average
         ax = axes[1]
-        idxs = np.nonzero(np.isfinite(self.progress['CumRewardMean']))[0]
-        cum_reward_means = self.progress['CumRewardMean'][idxs]
-        cum_reward_stds = self.progress['CumRewardStd'][idxs]
-        steps = np.array(self.progress['Step'][idxs])
-        ax.plot(steps, cum_reward_means, 'k-')
-        ax.fill_between(steps, cum_reward_means - cum_reward_stds, cum_reward_means + cum_reward_stds,
+        rollouts = list(itertools.chain(*train_rollouts_itrs))
+        cum_rewards = [np.sum(r['rewards']) for r in rollouts]
+        steps = [r['steps'][-1] for r in rollouts]
+        steps, cum_rewards = zip(*sorted(zip(steps, cum_rewards), key=lambda x: x[0]))
+        def moving_avg_std(idxs, data, window):
+            means, stds = [], []
+            for i in range(window, len(data)):
+                means.append(np.mean(data[i-window:i]))
+                stds.append(np.std(data[i - window:i]))
+            return idxs[:-window], np.asarray(means), np.asarray(stds)
+        moving_steps, cum_rewards_mean, cum_rewards_std = moving_avg_std(steps, cum_rewards, 50)
+        ax.plot(moving_steps, cum_rewards_mean, 'k-')
+        ax.fill_between(moving_steps, cum_rewards_mean - cum_rewards_std, cum_rewards_mean + cum_rewards_std,
                         color='k', alpha=0.4)
         ax.set_ylabel('Cumulative reward')
 

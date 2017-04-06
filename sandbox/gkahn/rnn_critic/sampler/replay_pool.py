@@ -9,7 +9,7 @@ from sandbox.gkahn.rnn_critic.utils.utils import timeit
 
 class RNNCriticReplayPool(object):
 
-    def __init__(self, env_spec, N, size, obs_history_len, save_rollouts=False):
+    def __init__(self, env_spec, N, size, obs_history_len, save_rollouts=False, save_rollouts_observations=True):
         """
         :param env_spec: for observation/action dimensions
         :param N: horizon length
@@ -22,6 +22,7 @@ class RNNCriticReplayPool(object):
         self._size = int(size)
         self._obs_history_len = obs_history_len
         self._save_rollouts = save_rollouts
+        self._save_rollouts_observations = save_rollouts_observations
 
         ### buffer
         obs_shape = self._env_spec.observation_space.shape
@@ -289,7 +290,7 @@ class RNNCriticReplayPool(object):
             if self._save_rollouts:
                 self._log_paths.append({
                     'steps': self._steps[indices],
-                    'observations': self._observations[indices],
+                    'observations': self._observations[indices] if self._save_rollouts_observations else None,
                     'actions': self._actions[indices],
                     'rewards': self._rewards[indices],
                     'dones': self._dones[indices],

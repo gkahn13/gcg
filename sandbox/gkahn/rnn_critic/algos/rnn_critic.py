@@ -25,6 +25,7 @@ class RNNCritic(RLAlgorithm):
                  n_envs=1,
                  replay_pool_size=int(1e6),
                  save_rollouts=False,
+                 save_rollouts_observations=True,
                  render=False):
         """
         :param env: Environment
@@ -41,6 +42,7 @@ class RNNCritic(RLAlgorithm):
         :param log_every_n_steps: log every n steps
         :param batch_size: batch size per gradient step
         :param save_rollouts: save rollouts when saving params?
+        :param save_rollouts_observations: if save_rollouts, save the observations?
         :param render: show env
         """
         assert(learn_after_n_steps % n_envs == 0)
@@ -63,6 +65,7 @@ class RNNCritic(RLAlgorithm):
         self._log_every_n_steps = int(log_every_n_steps)
         self._batch_size = batch_size
         self._save_rollouts = save_rollouts
+        self._save_rollouts_observations = save_rollouts_observations
 
         policy.set_exploration_strategy(exploration_strategy)
 
@@ -72,7 +75,8 @@ class RNNCritic(RLAlgorithm):
             n_envs=n_envs,
             replay_pool_size=replay_pool_size,
             max_path_length=max_path_length,
-            save_rollouts=save_rollouts
+            save_rollouts=save_rollouts,
+            save_rollouts_observations=save_rollouts_observations
         )
 
     def _save_params(self, itr):
