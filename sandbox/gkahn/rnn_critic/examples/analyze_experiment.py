@@ -151,7 +151,7 @@ class AnalyzeRNNCritic(object):
 
     @property
     def _params_file(self):
-        yamls = [fname for fname in os.listdir(self._folder) if '.yaml' in fname]
+        yamls = [fname for fname in os.listdir(self._folder) if os.path.splitext(fname)[-1] == '.yaml']
         assert(len(yamls) == 1)
         return os.path.join(self._folder, yamls[0])
 

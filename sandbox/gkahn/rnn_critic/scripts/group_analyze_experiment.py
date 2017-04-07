@@ -14,7 +14,7 @@ from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
 from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
 from rllab.envs.gym_env import GymEnv
 
-from analyze_experiment import AnalyzeRNNCritic
+from sandbox.gkahn.rnn_critic.examples.analyze_experiment import AnalyzeRNNCritic
 
 ### environments
 import gym
@@ -100,6 +100,8 @@ class PlotAnalyzeRNNCritic(object):
             self._plot_analyze_CartPole()
         elif isinstance(self._env, GymEnv) and 'catcher' in self._env.env_id.lower():
             self._plot_analyze_Catcher()
+        elif isinstance(self._env, GymEnv) and 'pong' in self._env.env_id.lower():
+            self._plot_analyze_Pong()
         else:
             pass
 
@@ -598,6 +600,8 @@ class PlotAnalyzeRNNCritic(object):
         f.savefig(self._analyze_img_file, bbox_inches='tight', dpi=200)
         plt.close(f)
 
+    def _plot_analyze_Pong(self):
+        import IPython; IPython.embed()
 
     ###########
     ### Run ###
@@ -612,7 +616,7 @@ if __name__ == '__main__':
     analyze_groups = []
     ### DiscreteDQNPolicy
     analyze_group = []
-    for i in range(835, 840):
+    for i in range(923, 926):
         print('\nexp {0}\n'.format(i))
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
@@ -624,53 +628,29 @@ if __name__ == '__main__':
     analyze_groups.append(analyze_group)
     ### NstepDiscreteDQNPolicy N=3
     analyze_group = []
-    for i in range(880, 885):
-        print('\nexp {0}\n'.format(i))
-        analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
-                                              plot={
-                                                  'label': 'NstepDiscreteDQNPolicy, N=3',
-                                                  'color': 'r'
-                                              },
-                                              clear_obs=True,
-                                              create_new_envs=False))
-    analyze_groups.append(analyze_group)
-    ### NstepDiscreteDQNPolicy N=5
-    analyze_group = []
-    for i in range(885, 890):
+    for i in range(929, 932):
         print('\nexp {0}\n'.format(i))
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'NstepDiscreteDQNPolicy, N=5',
-                                                  'color': 'b'
+                                                  'color': 'r'
                                               },
                                               clear_obs=True,
                                               create_new_envs=False))
     analyze_groups.append(analyze_group)
     ### MultiactionCombinedcostMuxRNNPolicy N=3
     analyze_group = []
-    for i in range(840, 845):
+    for i in range(926, 929):
         print('\nexp {0}\n'.format(i))
         analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
                                               plot={
                                                   'label': 'MultiactionCombinedcostMuxRNNPolicy, N=3',
-                                                  'color': 'm'
-                                              },
-                                              clear_obs=True,
-                                              create_new_envs=False))
-    analyze_groups.append(analyze_group)
-    ### MultiactionCombinedcostMuxRNNPolicy N=5
-    analyze_group = []
-    for i in range(845, 850):
-        print('\nexp {0}\n'.format(i))
-        analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'exp{0}'.format(i)),
-                                              plot={
-                                                  'label': 'MultiactionCombinedcostMuxRNNPolicy, N=5',
-                                                  'color': 'c'
+                                                  'color': 'b'
                                               },
                                               clear_obs=True,
                                               create_new_envs=False))
     analyze_groups.append(analyze_group)
 
-    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'catcher_ram_dqn_nstep_multiaction', analyze_groups)
+    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'pong_923_931', analyze_groups)
     plotter.run()
 
