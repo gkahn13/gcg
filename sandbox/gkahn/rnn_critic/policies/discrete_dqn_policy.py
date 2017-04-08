@@ -118,7 +118,7 @@ class DiscreteDQNPolicy(Policy, Serializable):
         tf_target_values_select = self._graph_calculate_values(tf_target_rewards_select)
         tf_target_values_eval = self._graph_calculate_values(tf_target_rewards_eval)
         ### target: mask selection and eval
-        tf_target_values_mask = tf.one_hot(tf.argmax(tf_target_values_select, axis=1),
+        tf_target_values_mask = tf.one_hot(tf.argmax(tf_target_values_select, 1),
                                            depth=self.N_output)
         tf_target_values_max = tf.reduce_sum(tf_target_values_mask * tf_target_values_eval, reduction_indices=1)
 
