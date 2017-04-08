@@ -6,6 +6,7 @@ from rllab.core.serializable import Serializable
 
 from sandbox.gkahn.rnn_critic.policies.policy import Policy
 from sandbox.gkahn.rnn_critic.tf.mux_rnn_cell import BasicMuxRNNCell, BasicMuxLSTMCell
+from sandbox.gkahn.tf.core import xplatform
 
 class MultiactionCombinedcostMuxRNNPolicy(Policy, Serializable):
     def __init__(self,
@@ -114,7 +115,7 @@ class MultiactionCombinedcostMuxRNNPolicy(Policy, Serializable):
                     else:
                         rnn_cell = BasicMuxRNNCell(ac_dim, self._rnn_state_dim, activation=self._rnn_activation)
                     rnn_outputs, rnn_states = tf.nn.dynamic_rnn(rnn_cell, rnn_inputs, initial_state=istate)
-                rnn_vars = [v for v in tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
+                rnn_vars = [v for v in tf.get_collection(xplatform.global_variables_collection_name())
                             if 'rnn_vars' in v.name and 'B' not in v.name]
                 for v in rnn_vars:
                     tf.add_to_collection(tf.GraphKeys.REGULARIZATION_LOSSES, tf.nn.l2_loss(v))
