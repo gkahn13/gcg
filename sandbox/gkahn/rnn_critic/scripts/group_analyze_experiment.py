@@ -601,7 +601,84 @@ class PlotAnalyzeRNNCritic(object):
         plt.close(f)
 
     def _plot_analyze_Pong(self):
-        import IPython; IPython.embed()
+        f, axes = plt.subplots(1 + len(self._analyze_groups), 1, figsize=(15, 5 * len(self._analyze_groups)),
+                               sharex=True)
+
+        ### plot training cost
+        ax = axes.ravel()[0]
+        for analyze_group in self._analyze_groups:
+            data_interp = DataAverageInterpolation()
+            min_step = max_step = None
+            for analyze in analyze_group:
+                steps = np.array(analyze.progress['Step'])
+                costs = np.array(analyze.progress['Cost'])
+                data_interp.add_data(steps, costs)
+
+                if min_step is None:
+                    min_step = steps[0]
+                if max_step is None:
+                    max_step = steps[-1]
+                min_step = max(min_step, steps[0])
+                max_step = min(max_step, steps[-1])
+
+            steps = np.r_[min_step:max_step:1.]
+            costs_mean, costs_std = data_interp.eval(steps)
+
+            ax.plot(steps, costs_mean, color=analyze.plot['color'], label=analyze.plot['label'])
+            ax.fill_between(steps, costs_mean - costs_std, costs_mean + costs_std,
+                            color=analyze.plot['color'], alpha=0.4)
+        ax.set_ylabel('Training cost')
+        ax.legend(loc='upper right')
+
+        ### plot cum reward versus time step
+        for ax, analyze_group in zip(axes.ravel()[1:], self._analyze_groups):
+            data_interp = DataAverageInterpolation()
+            min_step = max_step = None
+            for analyze in analyze_group:
+                rollouts = list(itertools.chain(*analyze.train_rollouts_itrs))
+                rollouts = sorted(rollouts, key=lambda r: r['steps'][-1])
+                steps, cum_rewards = [], []
+                for r in rollouts:
+                    steps.append(r['steps'][-1])
+                    cum_rewards.append(np.sum(r['rewards']))
+
+                def moving_avg_std(idxs, data, window):
+                    avg_idxs, means, stds = [], [], []
+                    for i in range(window, len(data)):
+                        avg_idxs.append(np.mean(idxs[i - window:i]))
+                        means.append(np.mean(data[i - window:i]))
+                        stds.append(np.std(data[i - window:i]))
+                    return avg_idxs, np.asarray(means), np.asarray(stds)
+
+                steps, cum_rewards, _ = moving_avg_std(steps, cum_rewards, window=50)
+
+                data_interp.add_data(steps, cum_rewards)
+                if min_step is None:
+                    min_step = steps[0]
+                if max_step is None:
+                    max_step = steps[-1]
+                min_step = max(min_step, steps[0])
+                max_step = min(max_step, steps[-1])
+
+            steps = np.r_[min_step:max_step:50.][1:-1]
+            cum_rewards_mean, cum_rewards_std = data_interp.eval(steps)
+
+            ax.plot(steps, cum_rewards_mean, color=analyze.plot['color'], label=analyze.plot['label'])
+            ax.fill_between(steps, cum_rewards_mean - cum_rewards_std, cum_rewards_mean + cum_rewards_std,
+                            color=analyze.plot['color'], alpha=0.4)
+            ax.set_ylim((-22, 22))
+            ax.grid()
+            ax.set_title(' '.join([analyze.name for analyze in analyze_group]))
+        ax.set_ylabel('Cumulative reward')
+
+        ### for all plots
+        ax.set_xlabel('Steps')
+        xfmt = ticker.ScalarFormatter()
+        xfmt.set_powerlimits((0, 0))
+        ax.xaxis.set_major_formatter(xfmt)
+
+        f.savefig(self._analyze_img_file, bbox_inches='tight', dpi=200)
+        plt.close(f)
 
     ###########
     ### Run ###

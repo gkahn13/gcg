@@ -12,10 +12,6 @@ import matplotlib.pyplot as plt
 from matplotlib import ticker
 from sklearn.utils.extmath import cartesian
 
-from sandbox.rocky.tf.envs.base import TfEnv
-from rllab.envs.normalized_env import normalize
-from rllab.envs.gym_env import GymEnv
-import gym_ple
 from rllab.misc.ext import set_seed
 import rllab.misc.logger as logger
 # from rllab.misc import tensor_utils
@@ -29,12 +25,18 @@ from sandbox.gkahn.rnn_critic.sampler.vectorized_rollout_sampler import RNNCriti
 from sandbox.gkahn.rnn_critic.sampler.sampler import RNNCriticSampler
 
 ### environments
+from sandbox.rocky.tf.envs.base import TfEnv
+from rllab.envs.normalized_env import normalize
+from rllab.envs.gym_env import GymEnv
 import gym
 from sandbox.gkahn.rnn_critic.envs.atari_wrappers import wrap_deepmind
 from sandbox.gkahn.rnn_critic.envs.pygame_wrappers import wrap_pygame
 from rllab.envs.gym_env import GymEnv
 from sandbox.gkahn.rnn_critic.envs.premade_gym_env import PremadeGymEnv
-import gym_ple
+try:
+    import gym_ple
+except:
+    pass
 from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
 from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
 from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
@@ -112,7 +114,7 @@ class AnalyzeRNNCritic(object):
 
         ### load data
         logger.log('AnalyzeRNNCritic: Loading data')
-        # self.name = os.path.basename(self._folder)
+        self.name = os.path.basename(self._folder)
         self.plot = plot
         logger.log('AnalyzeRNNCritic: params_file: {0}'.format(self._params_file))
         with open(self._params_file, 'r') as f:
@@ -233,7 +235,7 @@ class AnalyzeRNNCritic(object):
                 policy = self._load_itr_policy(itr)
 
                 logger.log('Evaluating policy for itr {0}'.format(itr))
-                n_envs = 8
+                n_envs = 1
                 sampler = RNNCriticSampler(
                     policy=policy,
                     env=env,

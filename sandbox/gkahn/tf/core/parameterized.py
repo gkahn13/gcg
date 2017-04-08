@@ -6,6 +6,8 @@ from rllab.core.serializable import Serializable
 from rllab.misc.tensor_utils import flatten_tensors#, unflatten_tensors
 import tensorflow as tf
 
+from sandbox.gkahn.tf.core import xplatform
+
 def unflatten_tensors(flattened, tensor_shapes):
     tensor_sizes = np.array(list(map(np.prod, tensor_shapes)), dtype=int)
     indices = np.cumsum(tensor_sizes)[:-1]
@@ -102,7 +104,7 @@ class Parameterized(object):
         Serializable.__setstate__(self, d)
         global load_params
         if load_params:
-            self._sess.run(tf.variables_initializer(self.get_params()))
+            self._sess.run(xplatform.variables_initializer(self.get_params()))
             self.set_param_values(d["params"])
 
 

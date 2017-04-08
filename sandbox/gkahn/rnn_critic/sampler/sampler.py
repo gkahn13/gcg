@@ -3,7 +3,10 @@ import numpy as np
 
 from rllab.misc.ext import get_seed
 from rllab.envs.gym_env import GymEnv
-import gym_ple
+try:
+    import gym_ple
+except:
+    pass
 
 from sandbox.rocky.tf.envs.vec_env_executor import VecEnvExecutor
 

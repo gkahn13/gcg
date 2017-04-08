@@ -15,6 +15,7 @@ from rllab.misc import ext
 
 from sandbox.rocky.tf.spaces.discrete import Discrete
 from sandbox.gkahn.tf.policies.base import Policy as TfPolicy
+from sandbox.gkahn.tf.core import xplatform
 from sandbox.gkahn.rnn_critic.utils import schedules, tf_utils
 
 class Policy(TfPolicy, Serializable):
@@ -242,7 +243,7 @@ class Policy(TfPolicy, Serializable):
         tf_target_values_select_flat = tf.reshape(tf_target_values_select, (batch_size, -1))
         tf_target_values_eval_flat = tf.reshape(tf_target_values_eval, (batch_size, -1))
         ### mask selection and eval
-        tf_target_values_mask = tf.one_hot(tf.argmax(tf_target_values_select_flat, axis=1),
+        tf_target_values_mask = tf.one_hot(tf.argmax(tf_target_values_select_flat, 1),
                                            depth=tf.shape(tf_target_values_select_flat)[1])
         tf_target_values_max = tf.reduce_sum(tf_target_values_mask * tf_target_values_eval_flat, reduction_indices=1)
         if self._use_target:
@@ -271,7 +272,7 @@ class Policy(TfPolicy, Serializable):
         return optimizer.apply_gradients(gradients), tf_lr_ph
 
     def _graph_init_vars(self, tf_sess):
-        tf_sess.run([tf.global_variables_initializer()])
+        tf_sess.run([xplatform.global_variables_initializer()])
 
     def _graph_setup(self):
         tf_sess = tf.get_default_session()
@@ -307,9 +308,11 @@ class Policy(TfPolicy, Serializable):
             with tf.variable_scope('policy', reuse=True):
                 tf_target_rewards_select = self._graph_inference(tf_obs_target_ph, tf_actions_target_ph, d_preprocess)
 
-            policy_vars = sorted(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='policy'), key=lambda v: v.name)
+            policy_vars = sorted(tf.get_collection(xplatform.global_variables_collection_name(),
+                                                   scope='policy'), key=lambda v: v.name)
             if self._separate_target_params:
-                target_network_vars = sorted(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='target_network'), key=lambda v: v.name)
+                target_network_vars = sorted(tf.get_collection(xplatform.global_variables_collection_name(),
+                                                               scope='target_network'), key=lambda v: v.name)
                 update_target_fn = []
                 for var, var_target in zip(policy_vars, target_network_vars):
                     assert(var.name.replace('policy', '') == var_target.name.replace('target_network', ''))
@@ -535,7 +538,7 @@ class Policy(TfPolicy, Serializable):
 
     def get_params_internal(self, **tags):
         with self._tf_graph.as_default():
-            return sorted(tf.global_variables(), key=lambda v: v.name)
+            return sorted(tf.get_collection(xplatform.global_variables_collection_name()), key=lambda v: v.name)
 
     ###############
     ### Logging ###

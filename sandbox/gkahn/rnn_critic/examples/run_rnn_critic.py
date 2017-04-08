@@ -43,7 +43,10 @@ def run_rnn_critic(params, params_txt):
 
     from rllab.envs.gym_env import GymEnv
     from sandbox.gkahn.rnn_critic.envs.premade_gym_env import PremadeGymEnv
-    import gym_ple
+    try:
+        import gym_ple
+    except:
+        pass
     from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
     from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
     from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
