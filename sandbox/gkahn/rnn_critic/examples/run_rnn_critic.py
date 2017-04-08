@@ -86,11 +86,15 @@ def run_rnn_critic(params, params_txt):
     policy_class = params['policy']['class']
     PolicyClass = eval(policy_class)
     policy_params = params['policy'][policy_class]
-    get_action_type = params['get_action']['type']
+    get_action = params['get_action']
+    get_target_action = params['get_target_action'] if 'get_target_action' in params else params['get_action']
+    get_action_type = get_action['type']
+    get_target_action_type = get_target_action['type']
 
     policy = PolicyClass(
         env_spec=env.spec,
-        get_action_params=params['get_action'][get_action_type],
+        get_action_params=get_action[get_action_type],
+        get_target_action_params=get_target_action[get_target_action_type],
         **policy_params,
         **params['policy']
     )

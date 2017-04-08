@@ -34,6 +34,7 @@ class Policy(TfPolicy, Serializable):
                  lr_schedule,
                  grad_clip_norm,
                  get_action_params,
+                 get_target_action_params,
                  preprocess,
                  gpu_device=None,
                  gpu_frac=None,
@@ -49,6 +50,8 @@ class Policy(TfPolicy, Serializable):
         :param weight_decay
         :param lr_schedule: arguments for PiecewiseSchedule
         :param grad_clip_norm
+        :param get_action_params: how should actions be chosen?
+        :param get_target_action_params: how should target actions be chosen?
         :param reset_every_train: reset parameters every time train is called?
         :param train_steps: how many calls to optimizer each time train is called
         :param batch_size
@@ -71,6 +74,7 @@ class Policy(TfPolicy, Serializable):
         self._grad_clip_norm = grad_clip_norm
         self._preprocess_params = preprocess
         self._get_action_params = get_action_params
+        self._get_target_action_params = get_target_action_params
         self._gpu_device = gpu_device
         self._gpu_frac = gpu_frac
         self._exploration_strategy = None # don't set in init b/c will then be Serialized
@@ -81,7 +85,8 @@ class Policy(TfPolicy, Serializable):
             self._tf_obs_target_ph, self._tf_actions_target_ph, self._tf_target_mask_ph, self._update_target_fn = \
             self._graph_setup()
 
-        self._get_action_preprocess = self._get_action_setup()
+        self._get_action_preprocess = self._get_action_setup(self._get_action_params)
+        self._get_target_action_preprocess = self._get_action_setup(self._get_target_action_params)
         self._num_get_action = 0 # keep track of how many times get action called
 
         ### saving/loading
@@ -381,12 +386,12 @@ class Policy(TfPolicy, Serializable):
         policy_rewards = rewards[:, :self._N]
         target_observations = observations[:, self._N, :]
 
-        if self._get_action_params['type'] == 'random':
-            target_actions = self._get_random_action(self._get_action_params['K'])
-        elif self._get_action_params['type'] == 'lattice':
-            target_actions = self._get_action_preprocess['actions']
+        if self._get_target_action_params['type'] == 'random':
+            target_actions = self._get_random_action(self._get_target_action_params['K'])
+        elif self._get_target_action_params['type'] == 'lattice':
+            target_actions = self._get_target_action_preprocess['actions']
         else:
-            raise NotImplementedError('get_action type {0} not implemented'.format(self._get_action_params['type']))
+            raise NotImplementedError('get_action type {0} not implemented'.format(self._get_target_action_params['type']))
         target_actions = np.tile(target_actions, (len(observations), 1))
 
         feed_dict = {
@@ -415,17 +420,12 @@ class Policy(TfPolicy, Serializable):
     ### Policy methods ###
     ######################
 
-    def update_action_params(self, get_action_params):
-        """ In case you want to switch how you do action selection (e.g. more random samples) """
-        self._get_action_params = get_action_params
-        self._get_action_preprocess = self._get_action_setup()
-
-    def _get_action_setup(self):
+    def _get_action_setup(self, params):
         get_action_preprocess = dict()
 
-        if self._get_action_params['type'] == 'random':
+        if params['type'] == 'random':
             pass
-        elif self._get_action_params['type'] == 'lattice':
+        elif params['type'] == 'lattice':
             if isinstance(self._env_spec.action_space, Discrete):
                 action_dim = self._env_spec.action_space.n
                 indices = cartesian([np.arange(action_dim)] * self._H) + np.r_[0:action_dim*self._H:action_dim]
@@ -434,14 +434,14 @@ class Policy(TfPolicy, Serializable):
                     actions[i, one_hots] = 1
                 get_action_preprocess['actions'] = actions
             else:
-                K = self._get_action_params['K']
+                K = params['K']
                 action_lower, action_upper = self._env_spec.action_space.bounds
                 single_actions = cartesian([np.linspace(l, u, K) for l, u in zip(action_lower, action_upper)])
                 actions = np.asarray(list(itertools.combinations(single_actions, self._H)))
                 get_action_preprocess['actions'] = actions.reshape((len(actions),
                                                                     self._H * self._env_spec.action_space.flat_dim))
         else:
-            raise NotImplementedError('get_action type {0} not implemented'.format(self._get_action_params['type']))
+            raise NotImplementedError('get_action type {0} not implemented'.format(params['type']))
 
         return get_action_preprocess
 
@@ -480,13 +480,6 @@ class Policy(TfPolicy, Serializable):
         pred_values = self._tf_sess.run([self._tf_values],
                                         feed_dict={self._tf_obs_ph: observations,
                                                    self._tf_actions_ph: actions})[0]
-
-        # TODO
-        # if self._num_get_action > 2000:
-        #     pred_values = self._tf_sess.run([self._tf_values],
-        #                                     feed_dict={self._tf_obs_ph: [[0, 1.]],
-        #                                                self._tf_actions_ph: actions})[0]
-        #     import IPython; IPython.embed()
 
         chosen_actions = []
         for i, (observation_i, pred_values_i, actions_i) in enumerate(zip(observations,
