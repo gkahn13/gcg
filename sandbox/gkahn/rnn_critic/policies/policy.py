@@ -34,8 +34,8 @@ class Policy(TfPolicy, Serializable):
                  lr_schedule,
                  grad_clip_norm,
                  get_action_params,
-                 get_target_action_params,
                  preprocess,
+                 get_target_action_params=None,
                  gpu_device=None,
                  gpu_frac=None,
                  **kwargs):
@@ -74,7 +74,7 @@ class Policy(TfPolicy, Serializable):
         self._grad_clip_norm = grad_clip_norm
         self._preprocess_params = preprocess
         self._get_action_params = get_action_params
-        self._get_target_action_params = get_target_action_params
+        self._get_target_action_params = get_target_action_params if get_target_action_params is not None else get_action_params
         self._gpu_device = gpu_device
         self._gpu_frac = gpu_frac
         self._exploration_strategy = None # don't set in init b/c will then be Serialized
@@ -406,7 +406,6 @@ class Policy(TfPolicy, Serializable):
             self._tf_actions_target_ph: target_actions,
             self._tf_target_mask_ph: float(use_target) * (1 - dones[:, self._N].astype(float))
         }
-        print('train_step'); import IPython; IPython.embed()
         start = time.time()
         cost, mse, _ = self._tf_sess.run([self._tf_cost, self._tf_mse, self._tf_opt], feed_dict=feed_dict)
         elapsed = time.time() - start
@@ -478,7 +477,6 @@ class Policy(TfPolicy, Serializable):
         else:
             raise NotImplementedError('get_actions type {0} not implemented'.format(self._get_action_params['type']))
 
-        # print('get_actions'); import IPython; IPython.embed()
         pred_values = self._tf_sess.run([self._tf_values],
                                         feed_dict={self._tf_obs_ph: observations,
                                                    self._tf_actions_ph: actions})[0]
