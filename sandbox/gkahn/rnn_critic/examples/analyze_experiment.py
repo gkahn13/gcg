@@ -97,7 +97,7 @@ def inner_env(env):
         env = env.wrapped_env
     return env
 
-################
+################gi
 ### Analysis ###
 ################
 
@@ -281,6 +281,8 @@ class AnalyzeRNNCritic(object):
             self._plot_analyze_Pong(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
         elif isinstance(env, GymEnv) and 'InvertedPendulum' in env.env_id:
             self._plot_analyze_InvertedPendulum(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
+        elif isinstance(env, GymEnv) and 'tennis' in env.env_id.lower():
+            self._plot_analyze_Pong(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
         else:
             self._plot_analyze_general(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
 

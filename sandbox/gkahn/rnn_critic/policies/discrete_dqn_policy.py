@@ -191,11 +191,8 @@ class DiscreteDQNPolicy(Policy, Serializable):
 
         chosen_actions = []
         for i, (observation_i, pred_values_i) in enumerate(zip(observations, pred_values)):
-            def baseN(num, b, numerals="0123456789abcdefghijklmnopqrstuvwxyz"):
-                return ((num == 0) and numerals[0]) or (baseN(num // b, b, numerals).lstrip(numerals[0]) + numerals[num % b])
 
-            chosen_index = int(pred_values_i.argmax())
-            chosen_action_i = int(baseN(chosen_index, action_dim)[-1])
+            chosen_action_i = int(pred_values_i.argmax())
 
             if self._exploration_strategy is not None:
                 exploration_func = lambda: None
