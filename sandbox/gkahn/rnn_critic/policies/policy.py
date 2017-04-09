@@ -406,6 +406,7 @@ class Policy(TfPolicy, Serializable):
             self._tf_actions_target_ph: target_actions,
             self._tf_target_mask_ph: float(use_target) * (1 - dones[:, self._N].astype(float))
         }
+        print('train_step'); import IPython; IPython.embed()
         start = time.time()
         cost, mse, _ = self._tf_sess.run([self._tf_cost, self._tf_mse, self._tf_opt], feed_dict=feed_dict)
         elapsed = time.time() - start
@@ -477,6 +478,7 @@ class Policy(TfPolicy, Serializable):
         else:
             raise NotImplementedError('get_actions type {0} not implemented'.format(self._get_action_params['type']))
 
+        # print('get_actions'); import IPython; IPython.embed()
         pred_values = self._tf_sess.run([self._tf_values],
                                         feed_dict={self._tf_obs_ph: observations,
                                                    self._tf_actions_ph: actions})[0]
