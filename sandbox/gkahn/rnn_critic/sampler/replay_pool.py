@@ -135,7 +135,7 @@ class RNNCriticReplayPool(object):
     def encode_recent_observation(self):
         return self._encode_observation(self._index)
 
-    def store_effect(self, action, reward, done, flatten_action=True):
+    def store_effect(self, action, reward, done, flatten_action=True, update_log_stats=True):
         observation = self._observations[self._index]
         self._actions[self._index, :] = self._env_spec.action_space.flatten(action) if flatten_action else action
         self._rewards[self._index] = reward
@@ -144,7 +144,31 @@ class RNNCriticReplayPool(object):
         self._curr_size = max(self._curr_size, self._index)
 
         ### update log stats
-        self._update_log_stats(observation, action, reward, done)
+        if update_log_stats:
+            self._update_log_stats(observation, action, reward, done)
+
+    def store_rollout(self, start_step, rollout):
+        """ Directly store rollout (e.g. if loading in offpolicy data) """
+        r_len = len(rollout['dones'])
+        # update size first b/c indices depend on it
+        if self._index + r_len > self._size:
+            self._curr_size = self._size
+        else:
+            self._curr_size = max(self._curr_size, self._index + r_len)
+        indices = self._get_indices(self._index, (self._index + r_len) % self._size)
+        self._steps[indices] = list(range(start_step, start_step + r_len))
+        self._observations[indices, :] = rollout['observations']
+        self._actions[indices, :] = rollout['actions']
+        self._rewards[indices] = rollout['rewards']
+        self._dones[indices] = rollout['dones']
+        # np.copyto(self._steps[indices], list(range(start_step, start_step + r_len)))
+        # np.copyto(self._observations[indices, :], rollout['observations'])
+        # np.copyto(self._actions[indices, :], rollout['actions'])
+        # np.copyto(self._rewards[indices], rollout['rewards'])
+        # np.copyto(self._dones[indices], rollout['dones'])
+        self._index = (self._index + r_len) % self._size
+
+        self._last_done_index = self._index
 
     ########################
     ### Sample from pool ###

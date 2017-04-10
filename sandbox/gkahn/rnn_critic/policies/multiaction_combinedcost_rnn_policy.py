@@ -1,19 +1,9 @@
-import time
-
-import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
 from rllab.misc.overrides import overrides
 from rllab.core.serializable import Serializable
 from sandbox.gkahn.rnn_critic.policies.policy import Policy
-from sandbox.rocky.tf.spaces.discrete import Discrete
-
-from tensorflow.contrib.cudnn_rnn import CudnnRNNRelu, CudnnLSTM
-
-from rllab.misc import ext
-
-from sandbox.gkahn.tf.core import xplatform
 
 class MultiactionCombinedcostRNNPolicy(Policy, Serializable):
     def __init__(self,

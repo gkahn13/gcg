@@ -1,10 +1,14 @@
+import os
+import joblib
 import pickle
 
 from rllab.algos.base import RLAlgorithm
 from rllab.misc.overrides import overrides
 import rllab.misc.logger as logger
+
 from sandbox.gkahn.rnn_critic.sampler.sampler import RNNCriticSampler
 from sandbox.gkahn.rnn_critic.utils.utils import timeit
+from sandbox.gkahn.rnn_critic.policies.policy import Policy
 
 class RNNCritic(RLAlgorithm):
 
@@ -26,6 +30,7 @@ class RNNCritic(RLAlgorithm):
                  replay_pool_size=int(1e6),
                  save_rollouts=False,
                  save_rollouts_observations=True,
+                 offpolicy_folder=None,
                  render=False):
         """
         :param env: Environment
@@ -43,6 +48,7 @@ class RNNCritic(RLAlgorithm):
         :param batch_size: batch size per gradient step
         :param save_rollouts: save rollouts when saving params?
         :param save_rollouts_observations: if save_rollouts, save the observations?
+        :param offpolicy_folder: if none, load rollouts from this folder
         :param render: show env
         """
         assert(learn_after_n_steps % n_envs == 0)
@@ -78,6 +84,14 @@ class RNNCritic(RLAlgorithm):
             save_rollouts=save_rollouts,
             save_rollouts_observations=save_rollouts_observations
         )
+
+        if offpolicy_folder is not None:
+            logger.log('Loading offpolicy data from {0}'.format(offpolicy_folder))
+            self._sampler.add_offpolicy(offpolicy_folder)
+
+    ########################
+    ### Training methods ###
+    ########################
 
     def _save_params(self, itr):
         env_is_pickleable = True

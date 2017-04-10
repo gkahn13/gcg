@@ -1,4 +1,5 @@
-import pickle
+import os, pickle, joblib
+import itertools
 import numpy as np
 
 from rllab.misc.ext import get_seed
@@ -12,8 +13,8 @@ from sandbox.rocky.tf.envs.vec_env_executor import VecEnvExecutor
 
 from sandbox.gkahn.rnn_critic.sampler.replay_pool import RNNCriticReplayPool
 from sandbox.gkahn.rnn_critic.utils import utils
+from sandbox.gkahn.rnn_critic.policies.policy import Policy
 from sandbox.gkahn.rnn_critic.envs.single_env_executor import SingleEnvExecutor
-
 from sandbox.gkahn.rnn_critic.utils.utils import timeit
 
 class RNNCriticSampler(object):
@@ -93,6 +94,30 @@ class RNNCriticSampler(object):
         for replay_pool, action, reward, done in zip(self._replay_pools, actions, rewards, dones):
             replay_pool.store_effect(action, reward, done)
         self._curr_observations = next_observations
+
+    #####################
+    ### Add offpolicy ###
+    #####################
+
+    def _offpolicy_itr_file(self, offpolicy_folder, itr):
+        return os.path.join(offpolicy_folder, 'itr_{0:d}.pkl'.format(itr))
+
+    def add_offpolicy(self, offpolicy_folder):
+        step = 0
+        itr = 0
+        replay_pools = itertools.cycle(self._replay_pools)
+
+        while os.path.exists(self._offpolicy_itr_file(offpolicy_folder, itr)):
+            sess, graph = Policy.create_session_and_graph(gpu_device='')
+            with graph.as_default(), sess.as_default():
+                d = joblib.load(self._offpolicy_itr_file(offpolicy_folder, itr))
+                rollouts = d['rollouts']
+                d['policy'].terminate()
+            itr += 1
+
+            for rollout, replay_pool in zip(rollouts, replay_pools):
+                replay_pool.store_rollout(step, rollout)
+                step += len(rollout['dones'])
 
     #########################
     ### Sample from pools ###
