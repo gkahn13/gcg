@@ -102,7 +102,7 @@ class GymEnv(Env, Serializable):
 
     def reset(self):
         if self._force_reset and self.monitoring:
-            recorder = self.env._monitor.stats_recorder
+            recorder = self.env.stats_recorder
             if recorder is not None:
                 recorder.done = True
         return self.env.reset()

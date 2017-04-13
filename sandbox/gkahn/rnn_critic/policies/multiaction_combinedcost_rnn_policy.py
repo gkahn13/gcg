@@ -4,6 +4,7 @@ import tensorflow.contrib.layers as layers
 from rllab.misc.overrides import overrides
 from rllab.core.serializable import Serializable
 from sandbox.gkahn.rnn_critic.policies.policy import Policy
+from sandbox.gkahn.rnn_critic.tf.mulint_rnn_cell import BasicMulintRNNCell, BasicMulintLSTMCell
 
 class MultiactionCombinedcostRNNPolicy(Policy, Serializable):
     def __init__(self,
@@ -12,6 +13,7 @@ class MultiactionCombinedcostRNNPolicy(Policy, Serializable):
                  reward_hidden_layers,
                  rnn_state_dim,
                  use_lstm,
+                 use_bilinear,
                  activation,
                  rnn_activation,
                  conv_hidden_layers=None,
@@ -25,6 +27,7 @@ class MultiactionCombinedcostRNNPolicy(Policy, Serializable):
         :param reward_hidden_layers: layer sizes for processing the reward
         :param rnn_state_dim: dimension of the hidden state
         :param use_lstm: use lstm
+        :param use_bilinear: use multiplicative integration?
         :param activation: string, e.g. 'tf.nn.relu'
         """
         Serializable.quick_init(self, locals())
@@ -34,6 +37,7 @@ class MultiactionCombinedcostRNNPolicy(Policy, Serializable):
         self._reward_hidden_layers = list(reward_hidden_layers)
         self._rnn_state_dim = rnn_state_dim
         self._use_lstm = use_lstm
+        self._use_bilinear = use_bilinear
         self._activation = eval(activation)
         self._rnn_activation = eval(rnn_activation)
         self._use_conv = (conv_hidden_layers is not None) and (conv_kernels is not None) and \
@@ -46,8 +50,8 @@ class MultiactionCombinedcostRNNPolicy(Policy, Serializable):
 
         Policy.__init__(self, **kwargs)
 
-        assert(self._N > 1)
-        assert(self._H > 1)
+        # assert(self._N > 1)
+        # assert(self._H > 1)
         assert(self._N == self._H)
 
     ##################
@@ -114,12 +118,20 @@ class MultiactionCombinedcostRNNPolicy(Policy, Serializable):
             with tf.name_scope('rnn'):
                 with tf.variable_scope('rnn_vars'):
                     if self._use_lstm:
-                        rnn_cell = tf.nn.rnn_cell.BasicLSTMCell(self._rnn_state_dim,
-                                                                state_is_tuple=True,
-                                                                activation=self._rnn_activation)
+                        if self._use_bilinear:
+                            rnn_cell = BasicMulintLSTMCell(self._rnn_state_dim,
+                                                           state_is_tuple=True,
+                                                           activation=self._rnn_activation)
+                        else:
+                            rnn_cell = tf.nn.rnn_cell.BasicLSTMCell(self._rnn_state_dim,
+                                                                    state_is_tuple=True,
+                                                                    activation=self._rnn_activation)
                         istate = tf.nn.rnn_cell.LSTMStateTuple(*tf.split(1, 2, istate))  # so state_is_tuple=True
                     else:
-                        rnn_cell = tf.nn.rnn_cell.BasicRNNCell(self._rnn_state_dim, activation=self._rnn_activation)
+                        if self._use_bilinear:
+                            rnn_cell = BasicMulintRNNCell(self._rnn_state_dim, activation=self._rnn_activation)
+                        else:
+                            rnn_cell = tf.nn.rnn_cell.BasicRNNCell(self._rnn_state_dim, activation=self._rnn_activation)
                     rnn_outputs, rnn_states = tf.nn.dynamic_rnn(rnn_cell, rnn_inputs, initial_state=istate)
 
             ### final internal state --> reward

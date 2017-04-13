@@ -82,7 +82,8 @@ class RNNCriticSampler(object):
         next_observations, rewards, dones, _ = self._vec_env.step(actions)
         if self._n_envs == 1:
             self._curr_path_length += 1
-            if dones or self._curr_path_length > self._max_path_length:
+            dones = dones or self._curr_path_length > self._max_path_length
+            if dones:
                 next_observations = self._vec_env.reset()
                 self._curr_path_length = 0
             actions = [actions]

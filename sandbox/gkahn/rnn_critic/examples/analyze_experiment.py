@@ -236,12 +236,16 @@ class AnalyzeRNNCritic(object):
 
                 logger.log('Evaluating policy for itr {0}'.format(itr))
                 n_envs = 1
+                if 'max_path_length' in self.params['alg']:
+                    max_path_length = self.params['alg']['max_path_length']
+                else:
+                    max_path_length = env.horizon
                 sampler = RNNCriticSampler(
                     policy=policy,
                     env=env,
                     n_envs=n_envs,
                     replay_pool_size=int(1e4),
-                    max_path_length=env.horizon,
+                    max_path_length=max_path_length,
                     save_rollouts=True
                 )
                 rollouts = []
@@ -802,6 +806,10 @@ class AnalyzeRNNCritic(object):
         f, axes = plt.subplots(4, 1, figsize=(4 * list(self.progress['Step'])[-1] * 1e-5, 7.5), sharex=True)
         f.tight_layout()
 
+        max_path_length = self.params['alg']['max_path_length']\
+            if 'max_path_length' in self.params['alg']\
+            else env_itrs[0].horizon
+
         ### plot training cost
         ax = axes[0]
         costs = self.progress['Cost'][1:]
@@ -814,10 +822,11 @@ class AnalyzeRNNCritic(object):
         rollouts = list(itertools.chain(*train_rollouts_itrs))
         cum_rewards = [np.sum(r['rewards']) for r in rollouts]
         steps = [r['steps'][-1] for r in rollouts]
+        steps, cum_rewards = zip(*sorted(zip(steps, cum_rewards), key=lambda x: x[0]))
         ax.plot(steps, cum_rewards, color='k', linestyle='', marker='|', markersize=5.)
         ax.hlines(env_itrs[0].horizon, steps[0], steps[-1], colors='r', linestyles='dashed')
         ax.set_ylabel('Cumulative reward')
-        ax.set_ylim((-100, 1100))
+        ax.set_ylim((-0.1*max_path_length, 1.1*max_path_length))
 
         ### plot training cum reward vs step smoothed
         ax = axes[2]
@@ -831,7 +840,7 @@ class AnalyzeRNNCritic(object):
         ax.plot(moving_steps, cum_rewards_mean, 'k-')
         ax.fill_between(moving_steps, cum_rewards_mean - cum_rewards_std, cum_rewards_mean + cum_rewards_std,
                         color='k', alpha=0.4)
-        ax.set_ylim((-100, 1100))
+        ax.set_ylim((-0.1 * max_path_length, 1.1 * max_path_length))
 
         start_step = self.params['alg']['learn_after_n_steps']
         end_step = self.params['alg']['total_steps']
@@ -860,7 +869,7 @@ class AnalyzeRNNCritic(object):
         ax = axes[3]
         rewards = [[np.sum(rollout['rewards']) for rollout in rollouts] for rollouts in eval_rollouts_itrs]
         plot_reward(ax, rewards)
-        ax.set_ylim((-100, 1100))
+        ax.set_ylim((-0.1 * max_path_length, 1.1 * max_path_length))
         ax.set_ylabel('Eval cumulative reward')
         ax.set_xlabel('Steps')
         xfmt = ticker.ScalarFormatter()
@@ -874,7 +883,6 @@ class AnalyzeRNNCritic(object):
 
         f.savefig(self._analyze_img_file, bbox_inches='tight')
         plt.close(f)
-
 
     def _plot_rollouts(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs, is_train, plot_prior):
         env = inner_env(env_itrs[0])

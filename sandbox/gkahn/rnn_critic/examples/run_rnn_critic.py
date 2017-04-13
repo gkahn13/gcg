@@ -120,7 +120,7 @@ def run_rnn_critic(params, params_txt):
             env=env,
             policy=policy,
             exploration_strategy=exploration_strategy,
-            max_path_length=env.horizon,
+            max_path_length=params['alg'].pop('max_path_length', env.horizon),
             **params['alg']
         )
     else:

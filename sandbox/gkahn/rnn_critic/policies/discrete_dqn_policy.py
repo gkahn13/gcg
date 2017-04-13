@@ -171,8 +171,6 @@ class DiscreteDQNPolicy(Policy, Serializable):
         }
         cost, mse, _ = self._tf_sess.run([self._tf_cost, self._tf_mse, self._tf_opt], feed_dict=feed_dict)
 
-        if not np.isfinite(cost):
-            import IPython; IPython.embed()
         assert (np.isfinite(cost))
 
         self._log_stats['Cost'].append(cost)
