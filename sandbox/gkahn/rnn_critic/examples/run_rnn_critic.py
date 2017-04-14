@@ -24,11 +24,9 @@ from sandbox.gkahn.rnn_critic.policies.dqn_policy import DQNPolicy
 from sandbox.gkahn.rnn_critic.policies.discrete_dqn_policy import DiscreteDQNPolicy
 from sandbox.gkahn.rnn_critic.policies.nstep_dqn_policy import NstepDQNPolicy
 from sandbox.gkahn.rnn_critic.policies.nstep_discrete_dqn_policy import NstepDiscreteDQNPolicy
-from sandbox.gkahn.rnn_critic.policies.multiaction_combinedcost_mlp_policy import MultiactionCombinedcostMLPPolicy
-from sandbox.gkahn.rnn_critic.policies.multiaction_combinedcost_rnn_policy import MultiactionCombinedcostRNNPolicy
-from sandbox.gkahn.rnn_critic.policies.multiaction_combinedcost_muxrnn_policy import MultiactionCombinedcostMuxRNNPolicy
-from sandbox.gkahn.rnn_critic.policies.multiaction_separatedcost_mlp_policy import MultiactionSeparatedcostMLPPolicy
-from sandbox.gkahn.rnn_critic.policies.multiaction_separatedcost_rnn_policy import MultiactionSeparatedcostRNNPolicy
+# from sandbox.gkahn.rnn_critic.policies.mac_policy import MACPolicy
+from sandbox.gkahn.rnn_critic.policies.mac_policy_new import MACPolicy
+from sandbox.gkahn.rnn_critic.policies.mac_mux_policy import MACMuxPolicy
 ### RNN analyze
 from sandbox.gkahn.rnn_critic.examples.analyze_experiment import AnalyzeRNNCritic
 
@@ -86,15 +84,9 @@ def run_rnn_critic(params, params_txt):
     policy_class = params['policy']['class']
     PolicyClass = eval(policy_class)
     policy_params = params['policy'][policy_class]
-    get_action = params['get_action']
-    get_target_action = params['get_target_action'] if 'get_target_action' in params else params['get_action']
-    get_action_type = get_action['type']
-    get_target_action_type = get_target_action['type']
 
     policy = PolicyClass(
         env_spec=env.spec,
-        get_action_params=get_action[get_action_type],
-        get_target_action_params=get_target_action[get_target_action_type],
         **policy_params,
         **params['policy']
     )

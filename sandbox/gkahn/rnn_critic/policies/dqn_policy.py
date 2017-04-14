@@ -95,14 +95,14 @@ class DQNPolicy(Policy, Serializable):
                                                weights_regularizer=layers.l2_regularizer(1.))
             layer = layers.fully_connected(layer, num_outputs=output_dim, activation_fn=None,
                                            weights_regularizer=layers.l2_regularizer(1.))
-            tf_rewards = self._graph_preprocess_outputs(layer, d_preprocess)
+            tf_values = self._graph_preprocess_outputs(layer, d_preprocess)
 
             # import numpy as np
             # num_vars = np.sum([np.prod(v.get_shape()) for v in tf.trainable_variables()])
             # print('num_vars: {0}'.format(num_vars))
             # import IPython; IPython.embed()
 
-        return tf_rewards
+        return tf_values
 
     ################
     ### Training ###

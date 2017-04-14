@@ -108,15 +108,8 @@ class DiscreteDQNPolicy(Policy, Serializable):
         return tf_rewards
 
     @overrides
-    def _graph_calculate_values(self, tf_rewards):
-        return tf_rewards # b/c network outputs values directly
-
-    @overrides
-    def _graph_cost(self, tf_rewards_ph, tf_actions_ph, tf_rewards,
-                    tf_target_rewards_select, tf_target_rewards_eval, tf_target_mask_ph):
-        ### target: calculate values
-        tf_target_values_select = self._graph_calculate_values(tf_target_rewards_select)
-        tf_target_values_eval = self._graph_calculate_values(tf_target_rewards_eval)
+    def _graph_cost(self, tf_rewards_ph, tf_actions_ph, tf_values,
+                    tf_target_values_select, tf_target_values_eval, tf_target_mask_ph):
         ### target: mask selection and eval
         tf_target_values_mask = tf.one_hot(tf.argmax(tf_target_values_select, 1),
                                            depth=self.N_output)
@@ -124,7 +117,7 @@ class DiscreteDQNPolicy(Policy, Serializable):
 
         ### policy:
         tf_values_ph = tf.reduce_sum(np.power(self._gamma, np.arange(self._N)) * tf_rewards_ph, reduction_indices=1)
-        tf_values = tf.reduce_sum(tf_actions_ph * tf_rewards, reduction_indices=1)
+        tf_values = tf.reduce_sum(tf_actions_ph * tf_values, reduction_indices=1)
 
         mse = tf.reduce_mean(tf.square(tf_values_ph +
                                        self._use_target * tf_target_mask_ph * np.power(self._gamma, self._N) * tf_target_values_max -

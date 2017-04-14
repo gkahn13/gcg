@@ -125,15 +125,15 @@ class AnalyzeRNNCritic(object):
 
         self.train_rollouts_itrs, self.env_itrs = self._load_all_itrs()
         logger.log('AnalyzeRNNCritic: Loaded all itrs')
-        # self.eval_rollouts_itrs = []
-        if not os.path.exists(self._eval_rollouts_itrs_file):
-            eval_rollouts_itrs = self._eval_all_policies(self.env_itrs)
-            logger.log('AnalyzeRNNCritic: Eval all policies')
-            with open(self._eval_rollouts_itrs_file, 'wb') as f:
-                pickle.dump(eval_rollouts_itrs, f)
-            logger.log('AnalyzeRNNCritic: Loaded eval rollouts')
-        with open(self._eval_rollouts_itrs_file, 'rb') as f:
-            self.eval_rollouts_itrs = pickle.load(f)
+        self.eval_rollouts_itrs = []
+        # if not os.path.exists(self._eval_rollouts_itrs_file):
+        #     eval_rollouts_itrs = self._eval_all_policies(self.env_itrs)
+        #     logger.log('AnalyzeRNNCritic: Eval all policies')
+        #     with open(self._eval_rollouts_itrs_file, 'wb') as f:
+        #         pickle.dump(eval_rollouts_itrs, f)
+        #     logger.log('AnalyzeRNNCritic: Loaded eval rollouts')
+        # with open(self._eval_rollouts_itrs_file, 'rb') as f:
+        #     self.eval_rollouts_itrs = pickle.load(f)
         logger.log('AnalyzeRNNCritic: Finished loading data')
 
     #############

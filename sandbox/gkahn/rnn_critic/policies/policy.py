@@ -35,6 +35,8 @@ class Policy(TfPolicy, Serializable):
                  grad_clip_norm,
                  get_action_params,
                  preprocess,
+                 train_value_horizon,
+                 target_value_horizon,
                  get_target_action_params=None,
                  gpu_device=None,
                  gpu_frac=None,
@@ -52,6 +54,8 @@ class Policy(TfPolicy, Serializable):
         :param grad_clip_norm
         :param get_action_params: how should actions be chosen?
         :param get_target_action_params: how should target actions be chosen?
+        :param train_value_horizon: which value horizons are trained for?
+        :param target_value_horizon: which target horizons are used?
         :param reset_every_train: reset parameters every time train is called?
         :param train_steps: how many calls to optimizer each time train is called
         :param batch_size
@@ -60,6 +64,8 @@ class Policy(TfPolicy, Serializable):
         Serializable.quick_init(self, locals())
         assert(cost_type == 'combined' or cost_type == 'separated')
         assert(type(obs_history_len) is int and obs_history_len >= 1)
+        assert(train_value_horizon == 'all' or train_value_horizon == 'last')
+        assert(target_value_horizon == 'all' or target_value_horizon == 'last' or target_value_horizon == 'first')
 
         self._env_spec = env_spec
         self._N = N
@@ -73,6 +79,8 @@ class Policy(TfPolicy, Serializable):
         self._lr_schedule = schedules.PiecewiseSchedule(**lr_schedule)
         self._grad_clip_norm = grad_clip_norm
         self._preprocess_params = preprocess
+        self._train_value_horizon = train_value_horizon
+        self._target_value_horizon = target_value_horizon
         self._get_action_params = get_action_params
         self._get_target_action_params = get_target_action_params if get_target_action_params is not None else get_action_params
         self._gpu_device = gpu_device
@@ -220,33 +228,34 @@ class Policy(TfPolicy, Serializable):
 
         return layer_cond
 
-    def _graph_preprocess_outputs(self, tf_rewards, d_preprocess):
-        return tf.add(tf.matmul(tf_rewards, tf.transpose(d_preprocess['rewards_orth_var'])),
+    def _graph_preprocess_outputs(self, tf_values, d_preprocess):
+        return tf.add(tf.matmul(tf_values, tf.transpose(d_preprocess['rewards_orth_var'])),
                       d_preprocess['rewards_mean_var'])
 
     @abc.abstractmethod
     def _graph_inference(self, tf_obs_ph, tf_actions_ph, d_preprocess):
         raise NotImplementedError
 
-    def _graph_calculate_values(self, tf_rewards):
-        N = tf_rewards.get_shape()[1].value
-        gammas = np.power(self._gamma * np.ones(N), np.arange(N))
-        tf_values = tf.reduce_sum(gammas * tf_rewards, reduction_indices=1)
-        return tf_values
-
-    def _graph_cost(self, tf_rewards_ph, tf_actions_ph, tf_rewards,
-                    tf_target_rewards_select, tf_target_rewards_eval, tf_target_mask_ph):
+    def _graph_cost(self, tf_rewards_ph, tf_actions_ph, tf_values,
+                    tf_target_values_select, tf_target_values_eval, tf_target_mask_ph):
         # for training, len(tf_obs_ph) == len(tf_actions_ph)
         # but len(tf_actions_target_ph) == N * len(tf_action_ph),
         # so need to be selective about what to take the max over
 
-        ### calculate values
-        tf_target_values_select = self._graph_calculate_values(tf_target_rewards_select)
-        tf_target_values_eval = self._graph_calculate_values(tf_target_rewards_eval)
+        ### determine combined values
+        if self._train_value_horizon == 'all':
+            train_horizon = range(self._H)
+        elif self._train_value_horizon == 'last':
+            train_horizon = [self._H - 1]
+        else:
+            raise NotImplementedError
+        tf_target_values_select_combined = tf_target_values_select[:, -1]
+        tf_target_values_eval_combined = tf_target_values_eval[:, -1]
+
         ### flatten
         batch_size = tf.shape(tf_rewards_ph)[0]
-        tf_target_values_select_flat = tf.reshape(tf_target_values_select, (batch_size, -1))
-        tf_target_values_eval_flat = tf.reshape(tf_target_values_eval, (batch_size, -1))
+        tf_target_values_select_flat = tf.reshape(tf_target_values_select_combined, (batch_size, -1))
+        tf_target_values_eval_flat = tf.reshape(tf_target_values_eval_combined, (batch_size, -1))
         ### mask selection and eval
         tf_target_values_mask = tf.one_hot(tf.argmax(tf_target_values_select_flat, 1),
                                            depth=tf.shape(tf_target_values_select_flat)[1])
@@ -256,10 +265,14 @@ class Policy(TfPolicy, Serializable):
         else:
             tf_target_bootstrap = 0
 
-        tf_values_ph = self._graph_calculate_values(tf_rewards_ph)
-        tf_values = self._graph_calculate_values(tf_rewards)
-
-        mse = tf.reduce_mean(tf.square(tf_values_ph + tf_target_bootstrap - tf_values))
+        ### mse
+        mses = []
+        for h in train_horizon:
+            tf_values_ph = tf.reduce_sum(np.power(self._gamma * np.ones(self._N), np.arange(self._N)) * tf_rewards_ph,
+                                         reduction_indices=1)
+            mses.append(tf.reduce_mean(tf.square(tf_values_ph + tf_target_bootstrap - tf_values[:, h])))
+        mse = tf.reduce_mean(mses)
+        ### weight decay
         if len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)) > 0:
             weight_decay = self._weight_decay * tf.add_n(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
         else:
@@ -293,8 +306,9 @@ class Policy(TfPolicy, Serializable):
             with tf.variable_scope('policy'):
                 d_preprocess = self._graph_preprocess_from_placeholders()
                 tf_obs_ph, tf_actions_ph, tf_rewards_ph = self._graph_inputs_outputs_from_placeholders()
-                tf_rewards = self._graph_inference(tf_obs_ph, tf_actions_ph, d_preprocess)
-                tf_values = self._graph_calculate_values(tf_rewards)
+                tf_values = self._graph_inference(tf_obs_ph, tf_actions_ph, d_preprocess)
+                assert(tf_values.get_shape()[-1].value == self._H)
+                tf_values_eval = tf_values[:, -1] # actions chosen based on longest horizon
 
             ### eval target network
             if self._separate_target_params:
@@ -302,16 +316,16 @@ class Policy(TfPolicy, Serializable):
                     d_preprocess_target = self._graph_preprocess_from_placeholders()
                     tf_obs_target_ph, tf_actions_target_ph, _ = self._graph_inputs_outputs_from_placeholders()
                     tf_target_mask_ph = tf.placeholder('float', [None], name='tf_target_mask_ph')
-                    tf_target_rewards_eval = self._graph_inference(tf_obs_target_ph, tf_actions_target_ph, d_preprocess_target)
+                    tf_target_values_eval = self._graph_inference(tf_obs_target_ph, tf_actions_target_ph, d_preprocess_target)
             else:
                 with tf.variable_scope('target_network'):
                     tf_obs_target_ph, tf_actions_target_ph, _ = self._graph_inputs_outputs_from_placeholders()
                     tf_target_mask_ph = tf.placeholder('float', [None], name='tf_target_mask_ph')
                 with tf.variable_scope('policy', reuse=True):
-                    tf_target_rewards_eval = self._graph_inference(tf_obs_target_ph, tf_actions_target_ph, d_preprocess)
+                    tf_target_values_eval = self._graph_inference(tf_obs_target_ph, tf_actions_target_ph, d_preprocess)
             ### selection target network
             with tf.variable_scope('policy', reuse=True):
-                tf_target_rewards_select = self._graph_inference(tf_obs_target_ph, tf_actions_target_ph, d_preprocess)
+                tf_target_values_select = self._graph_inference(tf_obs_target_ph, tf_actions_target_ph, d_preprocess)
 
             policy_vars = sorted(tf.get_collection(xplatform.global_variables_collection_name(),
                                                    scope='policy'), key=lambda v: v.name)
@@ -327,8 +341,8 @@ class Policy(TfPolicy, Serializable):
                 update_target_fn = None
 
             ### optimization
-            tf_cost, tf_mse = self._graph_cost(tf_rewards_ph, tf_actions_ph, tf_rewards,
-                                               tf_target_rewards_select, tf_target_rewards_eval, tf_target_mask_ph)
+            tf_cost, tf_mse = self._graph_cost(tf_rewards_ph, tf_actions_ph, tf_values,
+                                               tf_target_values_select, tf_target_values_eval, tf_target_mask_ph)
             tf_opt, tf_lr_ph = self._graph_optimize(tf_cost, policy_vars)
 
             self._graph_init_vars(tf_sess)
@@ -337,7 +351,7 @@ class Policy(TfPolicy, Serializable):
             # writer = tf.train.SummaryWriter('/tmp', graph_def=tf_sess.graph_def)
 
         return tf_graph, tf_sess, d_preprocess, \
-               tf_obs_ph, tf_actions_ph, tf_rewards_ph, tf_values, tf_cost, tf_mse, tf_opt, tf_lr_ph, \
+               tf_obs_ph, tf_actions_ph, tf_rewards_ph, tf_values_eval, tf_cost, tf_mse, tf_opt, tf_lr_ph, \
                tf_obs_target_ph, tf_actions_target_ph, tf_target_mask_ph, update_target_fn
 
     ################

@@ -768,8 +768,6 @@ class PlotAnalyzeRNNCritic(object):
         plt.close(f)
 
     def _plot_analyze_Tennis(self):
-        import IPython; IPython.embed()
-
         f, axes = plt.subplots(1 + len(self._analyze_groups), 1, figsize=(15, 5 * len(self._analyze_groups)),
                                sharex=True)
 
@@ -888,8 +886,8 @@ if __name__ == '__main__':
     ### MultiactionCombinedcostRNNPolicy N=6
     analyze_group = []
     for i in range(6, 9):
-        print('\nip{0:03d}\n'.format(i))
-        analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'ip{0:03d}'.format(i)),
+        print('\ntennis{0:03d}\n'.format(i))
+        analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'tennis{0:03d}'.format(i)),
                                               plot={
                                                   'label': 'MultiactionCombinedcostRNNPolicy, N=6',
                                                   'color': 'g'

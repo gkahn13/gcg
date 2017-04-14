@@ -3,17 +3,17 @@ import tensorflow.contrib.layers as layers
 
 from rllab.misc.overrides import overrides
 from rllab.core.serializable import Serializable
-
 from sandbox.gkahn.rnn_critic.policies.policy import Policy
-from sandbox.gkahn.rnn_critic.tf.mux_rnn_cell import BasicMuxRNNCell, BasicMuxLSTMCell
-from sandbox.gkahn.tf.core import xplatform
+from sandbox.gkahn.rnn_critic.tf.mulint_rnn_cell import BasicMulintRNNCell, BasicMulintLSTMCell
 
-class MultiactionCombinedcostMuxRNNPolicy(Policy, Serializable):
+class MACPolicy(Policy, Serializable):
     def __init__(self,
                  obs_hidden_layers,
+                 action_hidden_layers,
                  reward_hidden_layers,
                  rnn_state_dim,
                  use_lstm,
+                 use_bilinear,
                  activation,
                  rnn_activation,
                  conv_hidden_layers=None,
@@ -27,14 +27,17 @@ class MultiactionCombinedcostMuxRNNPolicy(Policy, Serializable):
         :param reward_hidden_layers: layer sizes for processing the reward
         :param rnn_state_dim: dimension of the hidden state
         :param use_lstm: use lstm
+        :param use_bilinear: use multiplicative integration?
         :param activation: string, e.g. 'tf.nn.relu'
         """
         Serializable.quick_init(self, locals())
 
         self._obs_hidden_layers = list(obs_hidden_layers)
+        self._action_hidden_layers = list(action_hidden_layers)
         self._reward_hidden_layers = list(reward_hidden_layers)
         self._rnn_state_dim = rnn_state_dim
         self._use_lstm = use_lstm
+        self._use_bilinear = use_bilinear
         self._activation = eval(activation)
         self._rnn_activation = eval(rnn_activation)
         self._use_conv = (conv_hidden_layers is not None) and (conv_kernels is not None) and \
@@ -65,8 +68,6 @@ class MultiactionCombinedcostMuxRNNPolicy(Policy, Serializable):
 
     @overrides
     def _graph_inference(self, tf_obs_ph, tf_actions_ph, d_preprocess):
-        ac_dim = self._env_spec.action_space.flat_dim
-
         with tf.name_scope('inference'):
             tf_obs, tf_actions = self._graph_preprocess_inputs(tf_obs_ph, tf_actions_ph, d_preprocess)
 
@@ -92,8 +93,7 @@ class MultiactionCombinedcostMuxRNNPolicy(Policy, Serializable):
                 final_dim = self._rnn_state_dim if not self._use_lstm else 2 * self._rnn_state_dim
                 for num_outputs in self._obs_hidden_layers + [final_dim]:
                     layer = layers.fully_connected(layer, num_outputs=num_outputs, activation_fn=self._activation,
-                                                   weights_regularizer=layers.l2_regularizer(1.),
-                                                   weights_initializer=tf.contrib.layers.xavier_initializer())
+                                                   weights_regularizer=layers.l2_regularizer(1.))
                 istate = layer
 
             ### replicate istate if needed
@@ -101,44 +101,55 @@ class MultiactionCombinedcostMuxRNNPolicy(Policy, Serializable):
 
             ### actions --> rnn input at each time step
             with tf.name_scope('actions_to_rnn_input'):
-                rnn_inputs = tf.reshape(tf_actions, (-1, self._N, ac_dim))
+                tf_actions_list = tf.split(1, self._N, tf_actions)
+                rnn_inputs = []
+                for h in range(self._N):
+                    layer = tf_actions_list[h]
+
+                    for i, num_outputs in enumerate(self._action_hidden_layers + [self._rnn_state_dim]):
+                        layer = layers.fully_connected(layer, num_outputs=num_outputs, activation_fn=self._activation,
+                                                       weights_regularizer=layers.l2_regularizer(1.),
+                                                       scope='actions_i{0}'.format(i),
+                                                       reuse=(h > 0))
+                    rnn_inputs.append(layer)
+                rnn_inputs = tf.pack(rnn_inputs, 1)
 
             ### create rnn
             with tf.name_scope('rnn'):
                 with tf.variable_scope('rnn_vars'):
                     if self._use_lstm:
-                        rnn_cell = BasicMuxLSTMCell(ac_dim,
-                                                    self._rnn_state_dim,
-                                                    state_is_tuple=True,
-                                                    activation=self._rnn_activation)
-                        istate = tf.nn.rnn_cell.LSTMStateTuple(*tf.split(1, 2, istate)) # so state_is_tuple=True
+                        if self._use_bilinear:
+                            rnn_cell = BasicMulintLSTMCell(self._rnn_state_dim,
+                                                           state_is_tuple=True,
+                                                           activation=self._rnn_activation)
+                        else:
+                            rnn_cell = tf.nn.rnn_cell.BasicLSTMCell(self._rnn_state_dim,
+                                                                    state_is_tuple=True,
+                                                                    activation=self._rnn_activation)
+                        istate = tf.nn.rnn_cell.LSTMStateTuple(*tf.split(1, 2, istate))  # so state_is_tuple=True
                     else:
-                        rnn_cell = BasicMuxRNNCell(ac_dim, self._rnn_state_dim, activation=self._rnn_activation)
+                        if self._use_bilinear:
+                            rnn_cell = BasicMulintRNNCell(self._rnn_state_dim, activation=self._rnn_activation)
+                        else:
+                            rnn_cell = tf.nn.rnn_cell.BasicRNNCell(self._rnn_state_dim, activation=self._rnn_activation)
                     rnn_outputs, rnn_states = tf.nn.dynamic_rnn(rnn_cell, rnn_inputs, initial_state=istate)
-                rnn_vars = [v for v in tf.get_collection(xplatform.global_variables_collection_name())
-                            if 'rnn_vars' in v.name and 'B' not in v.name]
-                for v in rnn_vars:
-                    tf.add_to_collection(tf.GraphKeys.REGULARIZATION_LOSSES, tf.nn.l2_loss(v))
 
             ### final internal state --> reward
             with tf.name_scope('final_istate_to_reward'):
-                layer = rnn_outputs[:, -1, :]
-                for i, num_outputs in enumerate(self._reward_hidden_layers + [1]):
-                    activation = self._activation if i < len(self._reward_hidden_layers) else None
-                    layer = layers.fully_connected(layer,
-                                                   num_outputs=num_outputs,
-                                                   activation_fn=activation,
-                                                   weights_regularizer=layers.l2_regularizer(1.),
-                                                   weights_initializer=tf.contrib.layers.xavier_initializer(),
-                                                   scope='rewards_i{0}'.format(i),
-                                                   reuse=False)
-                tf_rewards = layer
+                tf_values_list = []
+                for h in range(self._H):
+                    layer = rnn_outputs[:, h, :]
+                    for i, num_outputs in enumerate(self._reward_hidden_layers + [1]):
+                        activation = self._activation if i < len(self._reward_hidden_layers) else None
+                        layer = layers.fully_connected(layer,
+                                                       num_outputs=num_outputs,
+                                                       activation_fn=activation,
+                                                       weights_regularizer=layers.l2_regularizer(1.),
+                                                       scope='rewards_i{0}'.format(i),
+                                                       reuse=(h > 0))
+                    tf_values_h = self._graph_preprocess_outputs(layer, d_preprocess)
+                    tf_values_list.append(tf_values_h)
 
-            tf_rewards = self._graph_preprocess_outputs(tf_rewards, d_preprocess)
+                tf_values = tf.concat(1, tf_values_list)
 
-            # import numpy as np
-            # num_vars = np.sum([np.prod(v.get_shape()) for v in tf.trainable_variables()])
-            # print('num_vars: {0}'.format(num_vars))
-            # import IPython; IPython.embed()
-
-        return tf_rewards
+        return tf_values
