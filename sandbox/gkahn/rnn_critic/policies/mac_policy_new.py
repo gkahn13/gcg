@@ -75,7 +75,7 @@ class MACPolicy(TfPolicy, Serializable):
         ### logging
         self._log_stats = defaultdict(list)
 
-        TfPolicy.__init__(self, self._env_spec, sess=self._tf_sess)
+        TfPolicy.__init__(self, self._env_spec, sess=self._tf_dict['sess'])
 
     ##################
     ### Properties ###
@@ -146,7 +146,7 @@ class MACPolicy(TfPolicy, Serializable):
         with tf.variable_scope('preprocess'):
             for name, dim, diag_orth in (('observations', self._env_spec.observation_space.flat_dim, self._obs_is_im),
                                          ('actions', self._env_spec.action_space.flat_dim * self._H, False),
-                                         ('rewards', self.N_output, False)):
+                                         ('rewards', 1, False)):
                 tf_preprocess[name+'_mean_ph'] = tf.placeholder(tf.float32, shape=(1, dim), name=name+'_mean_ph')
                 tf_preprocess[name+'_mean_var'] = tf.get_variable(name+'_mean_var', shape=[1, dim],
                                                                   trainable=False, dtype=tf.float32,
@@ -157,9 +157,9 @@ class MACPolicy(TfPolicy, Serializable):
                 if diag_orth:
                     tf_preprocess[name + '_orth_ph'] = tf.placeholder(tf.float32, shape=(dim,), name=name + '_orth_ph')
                     tf_preprocess[name + '_orth_var'] = tf.get_variable(name + '_orth_var',
-                                                                       shape=(dim,),
-                                                                       trainable=False, dtype=tf.float32,
-                                                                       initializer=tf.constant_initializer(np.ones(dim)))
+                                                                        shape=(dim,),
+                                                                        trainable=False, dtype=tf.float32,
+                                                                        initializer=tf.constant_initializer(np.ones(dim)))
                 else:
                     tf_preprocess[name + '_orth_ph'] = tf.placeholder(tf.float32, shape=(dim, dim), name=name + '_orth_ph')
                     tf_preprocess[name + '_orth_var'] = tf.get_variable(name + '_orth_var',
@@ -174,40 +174,47 @@ class MACPolicy(TfPolicy, Serializable):
     def _graph_obs_to_lowd(self, tf_obs_ph, tf_preprocess):
         with tf.name_scope('obs_to_lowd'):
             ### whiten observations
+            obs_dim = self._env_spec.observation_space.flat_dim
             if tf_obs_ph.dtype != tf.float32:
                 tf_obs_ph = tf.cast(tf_obs_ph, tf.float32)
-            if self._obs_is_im:
-                # TODO: is this correct?
-                tf_obs_whitened = tf.mul(tf_obs_ph -
-                                         tf.tile(tf_preprocess['observations_mean_var'], (1, self._obs_history_len)),
-                                         tf.tile(tf_preprocess['observations_orth_var'], (self._obs_history_len,)))
-            else:
-                tf_obs_whitened = tf.matmul(tf_obs_ph -
-                                            tf.tile(tf_preprocess['observations_mean_var'], (1, self._obs_history_len)),
-                                            tf_utils.block_diagonal(
-                                                [tf_preprocess['observations_orth_var']] * self._obs_history_len))
+            # tf_obs_ph = tf.reshape(tf_obs_ph, (-1, self._obs_history_len * obs_dim))
+            # if self._obs_is_im:
+            #     # TODO: is this correct?
+            #     tf_obs_whitened = tf.mul(tf_obs_ph -
+            #                              tf.tile(tf_preprocess['observations_mean_var'], (1, self._obs_history_len)),
+            #                              tf.tile(tf_preprocess['observations_orth_var'], (self._obs_history_len,)))
+            # else:
+            #     print('obs_to_lowd'); import IPython; IPython.embed()
+            #     tf_obs_whitened = tf.matmul(tf_obs_ph -
+            #                                 tf.tile(tf_preprocess['observations_mean_var'], (1, self._obs_history_len)),
+            #                                 tf_utils.block_diagonal(
+            #                                     [tf_preprocess['observations_orth_var']] * self._obs_history_len))
+            # tf_obs_whitened = tf.reshape(tf_obs_whitened, (-1, self._obs_history_len, obs_dim))
+            tf_obs_whitened = tf_obs_ph # TODO
 
             ### obs --> lower dimensional space
             if self._use_conv:
                 obs_shape = [self._obs_history_len] + list(self._env_spec.observation_space.shape)[:2]
                 layer = tf.transpose(tf.reshape(tf_obs_whitened, [-1] + list(obs_shape)), perm=(0, 2, 3, 1))
-                for num_outputs, kernel_size, stride in zip(self._conv_hidden_layers,
-                                                            self._conv_kernels,
-                                                            self._conv_strides):
+                for i, (num_outputs, kernel_size, stride) in enumerate(zip(self._conv_hidden_layers,
+                                                                           self._conv_kernels,
+                                                                           self._conv_strides)):
                     layer = layers.convolution2d(layer,
                                                  num_outputs=num_outputs,
                                                  kernel_size=kernel_size,
                                                  stride=stride,
-                                                 activation_fn=self._conv_activation)
+                                                 activation_fn=self._conv_activation,
+                                                 scope='obs_to_lowd_conv{0}'.format(i))
                 layer = layers.flatten(layer)
             else:
                 layer = layers.flatten(tf_obs_whitened)
 
             ### obs --> internal state
             final_dim = self._rnn_state_dim if not self._use_lstm else 2 * self._rnn_state_dim
-            for num_outputs in self._obs_hidden_layers + [final_dim]:
+            for i, num_outputs in enumerate(self._obs_hidden_layers + [final_dim]):
                 layer = layers.fully_connected(layer, num_outputs=num_outputs, activation_fn=self._activation,
-                                               weights_regularizer=layers.l2_regularizer(1.))
+                                               weights_regularizer=layers.l2_regularizer(1.),
+                                               scope='obs_to_istate_fc{0}'.format(i))
             tf_obs_lowd = layer
 
         return tf_obs_lowd
@@ -221,7 +228,7 @@ class MACPolicy(TfPolicy, Serializable):
         """
         H = tf_actions_ph.get_shape()[1].value
         assert(tf_obs_lowd.get_shape()[1].value == self._rnn_state_dim)
-        tf.assert_equal(tf.shape(tf_obs_lowd)[0], tf_actions_ph[0])
+        tf.assert_equal(tf.shape(tf_obs_lowd)[0], tf.shape(tf_actions_ph)[0])
 
         with tf.name_scope('inference'):
             ### internal state
@@ -245,7 +252,7 @@ class MACPolicy(TfPolicy, Serializable):
                         layer = layers.fully_connected(layer, num_outputs=num_outputs, activation_fn=self._activation,
                                                        weights_regularizer=layers.l2_regularizer(1.),
                                                        scope='actions_i{0}'.format(i),
-                                                       reuse=(h > 0))
+                                                       reuse=tf.get_variable_scope().reuse or (h > 0))
                     rnn_inputs.append(layer)
                 rnn_inputs = tf.pack(rnn_inputs, 1)
 
@@ -281,7 +288,7 @@ class MACPolicy(TfPolicy, Serializable):
                                                        activation_fn=activation,
                                                        weights_regularizer=layers.l2_regularizer(1.),
                                                        scope='rewards_i{0}'.format(i),
-                                                       reuse=(h > 0))
+                                                       reuse=tf.get_variable_scope().reuse or (h > 0))
                     ### de-whiten
                     tf_values_h = tf.add(tf.matmul(layer, tf.transpose(tf_preprocess['rewards_orth_var'])),
                                          tf_preprocess['rewards_mean_var'])
@@ -301,7 +308,7 @@ class MACPolicy(TfPolicy, Serializable):
         else:
             raise NotImplementedError
 
-    def _get_action(self, tf_obs_lowd, get_action_params, tf_preprocess):
+    def _graph_get_action(self, tf_obs_lowd, get_action_params, tf_preprocess):
         """
         :param tf_obs_lowd: [batch_size, rnn_state_dim]
         :param H: max horizon to choose action over
@@ -318,8 +325,8 @@ class MACPolicy(TfPolicy, Serializable):
 
         ### create actions
         if get_action_type == 'random':
-            K = get_action_params['K']
-            tf_actions = (action_ub - action_lb) * tf.random_uniform([num_obs, H, action_dim]) + action_lb
+            K = get_action_params[get_action_type]['K']
+            tf_actions = (action_ub - action_lb) * tf.random_uniform([K, H, action_dim]) + action_lb
         elif get_action_type == 'lattice':
             assert(isinstance(self._env_spec.action_space, Discrete))
             indices = cartesian([np.arange(action_dim)] * H) + np.r_[0:action_dim * H:action_dim]
@@ -332,23 +339,37 @@ class MACPolicy(TfPolicy, Serializable):
             raise NotImplementedError
 
         ### tile
-        tf_actions = tf.tile(tf_actions, (K, 1, 1))
-        tf_obs_lowd_tiled = tf.tile(tf_obs_lowd, (K, 1, 1))
+        tf_actions = tf.tile(tf_actions, (num_obs, 1, 1))
+        tf_obs_lowd_repeat = tf_utils.repeat_2d(tf_obs_lowd, K, 0)
         ### inference to get values
-        tf_values_all = self._graph_inference(tf_obs_lowd_tiled, tf_actions, tf_preprocess)  # [num_obs*k, H]
+        tf_values_all = self._graph_inference(tf_obs_lowd_repeat, tf_actions, tf_preprocess)  # [num_obs*k, H]
         tf_values = self._graph_calculate_values(tf_values_all, get_action_params['value'])  # [num_obs*K]
         tf_values = tf.reshape(tf_values, (num_obs, K))  # [num_obs, K]
         ### argmax
         tf_values_argmax = tf.one_hot(tf.argmax(tf_values, 1), depth=K)  # [num_obs, K]
         tf_get_action = tf.reduce_sum(
-            tf_values_argmax * tf.reshape(tf_actions, (num_obs, K, H, action_dim))[:, :, 0, :],
-            reduction_indices=1)  # [num_obs, action_dim]
+                tf.tile(tf.expand_dims(tf_values_argmax, 2), (1, 1, action_dim)) *
+                tf.reshape(tf_actions, (num_obs, K, H, action_dim))[:, :, 0, :],
+                reduction_indices=1)  # [num_obs, action_dim]
+        # import IPython; IPython.embed()
         tf_get_action_value = tf.reduce_sum(tf_values_argmax * tf_values, reduction_indices=1)
 
         ### check shapes
         tf.assert_equal(tf.shape(tf_get_action)[0], num_obs)
         tf.assert_equal(tf.shape(tf_get_action_value)[0], num_obs)
         assert(tf_get_action.get_shape()[1].value == action_dim)
+
+        ### TODO:
+        if 'tf_actions' not in self._tf_debug.keys():
+            self._tf_debug['tf_actions'] = tf_actions
+            self._tf_debug['tf_obs_lowd_repeat'] = tf_obs_lowd_repeat
+            self._tf_debug['tf_values_all'] = tf_values_all
+            self._tf_debug['tf_values'] = tf_values
+            self._tf_debug['tf_values_argmax'] = tf_values_argmax
+            self._tf_debug['tf_values_argmax_tiled'] = tf.tile(tf.expand_dims(tf_values_argmax, 2), (1, 1, action_dim))
+            self._tf_debug['tf_actions_first'] = tf.reshape(tf_actions, (num_obs, K, H, action_dim))[:, :, 0, :]
+            self._tf_debug['tf_get_action'] = tf_get_action
+            self._tf_debug['tf_get_action_value'] = tf_get_action_value
 
         return tf_get_action, tf_get_action_value
 
@@ -364,13 +385,13 @@ class MACPolicy(TfPolicy, Serializable):
 
         ### calculate bellman error for all horizons in [1, self._H]
         tf_mses = []
-        for h in range(self._H): # TODO: check indexing
-            tf_sum_rewards = tf.reduce_sum(np.power(self._gamma * np.ones(h+1) * tf_rewards_ph[:, :h+1]),
+        for h in range(self._H):
+            tf_sum_rewards = tf.reduce_sum(np.power(self._gamma * np.ones(h+1), np.arange(h+1)) * tf_rewards_ph[:, :h+1],
                                            reduction_indices=1)
             tf_mses.append(tf.reduce_mean(tf.square(tf_sum_rewards
                                                     + (1 - tf_dones[:, h]) * tf_target_get_action_values[:, h]
                                                     - tf_train_values[:, h])))
-        tf_mse = self._graph_calculate_values(tf.stack(tf_mses, 1), self._train_value_horizon)
+        tf_mse = self._graph_calculate_values(tf.expand_dims(tf.stack(tf_mses, 0), 0), self._train_value_horizon)[0]
 
         ### weight decay
         if len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)) > 0:
@@ -380,6 +401,18 @@ class MACPolicy(TfPolicy, Serializable):
         tf_cost = tf_mse + tf_weight_decay
 
         return tf_cost, tf_mse
+
+    def _graph_optimize(self, tf_cost, tf_policy_vars):
+        tf_lr_ph = tf.placeholder(tf.float32, (), name="learning_rate")
+        optimizer = tf.train.AdamOptimizer(learning_rate=tf_lr_ph, epsilon=1e-4)
+        gradients = optimizer.compute_gradients(tf_cost, var_list=tf_policy_vars)
+        for i, (grad, var) in enumerate(gradients):
+            if grad is not None:
+                gradients[i] = (tf.clip_by_norm(grad, self._grad_clip_norm), var)
+        return optimizer.apply_gradients(gradients), tf_lr_ph
+
+    def _graph_init_vars(self, tf_sess):
+        tf_sess.run([xplatform.global_variables_initializer()])
 
     def _graph_setup(self):
         ### create session and graph
@@ -424,12 +457,15 @@ class MACPolicy(TfPolicy, Serializable):
                 with tf.variable_scope(target_scope, reuse=target_reuse):
                     ### create preprocess placeholders
                     tf_target_preprocess = self._graph_preprocess_placeholders()
-                    ### preprocess obs to lowd
-                    tf_target_obs_lowd = self._graph_obs_to_lowd(tf_obs_target_ph, tf_target_preprocess)
                     ### action selection
                     tf_target_get_action_values = []
-                    for h in range(self._obs_history_len, self._obs_history_len + self._H):
-                        tf_target_obs_lowd_h = tf_target_obs_lowd[:, h-self._obs_history_len:h, :]
+                    for i, h in enumerate(range(self._obs_history_len, self._obs_history_len + self._H)):
+                        if i > 0:
+                            tf.get_variable_scope().reuse_variables()
+                        ### slice current h with history
+                        tf_obs_target_ph_h = tf_obs_target_ph[:, h-self._obs_history_len:h, :]
+                        ### preprocess obs to lowd
+                        tf_target_obs_lowd_h = self._graph_obs_to_lowd(tf_obs_target_ph_h, tf_target_preprocess)
                         _, tf_target_get_action_value_h = self._graph_get_action(tf_target_obs_lowd_h,
                                                                                  self._get_action_target, tf_preprocess)
                         tf_target_get_action_values.append(tf_target_get_action_value_h)
@@ -453,9 +489,13 @@ class MACPolicy(TfPolicy, Serializable):
             tf_cost, tf_mse = self._graph_cost(tf_train_values, tf_rewards_ph, tf_dones_ph, tf_target_get_action_values)
             tf_opt, tf_lr_ph = self._graph_optimize(tf_cost, tf_policy_vars)
 
+            ### initialize
+            self._graph_init_vars(tf_sess)
+
         ### what to return
         return {
             'sess': tf_sess,
+            'graph': tf_graph,
             'obs_ph': tf_obs_ph,
             'actions_ph': tf_actions_ph,
             'dones_ph': tf_dones_ph,
@@ -510,27 +550,35 @@ class MACPolicy(TfPolicy, Serializable):
             self._tf_dict['sess'].run(self._tf_dict['update_target_fn'])
 
     def train_step(self, step, observations, actions, rewards, dones, use_target):
-        # TODO
-        print('train_step'); import IPython; IPython.embed()
-        obs = None
-
+        """
+        :param observations: [batch_size, H+1 + obs_history_len-1, obs_dim]
+        :param actions: [batch_size, H+1, action_dim]
+        :param rewards: [batch_size, H+1]
+        :param dones: [batch_size, H+1]
+        """
         feed_dict = {
             ### parameters
             self._tf_dict['lr_ph']: self._lr_schedule.value(step),
             ### policy
-            self._tf_dict['obs_ph']: None,
-            self._tf_dict['actions_ph']: None,
-            self._tf_dict['dones_ph']: None,
-            self._tf_dict['rewards_ph']: None,
+            self._tf_dict['obs_ph']: observations[:, :self._obs_history_len, :],
+            self._tf_dict['actions_ph']: actions[:, :self._H, :],
+            self._tf_dict['dones_ph']: np.logical_or(not use_target, dones[:, :self._N]),
+            self._tf_dict['rewards_ph']: rewards[:, :self._H],
         }
         if self._use_target:
-            feed_dict[self._tf_dict['obs_target_ph']] = None
+            feed_dict[self._tf_dict['obs_target_ph']] = observations[:, 1:, :]
+
+        # ### TODO START
+        # keys, values = zip(*sorted(self._tf_debug.items(), key=lambda x: x[0]))
+        # d = {k: v for k, v in zip(keys, self._tf_dict['sess'].run(values, feed_dict=feed_dict))}
+        # import IPython; IPython.embed()
+        # ### TODO END
 
         start = time.time()
-        cost, mse, _ = self._tf_sess.run([self._tf_dict['cost'],
-                                          self._tf_dict['mse'],
-                                          self._tf_dict['opt']],
-                                         feed_dict=feed_dict)
+        cost, mse, _ = self._tf_dict['sess'].run([self._tf_dict['cost'],
+                                                  self._tf_dict['mse'],
+                                                  self._tf_dict['opt']],
+                                                 feed_dict=feed_dict)
         elapsed = time.time() - start
 
         assert(np.isfinite(cost))
@@ -551,9 +599,29 @@ class MACPolicy(TfPolicy, Serializable):
         return chosen_actions[0], action_info
 
     def get_actions(self, observations):
-        observations = self._env_spec.observation_space.flatten_n(observations)
-        chosen_actions = self._tf_dict['sess'].run(self._tf_dict['get_action'],
-                                                   feed_dict={self._tf_dict['obs_ph']: observations})
+        # ### TODO START
+        # keys, values = zip(*sorted(self._tf_debug.items(), key=lambda x: x[0]))
+        # d = {k: v for k, v in zip(keys, self._tf_dict['sess'].run(values,
+        #                                                           feed_dict={self._tf_dict['obs_ph']: observations}))}
+        # import IPython; IPython.embed()
+        # ### TODO END
+
+        actions = self._tf_dict['sess'].run(self._tf_dict['get_action'],
+                                            feed_dict={self._tf_dict['obs_ph']: observations})
+
+        chosen_actions = []
+        for i, (observation_i, action_i) in enumerate(zip(observations, actions)):
+            if isinstance(self._env_spec.action_space, Discrete):
+                action_i = int(action_i.argmax())
+            if self._exploration_strategy is not None:
+                exploration_func = lambda: None
+                exploration_func.get_action = lambda _: (action_i, dict())
+                action_i = self._exploration_strategy.get_action(self._num_get_action + i,
+                                                                 observation_i,
+                                                                 exploration_func)
+            chosen_actions.append(action_i)
+
+        self._num_get_action += len(observations)
 
         return chosen_actions, {}
 
@@ -569,7 +637,7 @@ class MACPolicy(TfPolicy, Serializable):
     ######################
 
     def get_params_internal(self, **tags):
-        with self._tf_graph.as_default():
+        with self._tf_dict['graph'].as_default():
             return sorted(tf.get_collection(xplatform.global_variables_collection_name()), key=lambda v: v.name)
 
     ###############

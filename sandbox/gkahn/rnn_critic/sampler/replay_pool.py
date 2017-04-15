@@ -130,7 +130,7 @@ class RNNCriticReplayPool(object):
             if encountered_done:
                 observations[i, ...] = 0.
 
-        return observations.ravel()
+        return observations
 
     def encode_recent_observation(self):
         return self._encode_observation(self._index)
@@ -196,7 +196,7 @@ class RNNCriticReplayPool(object):
 
         for start_index in start_indices:
             indices = self._get_indices(start_index, (start_index + self._N + 1) % self._curr_size)
-            observations_i = np.vstack([self._encode_observation(index) for index in indices])
+            observations_i = np.vstack([self._encode_observation(start_index), self._observations[indices[1:]]])
             actions_i = self._actions[indices]
             rewards_i = self._rewards[indices]
             dones_i = self._dones[indices]
@@ -209,7 +209,7 @@ class RNNCriticReplayPool(object):
 
                 d_idx = np.argmax(dones_i)
                 for j in range(d_idx + 1, len(dones_i)):
-                    observations_i[j, :] = 0.
+                    observations_i[j+self._obs_history_len-1, :] = 0.
                     actions_i[j, :] = self._env_spec.action_space.flatten(self._env_spec.action_space.sample())
                     rewards_i[j] = 0.
                     dones_i[j] = True
