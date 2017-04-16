@@ -179,17 +179,18 @@ class MACPolicy(TfPolicy, Serializable):
             obs_dim = self._env_spec.observation_space.flat_dim
             if tf_obs_ph.dtype != tf.float32:
                 tf_obs_ph = tf.cast(tf_obs_ph, tf.float32)
-            tf_obs_ph = tf.reshape(tf_obs_ph, (-1, self._obs_history_len * obs_dim))
-            if self._obs_is_im:
-                tf_obs_whitened = tf.mul(tf_obs_ph -
-                                         tf.tile(tf_preprocess['observations_mean_var'], (1, self._obs_history_len)),
-                                         tf.tile(tf_preprocess['observations_orth_var'], (self._obs_history_len,)))
-            else:
-                tf_obs_whitened = tf.matmul(tf_obs_ph -
-                                            tf.tile(tf_preprocess['observations_mean_var'], (1, self._obs_history_len)),
-                                            tf_utils.block_diagonal(
-                                                [tf_preprocess['observations_orth_var']] * self._obs_history_len))
-            tf_obs_whitened = tf.reshape(tf_obs_whitened, (-1, self._obs_history_len, obs_dim))
+            # tf_obs_ph = tf.reshape(tf_obs_ph, (-1, self._obs_history_len * obs_dim))
+            # if self._obs_is_im:
+            #     tf_obs_whitened = tf.mul(tf_obs_ph -
+            #                              tf.tile(tf_preprocess['observations_mean_var'], (1, self._obs_history_len)),
+            #                              tf.tile(tf_preprocess['observations_orth_var'], (self._obs_history_len,)))
+            # else:
+            #     tf_obs_whitened = tf.matmul(tf_obs_ph -
+            #                                 tf.tile(tf_preprocess['observations_mean_var'], (1, self._obs_history_len)),
+            #                                 tf_utils.block_diagonal(
+            #                                     [tf_preprocess['observations_orth_var']] * self._obs_history_len))
+            # tf_obs_whitened = tf.reshape(tf_obs_whitened, (-1, self._obs_history_len, obs_dim))
+            tf_obs_whitened = tf_obs_ph # TODO
 
             ### obs --> lower dimensional space
             if self._use_conv:
@@ -235,14 +236,15 @@ class MACPolicy(TfPolicy, Serializable):
             istate = tf_obs_lowd
 
             ### preprocess actions
-            if isinstance(self._env_spec.action_space, Discrete):
-                tf_actions = tf_actions_ph
-            else:
-                tf_actions = tf.reshape(tf_actions_ph, (-1, H * action_dim))
-                tf_actions = tf.matmul(tf_actions -
-                                       tf.tile(tf_preprocess['actions_mean_var'], (1, H)),
-                                       tf_utils.block_diagonal([tf_preprocess['actions_orth_var']] * H))
-                tf_actions = tf.reshape(tf_actions, (-1, H, action_dim))
+            # if isinstance(self._env_spec.action_space, Discrete):
+            #     tf_actions = tf_actions_ph
+            # else:
+            #     tf_actions = tf.reshape(tf_actions_ph, (-1, H * action_dim))
+            #     tf_actions = tf.matmul(tf_actions -
+            #                            tf.tile(tf_preprocess['actions_mean_var'], (1, H)),
+            #                            tf_utils.block_diagonal([tf_preprocess['actions_orth_var']] * H))
+            #     tf_actions = tf.reshape(tf_actions, (-1, H, action_dim))
+            tf_actions = tf_actions_ph # TODO
 
             ### actions --> rnn input at each time step
             with tf.name_scope('actions_to_rnn_input'):

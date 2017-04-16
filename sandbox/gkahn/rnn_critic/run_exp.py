@@ -31,12 +31,15 @@ if __name__ == '__main__':
             kwargs['docker_args'] = ' --name {0} '.format(params['exp_name'])
             kwargs['post_commands'] = [' sleep 1 ']
 
-        run_experiment_lite(
-            lambda x: run_rnn_critic(params,
-                                     params_txt=params_txt),  # HACK
-            snapshot_mode="all",
-            exp_name=params['exp_name'],
-            exp_prefix=params['exp_prefix'],
-            use_gpu=True,
-            **kwargs
-        )
+        try:
+            run_experiment_lite(
+                lambda x: run_rnn_critic(params,
+                                         params_txt=params_txt),  # HACK
+                snapshot_mode="all",
+                exp_name=params['exp_name'],
+                exp_prefix=params['exp_prefix'],
+                use_gpu=True,
+                **kwargs
+            )
+        except:
+            print('Experiment {0} failed!'.format(exp))
