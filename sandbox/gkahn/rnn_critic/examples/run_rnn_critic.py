@@ -25,7 +25,7 @@ from sandbox.gkahn.rnn_critic.policies.discrete_dqn_policy import DiscreteDQNPol
 from sandbox.gkahn.rnn_critic.policies.nstep_dqn_policy import NstepDQNPolicy
 from sandbox.gkahn.rnn_critic.policies.nstep_discrete_dqn_policy import NstepDiscreteDQNPolicy
 # from sandbox.gkahn.rnn_critic.policies.mac_policy import MACPolicy
-from sandbox.gkahn.rnn_critic.policies.mac_policy_new import MACPolicy
+from sandbox.gkahn.rnn_critic.policies.mac_policy import MACPolicy
 from sandbox.gkahn.rnn_critic.policies.mac_mux_policy import MACMuxPolicy
 ### RNN analyze
 from sandbox.gkahn.rnn_critic.examples.analyze_experiment import AnalyzeRNNCritic
