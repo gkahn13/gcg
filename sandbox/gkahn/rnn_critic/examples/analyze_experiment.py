@@ -20,7 +20,7 @@ from sandbox.rocky.tf.misc import tensor_utils
 from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
 from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
 from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
-from sandbox.gkahn.rnn_critic.policies.policy import Policy
+from sandbox.gkahn.rnn_critic.policies.mac_policy import MACPolicy
 from sandbox.gkahn.rnn_critic.sampler.vectorized_rollout_sampler import RNNCriticVectorizedRolloutSampler
 from sandbox.gkahn.rnn_critic.sampler.sampler import RNNCriticSampler
 
@@ -123,11 +123,13 @@ class AnalyzeRNNCritic(object):
         self.progress = pandas.read_csv(self._progress_file)
         logger.log('AnalyzeRNNCritic: Loaded csv')
 
-        self.train_rollouts_itrs, self.env_itrs = self._load_all_itrs()
+        self.train_rollouts_itrs = self._load_rollouts_itrs()
         logger.log('AnalyzeRNNCritic: Loaded all itrs')
+        self.env = TfEnv(normalize(eval(self.params['alg']['env'])))
+        logger.log('AnalyzeRNNCritic: Created env')
         # self.eval_rollouts_itrs = []
         if not os.path.exists(self._eval_rollouts_itrs_file):
-            eval_rollouts_itrs = self._eval_all_policies(self.env_itrs)
+            eval_rollouts_itrs = self._eval_all_policies()
             logger.log('AnalyzeRNNCritic: Eval all policies')
             with open(self._eval_rollouts_itrs_file, 'wb') as f:
                 pickle.dump(eval_rollouts_itrs, f)
@@ -142,6 +144,9 @@ class AnalyzeRNNCritic(object):
 
     def _itr_file(self, itr):
         return os.path.join(self._folder, 'itr_{0:d}.pkl'.format(itr))
+
+    def _itr_rollouts_file(self, itr):
+        return os.path.join(self._folder, 'itr_{0}_rollouts.pkl'.format(itr))
 
     @property
     def _progress_file(self):
@@ -181,57 +186,33 @@ class AnalyzeRNNCritic(object):
     ### Data loading ###
     ####################
 
+    def _load_rollouts_itrs(self):
+        train_rollouts_itrs = []
+        itr = 0
+        while os.path.exists(self._itr_rollouts_file(itr)) and itr < self._max_itr:
+            rollouts = joblib.load(self._itr_rollouts_file(itr))['rollouts']
+            train_rollouts_itrs.append(rollouts)
+            itr += self._skip_itr
+
+        return train_rollouts_itrs
+
     def _load_itr_policy(self, itr):
         d = joblib.load(self._itr_file(itr))
         policy = d['policy']
         return policy
 
-    def _load_itr(self, itr):
-        sess, graph = Policy.create_session_and_graph(gpu_device=self.params['policy']['gpu_device'],
-                                                      gpu_frac=self.params['policy']['gpu_frac'])
-        with graph.as_default(), sess.as_default():
-            d = joblib.load(self._itr_file(itr))
-            rollouts = d['rollouts']
-            env = d['env']
-            d['policy'].terminate()
-
-        if self._clear_obs:
-            for rollout in d['rollouts']:
-                rollout['observations'] = None
-
-        if env is None and self._create_new_envs:
-            inner_env = eval(self.params['alg']['env'])
-            env = TfEnv(normalize(inner_env))
-
-        return rollouts, env
-
-    def _load_all_itrs(self):
-        train_rollouts_itrs = []
-        env_itrs = []
-
-        itr = 0
-        while os.path.exists(self._itr_file(itr)) and itr < self._max_itr:
-            rollouts, env = self._load_itr(itr)
-            train_rollouts_itrs.append(rollouts)
-            env_itrs.append(env)
-
-            itr += self._skip_itr
-
-        return train_rollouts_itrs, env_itrs
-
-    def _eval_all_policies(self, env_itrs):
+    def _eval_all_policies(self):
         rollouts_itrs = []
-
         itr = 0
         while os.path.exists(self._itr_file(itr)) and itr < self._max_itr:
             # set seed
             if self.params['seed'] is not None:
                 set_seed(self.params['seed'])
+                inner_env(self.env).env.seed(self.params['seed'])
 
-            sess, graph = Policy.create_session_and_graph(gpu_device=self.params['policy']['gpu_device'],
-                                                          gpu_frac=self.params['policy']['gpu_frac'])
+            sess, graph = MACPolicy.create_session_and_graph(gpu_device=self.params['policy']['gpu_device'],
+                                                             gpu_frac=self.params['policy']['gpu_frac'])
             with graph.as_default(), sess.as_default():
-                env = env_itrs[itr // self._skip_itr]
                 policy = self._load_itr_policy(itr)
 
                 logger.log('Evaluating policy for itr {0}'.format(itr))
@@ -239,10 +220,10 @@ class AnalyzeRNNCritic(object):
                 if 'max_path_length' in self.params['alg']:
                     max_path_length = self.params['alg']['max_path_length']
                 else:
-                    max_path_length = env.horizon
+                    max_path_length = self.env.horizon
                 sampler = RNNCriticSampler(
                     policy=policy,
-                    env=env,
+                    env=self.env,
                     n_envs=n_envs,
                     replay_pool_size=int(1e4),
                     max_path_length=max_path_length,
@@ -264,33 +245,33 @@ class AnalyzeRNNCritic(object):
     ### Plotting ###
     ################
 
-    def _plot_analyze(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
-        env = inner_env(env_itrs[0])
+    def _plot_analyze(self, train_rollouts_itrs, eval_rollouts_itrs):
+        env = inner_env(self.env)
         if isinstance(env, ChainEnv):
-            self._plot_analyze_ChainEnv(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
+            self._plot_analyze_ChainEnv(train_rollouts_itrs, eval_rollouts_itrs)
         elif isinstance(env, SparsePointEnv):
-            self._plot_analyze_PointEnv(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
+            self._plot_analyze_PointEnv(train_rollouts_itrs, eval_rollouts_itrs)
         elif isinstance(env, GymEnv) and 'CartPole' in env.env_id:
-            self._plot_analyze_CartPole(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
+            self._plot_analyze_CartPole(train_rollouts_itrs, eval_rollouts_itrs)
         elif isinstance(env, GymEnv) and 'Catcher-ram' in env.env_id:
             if 'is_onpolicy' not in self.params['alg'].keys() or self.params['alg']['is_onpolicy']:
-                self._plot_analyze_Catcher(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
+                self._plot_analyze_Catcher(train_rollouts_itrs, eval_rollouts_itrs)
             else:
-                self._plot_analyze_CatcherRamOffpolicy(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
+                self._plot_analyze_CatcherRamOffpolicy(train_rollouts_itrs, eval_rollouts_itrs)
         elif isinstance(env, GymEnv) and 'Catcher' in env.env_id:
-            self._plot_analyze_Catcher(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
+            self._plot_analyze_Catcher(train_rollouts_itrs, eval_rollouts_itrs)
         elif isinstance(env, GymEnv) and 'Swimmer' in env.env_id:
-            self._plot_analyze_Swimmer(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
+            self._plot_analyze_Swimmer(train_rollouts_itrs, eval_rollouts_itrs)
         elif isinstance(env, GymEnv) and 'Pong' in env.env_id:
-            self._plot_analyze_Pong(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
+            self._plot_analyze_Pong(train_rollouts_itrs, eval_rollouts_itrs)
         elif isinstance(env, GymEnv) and 'InvertedPendulum' in env.env_id:
-            self._plot_analyze_InvertedPendulum(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
+            self._plot_analyze_InvertedPendulum(train_rollouts_itrs, eval_rollouts_itrs)
         elif isinstance(env, GymEnv) and 'tennis' in env.env_id.lower():
-            self._plot_analyze_Pong(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
+            self._plot_analyze_Pong(train_rollouts_itrs, eval_rollouts_itrs)
         else:
-            self._plot_analyze_general(train_rollouts_itrs, eval_rollouts_itrs, env_itrs)
+            self._plot_analyze_general(train_rollouts_itrs, eval_rollouts_itrs)
 
-    def _plot_analyze_general(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
+    def _plot_analyze_general(self, train_rollouts_itrs, eval_rollouts_itrs):
         f, axes = plt.subplots(5, 1, figsize=(2 * len(train_rollouts_itrs), 7.5), sharex=True)
         f.tight_layout()
 
@@ -387,7 +368,7 @@ class AnalyzeRNNCritic(object):
         f.savefig(self._analyze_img_file, bbox_inches='tight')
         plt.close(f)
 
-    def _plot_analyze_ChainEnv(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
+    def _plot_analyze_ChainEnv(self, train_rollouts_itrs, eval_rollouts_itrs):
         num_steps = sum([len(r['observations']) for r in itertools.chain(*train_rollouts_itrs)])
         f, axes = plt.subplots(3, 1, figsize=(2. * num_steps / 500., 7.5), sharex=True)
         f.tight_layout()
@@ -406,7 +387,7 @@ class AnalyzeRNNCritic(object):
         steps = [r['steps'][-1] for r in rollouts]
         ax.plot(steps, rollout_lens, color='k', marker='|', linestyle='', markersize=10.)
         ax.vlines(self.params['alg']['learn_after_n_steps'], 0, ax.get_ylim()[1], colors='g', linestyles='dashed')
-        ax.hlines(env_itrs[0].spec.observation_space.n, steps[0], steps[-1], colors='r', linestyles='dashed')
+        ax.hlines(self.env.spec.observation_space.n, steps[0], steps[-1], colors='r', linestyles='dashed')
         ax.set_ylabel('Rollout length')
 
         ### plot training rollout length vs step smoothed
@@ -422,7 +403,7 @@ class AnalyzeRNNCritic(object):
         ax.fill_between(moving_steps, rollout_lens_mean - rollout_lens_std, rollout_lens_mean + rollout_lens_std,
                         color='k', alpha=0.4)
         ax.vlines(self.params['alg']['learn_after_n_steps'], 0, ax.get_ylim()[1], colors='g', linestyles='dashed')
-        ax.hlines(env_itrs[0].spec.observation_space.n, steps[0], steps[-1], colors='r', linestyles='dashed')
+        ax.hlines(self.env.spec.observation_space.n, steps[0], steps[-1], colors='r', linestyles='dashed')
         ax.set_ylabel('Rollout length')
 
         ### for all plots
@@ -434,7 +415,7 @@ class AnalyzeRNNCritic(object):
         f.savefig(self._analyze_img_file, bbox_inches='tight')
         plt.close(f)
 
-    def _plot_analyze_PointEnv(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
+    def _plot_analyze_PointEnv(self, train_rollouts_itrs, eval_rollouts_itrs):
         f, axes = plt.subplots(5, 1, figsize=(2 * len(train_rollouts_itrs), 7.5), sharex=True)
         f.tight_layout()
 
@@ -527,7 +508,7 @@ class AnalyzeRNNCritic(object):
         f.savefig(self._analyze_img_file, bbox_inches='tight')
         plt.close(f)
 
-    def _plot_analyze_CartPole(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
+    def _plot_analyze_CartPole(self, train_rollouts_itrs, eval_rollouts_itrs):
         f, axes = plt.subplots(4, 1, figsize=(4 * len(train_rollouts_itrs), 7.5), sharex=True)
         f.tight_layout()
 
@@ -544,7 +525,7 @@ class AnalyzeRNNCritic(object):
         cum_rewards = [np.sum(r['rewards']) for r in rollouts]
         steps = [r['steps'][-1] for r in rollouts]
         ax.plot(steps, cum_rewards, color='k', linestyle='', marker='|', markersize=5.)
-        ax.hlines(env_itrs[0].horizon, steps[0], steps[-1], colors='r', linestyles='dashed')
+        ax.hlines(self.env.horizon, steps[0], steps[-1], colors='r', linestyles='dashed')
         ax.set_ylabel('Cumulative reward')
 
         start_step = self.params['alg']['learn_after_n_steps']
@@ -613,7 +594,7 @@ class AnalyzeRNNCritic(object):
         f.savefig(self._analyze_img_file, bbox_inches='tight')
         plt.close(f)
 
-    def _plot_analyze_Catcher(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
+    def _plot_analyze_Catcher(self, train_rollouts_itrs, eval_rollouts_itrs):
         f, axes = plt.subplots(3, 1, figsize=(20., 7.5), sharex=True)
         f.tight_layout()
 
@@ -661,7 +642,7 @@ class AnalyzeRNNCritic(object):
         f.savefig(self._analyze_img_file, bbox_inches='tight')
         plt.close(f)
 
-    def _plot_analyze_CatcherRamOffpolicy(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
+    def _plot_analyze_CatcherRamOffpolicy(self, train_rollouts_itrs, eval_rollouts_itrs):
         f, axes = plt.subplots(2, 1, figsize=(20., 7.5), sharex=True)
         f.tight_layout()
 
@@ -713,7 +694,7 @@ class AnalyzeRNNCritic(object):
         f.savefig(self._analyze_img_file, bbox_inches='tight')
         plt.close(f)
 
-    def _plot_analyze_Swimmer(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
+    def _plot_analyze_Swimmer(self, train_rollouts_itrs, eval_rollouts_itrs):
         f, axes = plt.subplots(2, 1, figsize=(5 * len(train_rollouts_itrs), 10), sharex=True)
         f.tight_layout()
 
@@ -754,7 +735,7 @@ class AnalyzeRNNCritic(object):
         f.savefig(self._analyze_img_file, bbox_inches='tight')
         plt.close(f)
 
-    def _plot_analyze_Pong(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
+    def _plot_analyze_Pong(self, train_rollouts_itrs, eval_rollouts_itrs):
         f, axes = plt.subplots(2, 1, figsize=(5 * len(train_rollouts_itrs), 10), sharex=True)
         f.tight_layout()
 
@@ -802,13 +783,13 @@ class AnalyzeRNNCritic(object):
         f.savefig(self._analyze_img_file, bbox_inches='tight')
         plt.close(f)
 
-    def _plot_analyze_InvertedPendulum(self, train_rollouts_itrs, eval_rollouts_itrs, env_itrs):
+    def _plot_analyze_InvertedPendulum(self, train_rollouts_itrs, eval_rollouts_itrs):
         f, axes = plt.subplots(4, 1, figsize=(4 * list(self.progress['Step'])[-1] * 1e-5, 7.5), sharex=True)
         f.tight_layout()
 
         max_path_length = self.params['alg']['max_path_length']\
             if 'max_path_length' in self.params['alg']\
-            else env_itrs[0].horizon
+            else self.env.horizon
 
         ### plot training cost
         ax = axes[0]
@@ -824,7 +805,7 @@ class AnalyzeRNNCritic(object):
         steps = [r['steps'][-1] for r in rollouts]
         steps, cum_rewards = zip(*sorted(zip(steps, cum_rewards), key=lambda x: x[0]))
         ax.plot(steps, cum_rewards, color='k', linestyle='', marker='|', markersize=5.)
-        ax.hlines(env_itrs[0].horizon, steps[0], steps[-1], colors='r', linestyles='dashed')
+        ax.hlines(self.env.horizon, steps[0], steps[-1], colors='r', linestyles='dashed')
         ax.set_ylabel('Cumulative reward')
         ax.set_ylim((-0.1*max_path_length, 1.1*max_path_length))
 
@@ -1070,7 +1051,7 @@ class AnalyzeRNNCritic(object):
             xs = np.linspace(xlim[0], xlim[1], 10)
             ys = np.linspace(ylim[0], ylim[1], 10)
 
-            sess, graph = Policy.create_session_and_graph(gpu_device=self.params['policy']['gpu_device'],
+            sess, graph = MACPolicy.create_session_and_graph(gpu_device=self.params['policy']['gpu_device'],
                                                                    gpu_frac=self.params['policy']['gpu_frac'])
             with graph.as_default(), sess.as_default():
                 policy = self._load_itr_policy(itr)
@@ -1117,7 +1098,7 @@ class AnalyzeRNNCritic(object):
         #     N = 5
         #     f, axes = plt.subplots(N, N, figsize=(10, 10))
         #
-        #     sess, graph = Policy.create_session_and_graph()
+        #     sess, graph = MACPolicy.create_session_and_graph()
         #     with graph.as_default(), sess.as_default():
         #         policy = self._load_itr_policy(itr)
         #
@@ -1155,7 +1136,7 @@ class AnalyzeRNNCritic(object):
         xs = np.linspace(xlim[0], xlim[1], N)
         ys = np.linspace(ylim[0], ylim[1], N)
         while os.path.exists(self._itr_file(itr)):
-            sess, graph = Policy.create_session_and_graph(gpu_device=self.params['policy']['gpu_device'],
+            sess, graph = MACPolicy.create_session_and_graph(gpu_device=self.params['policy']['gpu_device'],
                                                                    gpu_frac=self.params['policy']['gpu_frac'])
             with graph.as_default(), sess.as_default():
                 policy = self._load_itr_policy(itr)
@@ -1232,7 +1213,7 @@ class AnalyzeRNNCritic(object):
         q_values = []
         itr = 0
         while os.path.exists(self._itr_file(itr)):
-            sess, graph = Policy.create_session_and_graph(gpu_device=self.params['policy']['gpu_device'],
+            sess, graph = MACPolicy.create_session_and_graph(gpu_device=self.params['policy']['gpu_device'],
                                                                    gpu_frac=self.params['policy']['gpu_frac'])
             with graph.as_default(), sess.as_default():
                 policy = self._load_itr_policy(itr)
@@ -1279,12 +1260,12 @@ class AnalyzeRNNCritic(object):
 
     def run(self):
         logger.log('AnalyzeRNNCritic: plot_analyze')
-        self._plot_analyze(self.train_rollouts_itrs, self.eval_rollouts_itrs, self.env_itrs)
-        logger.log('AnalyzeRNNCritic: plot_rollouts')
-        self._plot_rollouts(self.train_rollouts_itrs, self.eval_rollouts_itrs, self.env_itrs,
-                            is_train=False, plot_prior=False)
-        self._plot_rollouts(self.train_rollouts_itrs, self.eval_rollouts_itrs, self.env_itrs,
-                            is_train=True, plot_prior=False)
+        self._plot_analyze(self.train_rollouts_itrs, self.eval_rollouts_itrs)
+        # logger.log('AnalyzeRNNCritic: plot_rollouts')
+        # self._plot_rollouts(self.train_rollouts_itrs, self.eval_rollouts_itrs,
+        #                     is_train=False, plot_prior=False)
+        # self._plot_rollouts(self.train_rollouts_itrs, self.eval_rollouts_itrs,
+        #                     is_train=True, plot_prior=False)
         # self._plot_policies(self.train_rollouts_itrs, self.env_itrs)
         # self._plot_value_function(self.env_itrs)
         # self._plot_Q_function(self.env_itrs)

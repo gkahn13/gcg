@@ -20,11 +20,6 @@ from sandbox.gkahn.rnn_critic.exploration_strategies.epsilon_greedy_strategy imp
 ### RNN critic
 from sandbox.gkahn.rnn_critic.algos.rnn_critic import RNNCritic
 from sandbox.gkahn.rnn_critic.algos.rnn_critic_offpolicy import RNNCriticOffpolicy
-from sandbox.gkahn.rnn_critic.policies.dqn_policy import DQNPolicy
-from sandbox.gkahn.rnn_critic.policies.discrete_dqn_policy import DiscreteDQNPolicy
-from sandbox.gkahn.rnn_critic.policies.nstep_dqn_policy import NstepDQNPolicy
-from sandbox.gkahn.rnn_critic.policies.nstep_discrete_dqn_policy import NstepDiscreteDQNPolicy
-# from sandbox.gkahn.rnn_critic.policies.mac_policy import MACPolicy
 from sandbox.gkahn.rnn_critic.policies.mac_policy import MACPolicy
 from sandbox.gkahn.rnn_critic.policies.mac_mux_policy import MACMuxPolicy
 ### RNN analyze

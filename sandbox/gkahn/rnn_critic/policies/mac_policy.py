@@ -1,9 +1,7 @@
 import os
 from collections import defaultdict
-import time
 
 import numpy as np
-import scipy.linalg
 from sklearn.utils.extmath import cartesian
 
 import tensorflow as tf
@@ -149,7 +147,7 @@ class MACPolicy(TfPolicy, Serializable):
 
         with tf.variable_scope('preprocess'):
             for name, dim, diag_orth in (('observations', self._env_spec.observation_space.flat_dim, self._obs_is_im),
-                                         ('actions', self._env_spec.action_space.flat_dim * self._H, False),
+                                         ('actions', self._env_spec.action_space.flat_dim, False),
                                          ('rewards', 1, False)):
                 tf_preprocess[name+'_mean_ph'] = tf.placeholder(tf.float32, shape=(1, dim), name=name+'_mean_ph')
                 tf_preprocess[name+'_mean_var'] = tf.get_variable(name+'_mean_var', shape=[1, dim],
@@ -181,20 +179,17 @@ class MACPolicy(TfPolicy, Serializable):
             obs_dim = self._env_spec.observation_space.flat_dim
             if tf_obs_ph.dtype != tf.float32:
                 tf_obs_ph = tf.cast(tf_obs_ph, tf.float32)
-            # tf_obs_ph = tf.reshape(tf_obs_ph, (-1, self._obs_history_len * obs_dim))
-            # if self._obs_is_im:
-            #     # TODO: is this correct?
-            #     tf_obs_whitened = tf.mul(tf_obs_ph -
-            #                              tf.tile(tf_preprocess['observations_mean_var'], (1, self._obs_history_len)),
-            #                              tf.tile(tf_preprocess['observations_orth_var'], (self._obs_history_len,)))
-            # else:
-            #     print('obs_to_lowd'); import IPython; IPython.embed()
-            #     tf_obs_whitened = tf.matmul(tf_obs_ph -
-            #                                 tf.tile(tf_preprocess['observations_mean_var'], (1, self._obs_history_len)),
-            #                                 tf_utils.block_diagonal(
-            #                                     [tf_preprocess['observations_orth_var']] * self._obs_history_len))
-            # tf_obs_whitened = tf.reshape(tf_obs_whitened, (-1, self._obs_history_len, obs_dim))
-            tf_obs_whitened = tf_obs_ph # TODO
+            tf_obs_ph = tf.reshape(tf_obs_ph, (-1, self._obs_history_len * obs_dim))
+            if self._obs_is_im:
+                tf_obs_whitened = tf.mul(tf_obs_ph -
+                                         tf.tile(tf_preprocess['observations_mean_var'], (1, self._obs_history_len)),
+                                         tf.tile(tf_preprocess['observations_orth_var'], (self._obs_history_len,)))
+            else:
+                tf_obs_whitened = tf.matmul(tf_obs_ph -
+                                            tf.tile(tf_preprocess['observations_mean_var'], (1, self._obs_history_len)),
+                                            tf_utils.block_diagonal(
+                                                [tf_preprocess['observations_orth_var']] * self._obs_history_len))
+            tf_obs_whitened = tf.reshape(tf_obs_whitened, (-1, self._obs_history_len, obs_dim))
 
             ### obs --> lower dimensional space
             if self._use_conv:
@@ -233,18 +228,21 @@ class MACPolicy(TfPolicy, Serializable):
         H = tf_actions_ph.get_shape()[1].value
         assert(tf_obs_lowd.get_shape()[1].value == self._rnn_state_dim)
         tf.assert_equal(tf.shape(tf_obs_lowd)[0], tf.shape(tf_actions_ph)[0])
+        action_dim = self.env_spec.action_space.flat_dim
 
         with tf.name_scope('inference'):
             ### internal state
             istate = tf_obs_lowd
 
             ### preprocess actions
-            tf_actions = tf_actions_ph
-            # if isinstance(self._env_spec.action_space, Discrete):
-            #     tf_actions = tf_actions_ph
-            # else:
-            #     # TODO: tile
-            #     tf_actions = tf.matmul(tf_actions_ph - tf_preprocess['actions_mean_var'], tf_preprocess['actions_orth_var'])
+            if isinstance(self._env_spec.action_space, Discrete):
+                tf_actions = tf_actions_ph
+            else:
+                tf_actions = tf.reshape(tf_actions_ph, (-1, H * action_dim))
+                tf_actions = tf.matmul(tf_actions -
+                                       tf.tile(tf_preprocess['actions_mean_var'], (1, H)),
+                                       tf_utils.block_diagonal([tf_preprocess['actions_orth_var']] * H))
+                tf_actions = tf.reshape(tf_actions, (-1, H, action_dim))
 
             ### actions --> rnn input at each time step
             with tf.name_scope('actions_to_rnn_input'):
@@ -368,18 +366,6 @@ class MACPolicy(TfPolicy, Serializable):
         tf.assert_equal(tf.shape(tf_get_action)[0], num_obs)
         tf.assert_equal(tf.shape(tf_get_action_value)[0], num_obs)
         assert(tf_get_action.get_shape()[1].value == action_dim)
-
-        ### TODO:
-        if 'tf_actions' not in self._tf_debug.keys():
-            self._tf_debug['tf_actions'] = tf_actions
-            self._tf_debug['tf_obs_lowd_repeat'] = tf_obs_lowd_repeat
-            self._tf_debug['tf_values_all'] = tf_values_all
-            self._tf_debug['tf_values'] = tf_values
-            self._tf_debug['tf_values_argmax'] = tf_values_argmax
-            self._tf_debug['tf_values_argmax_tiled'] = tf.tile(tf.expand_dims(tf_values_argmax, 2), (1, 1, action_dim))
-            self._tf_debug['tf_actions_first'] = tf.reshape(tf_actions, (num_obs, K, H, action_dim))
-            self._tf_debug['tf_get_action'] = tf_get_action
-            self._tf_debug['tf_get_action_value'] = tf_get_action_value
 
         return tf_get_action, tf_get_action_value
 
@@ -554,8 +540,8 @@ class MACPolicy(TfPolicy, Serializable):
                           feed_dict={
                               self._tf_dict['preprocess']['observations_mean_ph']: obs_mean,
                               self._tf_dict['preprocess']['observations_orth_ph']: obs_orth,
-                              # self._tf_dict['preprocess']['actions_mean_ph']: np.tile(actions_mean, (self._H, 1)),
-                              # self._tf_dict['preprocess']['actions_orth_ph']: scipy.linalg.block_diag(*([actions_orth] * self._H)),
+                              self._tf_dict['preprocess']['actions_mean_ph']: actions_mean,
+                              self._tf_dict['preprocess']['actions_orth_ph']: actions_orth,
                               # self._tf_dict['preprocess']['rewards_mean_ph']: (self._N / float(self.N_output)) *  # reweighting!
                               #                                        np.expand_dims(np.tile(rewards_mean, self.N_output),
                               #                                                       0),
@@ -587,24 +573,14 @@ class MACPolicy(TfPolicy, Serializable):
         if self._use_target:
             feed_dict[self._tf_dict['obs_target_ph']] = observations[:, 1:, :]
 
-        # ### TODO START
-        # keys, values = zip(*sorted(self._tf_debug.items(), key=lambda x: x[0]))
-        # d = {k: v for k, v in zip(keys, self._tf_dict['sess'].run(values, feed_dict=feed_dict))}
-        # import IPython; IPython.embed()
-        # ### TODO END
-
-        start = time.time()
         cost, mse, _ = self._tf_dict['sess'].run([self._tf_dict['cost'],
                                                   self._tf_dict['mse'],
                                                   self._tf_dict['opt']],
                                                  feed_dict=feed_dict)
-        elapsed = time.time() - start
-
         assert(np.isfinite(cost))
 
         self._log_stats['Cost'].append(cost)
         self._log_stats['mse/cost'].append(mse / cost)
-        self._log_stats['sess_run_time'].append(elapsed)
 
     ######################
     ### Policy methods ###
@@ -618,13 +594,6 @@ class MACPolicy(TfPolicy, Serializable):
         return chosen_actions[0], action_info
 
     def get_actions(self, observations):
-        # ### TODO START
-        # keys, values = zip(*sorted(self._tf_debug.items(), key=lambda x: x[0]))
-        # d = {k: v for k, v in zip(keys, self._tf_dict['sess'].run(values,
-        #                                                           feed_dict={self._tf_dict['obs_ph']: observations}))}
-        # import IPython; IPython.embed()
-        # ### TODO END
-
         actions = self._tf_dict['sess'].run(self._tf_dict['get_action'],
                                             feed_dict={self._tf_dict['obs_ph']: observations})
 

@@ -8,7 +8,6 @@ import rllab.misc.logger as logger
 
 from sandbox.gkahn.rnn_critic.sampler.sampler import RNNCriticSampler
 from sandbox.gkahn.rnn_critic.utils.utils import timeit
-from sandbox.gkahn.rnn_critic.policies.policy import Policy
 
 class RNNCritic(RLAlgorithm):
 
@@ -89,6 +88,14 @@ class RNNCritic(RLAlgorithm):
             logger.log('Loading offpolicy data from {0}'.format(offpolicy_folder))
             self._sampler.add_offpolicy(offpolicy_folder)
 
+    ####################
+    ### File methods ###
+    ####################
+
+    def _save_rollouts_file(self, itr, rollouts):
+        fname = os.path.join(logger.get_snapshot_dir(), 'itr_{0}_rollouts.pkl'.format(itr))
+        joblib.dump({'rollouts': rollouts}, fname, compress=3)
+
     ########################
     ### Training methods ###
     ########################
@@ -104,10 +111,11 @@ class RNNCritic(RLAlgorithm):
             itr_params = dict(
                 itr=itr,
                 policy=self._policy,
-                env=self._env if env_is_pickleable else None,
-                rollouts=self._sampler.get_recent_paths()
+                # env=self._env if env_is_pickleable else None
             )
             logger.save_itr_params(itr, itr_params)
+
+            self._save_rollouts_file(itr, self._sampler.get_recent_paths())
 
     @overrides
     def train(self):

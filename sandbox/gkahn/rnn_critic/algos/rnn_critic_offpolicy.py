@@ -7,7 +7,7 @@ from rllab.misc.overrides import overrides
 from rllab.algos.base import RLAlgorithm
 
 from sandbox.gkahn.rnn_critic.sampler.replay_pool import RNNCriticReplayPool
-from sandbox.gkahn.rnn_critic.policies.policy import Policy
+from sandbox.gkahn.rnn_critic.policies.mac_policy import MACPolicy
 
 class RNNCriticOffpolicy(RLAlgorithm):
 
@@ -63,7 +63,7 @@ class RNNCriticOffpolicy(RLAlgorithm):
         itr = 0
 
         while os.path.exists(self._offpolicy_itr_file(itr)):
-            sess, graph = Policy.create_session_and_graph(gpu_device=0, gpu_frac=0.1)
+            sess, graph = MACPolicy.create_session_and_graph(gpu_device=0, gpu_frac=0.1)
             with graph.as_default(), sess.as_default():
                 d = joblib.load(self._offpolicy_itr_file(itr))
                 rollouts += d['rollouts']

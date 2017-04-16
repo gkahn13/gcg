@@ -2,6 +2,7 @@ import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
 from rllab.core.serializable import Serializable
+from rllab.misc.overrides import overrides
 
 from sandbox.rocky.tf.spaces.discrete import Discrete
 from sandbox.gkahn.rnn_critic.policies.mac_policy import MACPolicy
@@ -17,6 +18,11 @@ class MACMuxPolicy(MACPolicy, Serializable):
 
         assert(isinstance(self._env_spec.action_space, Discrete))
 
+    ###########################
+    ### TF graph operations ###
+    ###########################
+
+    @overrides
     def _graph_inference(self, tf_obs_lowd, tf_actions_ph, tf_preprocess):
         """
         :param tf_obs_lowd: [batch_size, self._rnn_state_dim]

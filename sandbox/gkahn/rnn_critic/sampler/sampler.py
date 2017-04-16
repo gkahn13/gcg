@@ -13,7 +13,7 @@ from sandbox.rocky.tf.envs.vec_env_executor import VecEnvExecutor
 
 from sandbox.gkahn.rnn_critic.sampler.replay_pool import RNNCriticReplayPool
 from sandbox.gkahn.rnn_critic.utils import utils
-from sandbox.gkahn.rnn_critic.policies.policy import Policy
+from sandbox.gkahn.rnn_critic.policies.mac_policy import MACPolicy
 from sandbox.gkahn.rnn_critic.envs.single_env_executor import SingleEnvExecutor
 from sandbox.gkahn.rnn_critic.utils.utils import timeit
 
@@ -109,7 +109,7 @@ class RNNCriticSampler(object):
         replay_pools = itertools.cycle(self._replay_pools)
 
         while os.path.exists(self._offpolicy_itr_file(offpolicy_folder, itr)):
-            sess, graph = Policy.create_session_and_graph(gpu_device='')
+            sess, graph = MACPolicy.create_session_and_graph(gpu_device='')
             with graph.as_default(), sess.as_default():
                 d = joblib.load(self._offpolicy_itr_file(offpolicy_folder, itr))
                 rollouts = d['rollouts']
