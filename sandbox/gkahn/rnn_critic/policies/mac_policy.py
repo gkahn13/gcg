@@ -179,18 +179,18 @@ class MACPolicy(TfPolicy, Serializable):
             obs_dim = self._env_spec.observation_space.flat_dim
             if tf_obs_ph.dtype != tf.float32:
                 tf_obs_ph = tf.cast(tf_obs_ph, tf.float32)
-            # tf_obs_ph = tf.reshape(tf_obs_ph, (-1, self._obs_history_len * obs_dim))
-            # if self._obs_is_im:
-            #     tf_obs_whitened = tf.mul(tf_obs_ph -
-            #                              tf.tile(tf_preprocess['observations_mean_var'], (1, self._obs_history_len)),
-            #                              tf.tile(tf_preprocess['observations_orth_var'], (self._obs_history_len,)))
-            # else:
-            #     tf_obs_whitened = tf.matmul(tf_obs_ph -
-            #                                 tf.tile(tf_preprocess['observations_mean_var'], (1, self._obs_history_len)),
-            #                                 tf_utils.block_diagonal(
-            #                                     [tf_preprocess['observations_orth_var']] * self._obs_history_len))
-            # tf_obs_whitened = tf.reshape(tf_obs_whitened, (-1, self._obs_history_len, obs_dim))
-            tf_obs_whitened = tf_obs_ph # TODO
+            tf_obs_ph = tf.reshape(tf_obs_ph, (-1, self._obs_history_len * obs_dim))
+            if self._obs_is_im:
+                tf_obs_whitened = tf.mul(tf_obs_ph -
+                                         tf.tile(tf_preprocess['observations_mean_var'], (1, self._obs_history_len)),
+                                         tf.tile(tf_preprocess['observations_orth_var'], (self._obs_history_len,)))
+            else:
+                tf_obs_whitened = tf.matmul(tf_obs_ph -
+                                            tf.tile(tf_preprocess['observations_mean_var'], (1, self._obs_history_len)),
+                                            tf_utils.block_diagonal(
+                                                [tf_preprocess['observations_orth_var']] * self._obs_history_len))
+            tf_obs_whitened = tf.reshape(tf_obs_whitened, (-1, self._obs_history_len, obs_dim))
+            # tf_obs_whitened = tf_obs_ph # TODO
 
             ### obs --> lower dimensional space
             if self._use_conv:
@@ -538,7 +538,7 @@ class MACPolicy(TfPolicy, Serializable):
                 tf_assigns.append(self._tf_dict['preprocess'][key + '_assign'])
 
         # we assume if obs is im, the obs orth is the diagonal of the covariance
-        self._tf_sess.run(tf_assigns,
+        self._tf_dict['sess'].run(tf_assigns,
                           feed_dict={
                               self._tf_dict['preprocess']['observations_mean_ph']: obs_mean,
                               self._tf_dict['preprocess']['observations_orth_ph']: obs_orth,

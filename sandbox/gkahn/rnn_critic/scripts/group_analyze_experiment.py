@@ -1,5 +1,6 @@
 import os
 import itertools
+import functools
 
 import numpy as np
 import scipy
@@ -49,6 +50,22 @@ class DataAverageInterpolation(object):
         ys = [f(x) for f in self.fs]
         return np.array(np.mean(ys, axis=0)), np.array(np.std(ys, axis=0))
 
+def create_best_fit_axes(num_axes, **kwargs):
+    def calculate_factors(n):
+        return sorted(list(functools.reduce(list.__add__, ([i, n // i] for i in range(1, int(n ** 0.5) + 1) if n % i == 0))))
+
+    n = num_axes
+    while True:
+        factors = calculate_factors(n)
+        if len([f for f in factors if f >=4 and f <= n//4]) > 0:
+            break
+        n += 1
+
+    rows = factors[len(factors)//2]
+    columns = n // rows
+
+    return plt.subplots(rows, columns, **kwargs)
+
 ################
 ### Analysis ###
 ################
@@ -62,7 +79,7 @@ class PlotAnalyzeRNNCritic(object):
         self._name = name
         self._analyze_groups = analyze_groups
 
-        env = analyze_groups[0][0].env_itrs[0]
+        env = analyze_groups[0][0].env
         if env is None:
             inner_env = eval(analyze_groups[0][0].params['alg']['env'])
             env = TfEnv(normalize(inner_env))
@@ -159,7 +176,7 @@ class PlotAnalyzeRNNCritic(object):
             ax.fill_between(steps, lens_mean - lens_std, lens_mean + lens_std,
                             color=analyze.plot['color'], alpha=0.4)
             ax.vlines(analyze.params['alg']['learn_after_n_steps'], 0, ax.get_ylim()[1], colors='k', linestyles='dashed')
-            ax.hlines(analyze.env_itrs[0].spec.observation_space.n, steps[0], steps[-1], colors='k', linestyles='dashed')
+            ax.hlines(analyze.env.spec.observation_space.n, steps[0], steps[-1], colors='k', linestyles='dashed')
             ax.set_ylabel('Rollout length')
 
         ### for all plots
@@ -685,37 +702,10 @@ class PlotAnalyzeRNNCritic(object):
         plt.close(f)
 
     def _plot_analyze_InvertedPendulum(self):
-        f, axes = plt.subplots(1 + len(self._analyze_groups), 1, figsize=(15, 5 * len(self._analyze_groups)),
-                               sharex=True)
-
-        ### plot training cost
-        ax = axes.ravel()[0]
-        for analyze_group in self._analyze_groups:
-            data_interp = DataAverageInterpolation()
-            min_step = max_step = None
-            for analyze in analyze_group:
-                steps = np.array(analyze.progress['Step'])
-                costs = np.array(analyze.progress['Cost'])
-                data_interp.add_data(steps, costs)
-
-                if min_step is None:
-                    min_step = steps[0]
-                if max_step is None:
-                    max_step = steps[-1]
-                min_step = max(min_step, steps[0])
-                max_step = min(max_step, steps[-1])
-
-            steps = np.r_[min_step:max_step:1.]
-            costs_mean, costs_std = data_interp.eval(steps)
-
-            ax.plot(steps, costs_mean, color=analyze.plot['color'], label=analyze.plot['label'])
-            ax.fill_between(steps, costs_mean - costs_std, costs_mean + costs_std,
-                            color=analyze.plot['color'], alpha=0.4)
-        ax.set_ylabel('Training cost')
-        ax.legend(loc='upper right')
+        f, axes = create_best_fit_axes(len(self._analyze_groups), figsize=(15, 15))
 
         ### plot cum reward versus time step
-        for ax, analyze_group in zip(axes.ravel()[1:], self._analyze_groups):
+        for ax, analyze_group in zip(axes.ravel(), self._analyze_groups):
             data_interp = DataAverageInterpolation()
             min_step = max_step = None
             for analyze in analyze_group:
@@ -750,20 +740,20 @@ class PlotAnalyzeRNNCritic(object):
             ax.plot(steps, cum_rewards_mean, color=analyze.plot['color'], label=analyze.plot['label'])
             ax.fill_between(steps, cum_rewards_mean - cum_rewards_std, cum_rewards_mean + cum_rewards_std,
                             color=analyze.plot['color'], alpha=0.4)
+
             max_path_length = analyze_group[0].params['alg']['max_path_length'] \
                 if 'max_path_length' in analyze_group[0].params['alg'] \
-                else analyze_group[0].env_itrs[0].horizon
+                else analyze_group[0].env.horizon
             ax.set_ylim((-0.1*max_path_length, 1.1*max_path_length))
             ax.grid()
-            ax.set_title(' '.join([analyze.name for analyze in analyze_group]))
-        ax.set_ylabel('Cumulative reward')
+            ax.set_title(analyze_group[0].plot['label'], {'fontsize': 10})
+            ax.set_ylabel('Cumulative reward')
+            ax.set_xlabel('Steps')
+            xfmt = ticker.ScalarFormatter()
+            xfmt.set_powerlimits((0, 0))
+            ax.xaxis.set_major_formatter(xfmt)
 
-        ### for all plots
-        ax.set_xlabel('Steps')
-        xfmt = ticker.ScalarFormatter()
-        xfmt.set_powerlimits((0, 0))
-        ax.xaxis.set_major_formatter(xfmt)
-
+        plt.tight_layout()
         f.savefig(self._analyze_img_file, bbox_inches='tight', dpi=200)
         plt.close(f)
 
@@ -859,43 +849,29 @@ if __name__ == '__main__':
     SAVE_FOLDER = '/home/gkahn/code/rllab/data/local/rnn-critic/'
 
     analyze_groups = []
-    ### DQNPolicy
-    analyze_group = []
-    for i in range(0, 3):
-        print('\ntennis{0:03d}\n'.format(i))
-        analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'tennis{0:03d}'.format(i)),
-                                              plot={
-                                                  'label': 'DQNPolicy',
-                                                  'color': 'k'
-                                              },
-                                              clear_obs=True,
-                                              create_new_envs=False))
-    analyze_groups.append(analyze_group)
-    ### MultiactionCombinedcostRNNPolicy N=3
-    analyze_group = []
-    for i in range(3, 6):
-        print('\ntennis{0:03d}\n'.format(i))
-        analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'tennis{0:03d}'.format(i)),
-                                              plot={
-                                                  'label': 'MultiactionCombinedcostRNNPolicy, N=3',
-                                                  'color': 'r'
-                                              },
-                                              clear_obs=True,
-                                              create_new_envs=False))
-    analyze_groups.append(analyze_group)
-    ### MultiactionCombinedcostRNNPolicy N=6
-    analyze_group = []
-    for i in range(6, 9):
-        print('\ntennis{0:03d}\n'.format(i))
-        analyze_group.append(AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'tennis{0:03d}'.format(i)),
-                                              plot={
-                                                  'label': 'MultiactionCombinedcostRNNPolicy, N=6',
-                                                  'color': 'g'
-                                              },
-                                              clear_obs=True,
-                                              create_new_envs=False))
-    analyze_groups.append(analyze_group)
+    for start in range(59, 155, 3):
+        analyze_group = []
+        for i in range(start, start + 3):
+            print('\nip{0:03d}\n'.format(i))
+            analyze = AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'ip{0:03d}'.format(i)),
+                                       plot={
+                                           'label': '',
+                                           'color': 'k',
+                                       },
+                                       clear_obs=True,
+                                       create_new_envs=False)
+            analyze.plot['label'] = 'N: {0}, H: {1}, horizon: {2}, H_test: {3}, H_targ: {4}'.format(
+                analyze.params['policy']['N'],
+                analyze.params['policy']['H'],
+                analyze.params['policy']['train_value_horizon'],
+                analyze.params['policy']['get_action_test']['H'],
+                analyze.params['policy']['get_action_target']['H']
+            )
+            analyze_group.append(analyze)
 
-    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'tennis_000_008', analyze_groups)
+        analyze_groups.append(analyze_group)
+
+
+    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'ip_059_154', analyze_groups)
     plotter.run()
 
