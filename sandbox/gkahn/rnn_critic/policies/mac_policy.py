@@ -361,7 +361,6 @@ class MACPolicy(TfPolicy, Serializable):
                 tf.tile(tf.expand_dims(tf_values_argmax, 2), (1, 1, action_dim)) *
                 tf.reshape(tf_actions, (num_obs, K, H, action_dim))[:, :, 0, :],
                 reduction_indices=1)  # [num_obs, action_dim]
-        # import IPython; IPython.embed()
         tf_get_action_value = tf.reduce_sum(tf_values_argmax * tf_values, reduction_indices=1)
 
         ### check shapes
@@ -381,24 +380,25 @@ class MACPolicy(TfPolicy, Serializable):
         """
         tf_dones = tf.cast(tf_dones_ph, tf.float32)
 
+        tf_mses = []
         if self._N > 1 and self._H == 1:
             ### N-step DQN case
-            tf_sum_rewards = tf.reduce_sum(np.power(self._gamma * np.ones(self._N), np.arange(self._N)) * tf_rewards_ph,
-                                           reduction_indices=1)
-            tf_mse = tf.reduce_mean(tf.square(tf_sum_rewards
-                                              + (1 - tf_dones[:, self._N-1]) * tf_target_get_action_values[:, self._N-1]
-                                              - tf_train_values[:, 0]))
+            for n in range(self._N):
+                tf_sum_rewards = tf.reduce_sum(np.power(self._gamma * np.ones(n+1), np.arange(n+1)) * tf_rewards_ph[:, :n+1],
+                                               reduction_indices=1)
+                tf_mses.append(tf.reduce_mean(tf.square(tf_sum_rewards
+                                              + (1 - tf_dones[:, n]) * np.power(self._gamma, n+1) * tf_target_get_action_values[:, n]
+                                              - tf_train_values[:, 0])))
         else:
             ### DQN/MAC case
             ### calculate bellman error for all horizons in [1, self._H]
-            tf_mses = []
             for h in range(self._H):
                 tf_sum_rewards = tf.reduce_sum(np.power(self._gamma * np.ones(h+1), np.arange(h+1)) * tf_rewards_ph[:, :h+1],
                                                reduction_indices=1)
                 tf_mses.append(tf.reduce_mean(tf.square(tf_sum_rewards
-                                                        + (1 - tf_dones[:, h]) * tf_target_get_action_values[:, h]
+                                                        + (1 - tf_dones[:, h]) * np.power(self._gamma, h+1) * tf_target_get_action_values[:, h]
                                                         - tf_train_values[:, h])))
-            tf_mse = self._graph_calculate_values(tf.expand_dims(tf.stack(tf_mses, 0), 0), self._train_value_horizon)[0]
+                tf_mse = self._graph_calculate_values(tf.expand_dims(tf.stack(tf_mses, 0), 0), self._train_value_horizon)[0]
 
         ### weight decay
         if len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)) > 0:
@@ -484,6 +484,7 @@ class MACPolicy(TfPolicy, Serializable):
             if self._use_target and self._separate_target_params:
                 tf_target_vars = sorted(tf.get_collection(xplatform.global_variables_collection_name(),
                                                           scope=target_scope), key=lambda v: v.name)
+                assert(len(tf_policy_vars) == len(tf_target_vars))
                 tf_update_target_fn = []
                 for var, var_target in zip(tf_policy_vars, tf_target_vars):
                     assert(var.name.replace(policy_scope, '') == var_target.name.replace(target_scope, ''))

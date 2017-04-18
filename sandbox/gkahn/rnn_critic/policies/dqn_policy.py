@@ -12,7 +12,7 @@ class DQNPolicy(MACPolicy, Serializable):
     def __init__(self, **kwargs):
         Serializable.quick_init(self, locals())
 
-        self._hidden_layers = kwargs.pop('hidden_layers')
+        self._hidden_layers = kwargs.get('hidden_layers')
 
         kwargs['obs_hidden_layers'] = []
         kwargs['action_hidden_layers'] = []
@@ -32,6 +32,7 @@ class DQNPolicy(MACPolicy, Serializable):
     ### TF graph operations ###
     ###########################
 
+    @overrides
     def _graph_obs_to_lowd(self, tf_obs_ph, tf_preprocess):
         with tf.name_scope('obs_to_lowd'):
             ### whiten observations
@@ -91,8 +92,42 @@ class DQNPolicy(MACPolicy, Serializable):
         tf.assert_equal(tf.shape(tf_obs_lowd)[0], tf.shape(tf_actions_ph)[0])
 
         with tf.name_scope('inference'):
-            tf_values = tf.expand_dims(tf.reduce_sum((tf_obs_lowd * tf_actions_ph[:, 0, :]), reduction_indices=1), 1)
+            tf_values = tf.expand_dims(tf.reduce_sum(tf_obs_lowd * tf_actions_ph[:, 0, :], reduction_indices=1), 1)
 
         assert(tf_values.get_shape()[1].value == H)
 
         return tf_values
+
+    @overrides
+    def _graph_get_action(self, tf_obs_lowd, get_action_params, tf_preprocess):
+        """
+        :param tf_obs_lowd: [batch_size, rnn_state_dim]
+        :param H: max horizon to choose action over
+        :param get_action_params: how to select actions
+        :param tf_preprocess:
+        :return: tf_get_action [batch_size, action_dim], tf_get_action_value [batch_size]
+        """
+        num_obs = tf.shape(tf_obs_lowd)[0]
+        action_dim = self._env_spec.action_space.flat_dim
+
+        tf_values_all = tf_obs_lowd
+        tf_get_action = tf.one_hot(tf.argmax(tf_values_all, 1), depth=action_dim)
+        tf_get_action_value = tf.reduce_max(tf_values_all, 1)
+
+        ### check shapes
+        tf.assert_equal(tf.shape(tf_get_action)[0], num_obs)
+        tf.assert_equal(tf.shape(tf_get_action_value)[0], num_obs)
+        assert(tf_get_action.get_shape()[1].value == action_dim)
+
+        return tf_get_action, tf_get_action_value
+
+    ################
+    ### Training ###
+    ################
+
+    @overrides
+    def update_preprocess(self, preprocess_stats):
+        for key in ('actions_mean', 'actions_orth',
+                    'rewards_mean', 'rewards_orth'):
+            assert(self._preprocess_params[key] is False)
+        MACPolicy.update_preprocess(self, preprocess_stats)
