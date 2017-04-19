@@ -52,7 +52,7 @@ class RNNCritic(RLAlgorithm):
         """
         assert(learn_after_n_steps % n_envs == 0)
         if train_every_n_steps >= 1:
-            assert(train_every_n_steps % n_envs == 0)
+            assert(int(train_every_n_steps) % n_envs == 0)
         assert(save_every_n_steps % n_envs == 0)
         assert(update_target_every_n_steps % n_envs == 0)
         assert(update_preprocess_every_n_steps % n_envs == 0)
@@ -62,7 +62,7 @@ class RNNCritic(RLAlgorithm):
         self._max_path_length = int(max_path_length)
         self._total_steps = int(total_steps)
         self._learn_after_n_steps = int(learn_after_n_steps)
-        self._train_every_n_steps = int(train_every_n_steps)
+        self._train_every_n_steps = train_every_n_steps
         self._save_every_n_steps = int(save_every_n_steps)
         self._update_target_after_n_steps = int(update_target_after_n_steps)
         self._update_target_every_n_steps = int(update_target_every_n_steps)
@@ -131,7 +131,7 @@ class RNNCritic(RLAlgorithm):
             if step > self._learn_after_n_steps:
                 ### training step
                 if self._train_every_n_steps >= 1:
-                    if step % self._train_every_n_steps == 0:
+                    if step % int(self._train_every_n_steps) == 0:
                         timeit.start('batch')
                         batch = self._sampler.sample(self._batch_size)
                         timeit.stop('batch')
@@ -142,9 +142,14 @@ class RNNCritic(RLAlgorithm):
                         timeit.stop('train')
                 else:
                     for _ in range(int(1. / self._train_every_n_steps)):
+                        timeit.start('batch')
+                        batch = self._sampler.sample(self._batch_size)
+                        timeit.stop('batch')
+                        timeit.start('train')
                         self._policy.train_step(step,
-                                                *self._sampler.sample(self._batch_size),
+                                                *batch,
                                                 use_target=target_updated)
+                        timeit.stop('train')
 
                 ### update target network
                 if step > self._update_target_after_n_steps and step % self._update_target_every_n_steps == 0:
