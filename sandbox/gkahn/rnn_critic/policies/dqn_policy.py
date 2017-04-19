@@ -33,7 +33,7 @@ class DQNPolicy(MACPolicy, Serializable):
     ###########################
 
     @overrides
-    def _graph_obs_to_lowd(self, tf_obs_ph, tf_preprocess):
+    def _graph_obs_to_lowd(self, tf_obs_ph, tf_preprocess, add_reg=True):
         with tf.name_scope('obs_to_lowd'):
             ### whiten observations
             obs_dim = self._env_spec.observation_space.flat_dim
@@ -70,17 +70,19 @@ class DQNPolicy(MACPolicy, Serializable):
                 layer = layers.flatten(tf_obs_whitened)
 
             ### obs --> internal state
-            final_dim = self._env_spec.action_space.flat_dim
-            for i, num_outputs in enumerate(self._hidden_layers + [final_dim]):
+            for i, num_outputs in enumerate(self._hidden_layers):
                 layer = layers.fully_connected(layer, num_outputs=num_outputs, activation_fn=self._activation,
-                                               weights_regularizer=layers.l2_regularizer(1.),
-                                               scope='obs_to_istate_fc{0}'.format(i))
+                                               weights_regularizer=layers.l2_regularizer(1.) if add_reg else None,
+                                               scope='obs_to_lowd_fc{0}'.format(i))
+            layer = layers.fully_connected(layer, num_outputs=self._env_spec.action_space.flat_dim, activation_fn=None,
+                                           weights_regularizer=layers.l2_regularizer(1.),
+                                           scope='obs_to_lowd_fc_final')
             tf_obs_lowd = layer
 
         return tf_obs_lowd
 
     @overrides
-    def _graph_inference(self, tf_obs_lowd, tf_actions_ph, tf_preprocess):
+    def _graph_inference(self, tf_obs_lowd, tf_actions_ph, tf_preprocess, add_reg=True):
         """
         :param tf_obs_lowd: [batch_size, self._rnn_state_dim]
         :param tf_actions_ph: [batch_size, H, action_dim]
@@ -98,28 +100,28 @@ class DQNPolicy(MACPolicy, Serializable):
 
         return tf_values
 
-    @overrides
-    def _graph_get_action(self, tf_obs_lowd, get_action_params, tf_preprocess):
-        """
-        :param tf_obs_lowd: [batch_size, rnn_state_dim]
-        :param H: max horizon to choose action over
-        :param get_action_params: how to select actions
-        :param tf_preprocess:
-        :return: tf_get_action [batch_size, action_dim], tf_get_action_value [batch_size]
-        """
-        num_obs = tf.shape(tf_obs_lowd)[0]
-        action_dim = self._env_spec.action_space.flat_dim
-
-        tf_values_all = tf_obs_lowd
-        tf_get_action = tf.one_hot(tf.argmax(tf_values_all, 1), depth=action_dim)
-        tf_get_action_value = tf.reduce_max(tf_values_all, 1)
-
-        ### check shapes
-        tf.assert_equal(tf.shape(tf_get_action)[0], num_obs)
-        tf.assert_equal(tf.shape(tf_get_action_value)[0], num_obs)
-        assert(tf_get_action.get_shape()[1].value == action_dim)
-
-        return tf_get_action, tf_get_action_value
+    # @overrides
+    # def _graph_get_action(self, tf_obs_lowd, get_action_params, tf_preprocess):
+    #     """
+    #     :param tf_obs_lowd: [batch_size, rnn_state_dim]
+    #     :param H: max horizon to choose action over
+    #     :param get_action_params: how to select actions
+    #     :param tf_preprocess:
+    #     :return: tf_get_action [batch_size, action_dim], tf_get_action_value [batch_size]
+    #     """
+    #     num_obs = tf.shape(tf_obs_lowd)[0]
+    #     action_dim = self._env_spec.action_space.flat_dim
+    #
+    #     tf_values_all = tf_obs_lowd
+    #     tf_get_action = tf.one_hot(tf.argmax(tf_values_all, 1), depth=action_dim)
+    #     tf_get_action_value = tf.reduce_max(tf_values_all, 1)
+    #
+    #     ### check shapes
+    #     tf.assert_equal(tf.shape(tf_get_action)[0], num_obs)
+    #     tf.assert_equal(tf.shape(tf_get_action_value)[0], num_obs)
+    #     assert(tf_get_action.get_shape()[1].value == action_dim)
+    #
+    #     return tf_get_action, tf_get_action_value
 
     ################
     ### Training ###

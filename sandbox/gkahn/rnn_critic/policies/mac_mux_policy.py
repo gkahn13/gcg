@@ -23,7 +23,7 @@ class MACMuxPolicy(MACPolicy, Serializable):
     ###########################
 
     @overrides
-    def _graph_inference(self, tf_obs_lowd, tf_actions_ph, tf_preprocess):
+    def _graph_inference(self, tf_obs_lowd, tf_actions_ph, tf_preprocess, add_reg=True):
         """
         :param tf_obs_lowd: [batch_size, self._rnn_state_dim]
         :param tf_actions_ph: [batch_size, H, action_dim]
@@ -67,7 +67,7 @@ class MACMuxPolicy(MACPolicy, Serializable):
                         layer = layers.fully_connected(layer,
                                                        num_outputs=num_outputs,
                                                        activation_fn=activation,
-                                                       weights_regularizer=layers.l2_regularizer(1.),
+                                                       weights_regularizer=layers.l2_regularizer(1.) if add_reg else None,
                                                        scope='rewards_i{0}'.format(i),
                                                        reuse=tf.get_variable_scope().reuse or (h > 0))
                     ### de-whiten

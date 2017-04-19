@@ -173,7 +173,7 @@ class MACPolicy(TfPolicy, Serializable):
 
         return tf_preprocess
 
-    def _graph_obs_to_lowd(self, tf_obs_ph, tf_preprocess):
+    def _graph_obs_to_lowd(self, tf_obs_ph, tf_preprocess, add_reg=True):
         with tf.name_scope('obs_to_lowd'):
             ### whiten observations
             obs_dim = self._env_spec.observation_space.flat_dim
@@ -213,13 +213,13 @@ class MACPolicy(TfPolicy, Serializable):
             final_dim = self._rnn_state_dim if not self._use_lstm else 2 * self._rnn_state_dim
             for i, num_outputs in enumerate(self._obs_hidden_layers + [final_dim]):
                 layer = layers.fully_connected(layer, num_outputs=num_outputs, activation_fn=self._activation,
-                                               weights_regularizer=layers.l2_regularizer(1.),
+                                               weights_regularizer=layers.l2_regularizer(1.) if add_reg else None,
                                                scope='obs_to_istate_fc{0}'.format(i))
             tf_obs_lowd = layer
 
         return tf_obs_lowd
 
-    def _graph_inference(self, tf_obs_lowd, tf_actions_ph, tf_preprocess):
+    def _graph_inference(self, tf_obs_lowd, tf_actions_ph, tf_preprocess, add_reg=True):
         """
         :param tf_obs_lowd: [batch_size, self._rnn_state_dim]
         :param tf_actions_ph: [batch_size, H, action_dim]
@@ -254,7 +254,7 @@ class MACPolicy(TfPolicy, Serializable):
 
                     for i, num_outputs in enumerate(self._action_hidden_layers + [self._rnn_state_dim]):
                         layer = layers.fully_connected(layer, num_outputs=num_outputs, activation_fn=self._activation,
-                                                       weights_regularizer=layers.l2_regularizer(1.),
+                                                       weights_regularizer=layers.l2_regularizer(1.) if add_reg else None,
                                                        scope='actions_i{0}'.format(i),
                                                        reuse=tf.get_variable_scope().reuse or (h > 0))
                     rnn_inputs.append(layer)
@@ -290,7 +290,7 @@ class MACPolicy(TfPolicy, Serializable):
                         layer = layers.fully_connected(layer,
                                                        num_outputs=num_outputs,
                                                        activation_fn=activation,
-                                                       weights_regularizer=layers.l2_regularizer(1.),
+                                                       weights_regularizer=layers.l2_regularizer(1.) if add_reg else None,
                                                        scope='rewards_i{0}'.format(i),
                                                        reuse=tf.get_variable_scope().reuse or (h > 0))
                     ### de-whiten
@@ -352,7 +352,7 @@ class MACPolicy(TfPolicy, Serializable):
         tf_actions = tf.tile(tf_actions, (num_obs, 1, 1))
         tf_obs_lowd_repeat = tf_utils.repeat_2d(tf_obs_lowd, K, 0)
         ### inference to get values
-        tf_values_all = self._graph_inference(tf_obs_lowd_repeat, tf_actions, tf_preprocess)  # [num_obs*k, H]
+        tf_values_all = self._graph_inference(tf_obs_lowd_repeat, tf_actions, tf_preprocess, add_reg=False)  # [num_obs*k, H]
         tf_values = self._graph_calculate_values(tf_values_all, get_action_params['value'])  # [num_obs*K]
         tf_values = tf.reshape(tf_values, (num_obs, K))  # [num_obs, K]
         ### argmax
@@ -398,7 +398,7 @@ class MACPolicy(TfPolicy, Serializable):
                 tf_mses.append(tf.reduce_mean(tf.square(tf_sum_rewards
                                                         + (1 - tf_dones[:, h]) * np.power(self._gamma, h+1) * tf_target_get_action_values[:, h]
                                                         - tf_train_values[:, h])))
-                tf_mse = self._graph_calculate_values(tf.expand_dims(tf.stack(tf_mses, 0), 0), self._train_value_horizon)[0]
+        tf_mse = self._graph_calculate_values(tf.expand_dims(tf.stack(tf_mses, 0), 0), self._train_value_horizon)[0]
 
         ### weight decay
         if len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)) > 0:
@@ -456,6 +456,8 @@ class MACPolicy(TfPolicy, Serializable):
             ### get policy variables
             tf_policy_vars = sorted(tf.get_collection(xplatform.global_variables_collection_name(),
                                                       scope=policy_scope), key=lambda v: v.name)
+            tf_trainable_policy_vars = sorted(tf.get_collection(xplatform.trainable_variables_collection_name(),
+                                                                scope=policy_scope), key=lambda v: v.name)
 
             ### create target network
             if self._use_target:
@@ -472,7 +474,7 @@ class MACPolicy(TfPolicy, Serializable):
                         ### slice current h with history
                         tf_obs_target_ph_h = tf_obs_target_ph[:, h-self._obs_history_len:h, :]
                         ### preprocess obs to lowd
-                        tf_target_obs_lowd_h = self._graph_obs_to_lowd(tf_obs_target_ph_h, tf_target_preprocess)
+                        tf_target_obs_lowd_h = self._graph_obs_to_lowd(tf_obs_target_ph_h, tf_target_preprocess, add_reg=False)
                         _, tf_target_get_action_value_h = self._graph_get_action(tf_target_obs_lowd_h,
                                                                                  self._get_action_target, tf_preprocess)
                         tf_target_get_action_values.append(tf_target_get_action_value_h)
@@ -495,7 +497,7 @@ class MACPolicy(TfPolicy, Serializable):
 
             ### optimization
             tf_cost, tf_mse = self._graph_cost(tf_train_values, tf_rewards_ph, tf_dones_ph, tf_target_get_action_values)
-            tf_opt, tf_lr_ph = self._graph_optimize(tf_cost, tf_policy_vars)
+            tf_opt, tf_lr_ph = self._graph_optimize(tf_cost, tf_trainable_policy_vars)
 
             ### initialize
             self._graph_init_vars(tf_sess)

@@ -127,15 +127,15 @@ class AnalyzeRNNCritic(object):
         logger.log('AnalyzeRNNCritic: Loaded all itrs')
         self.env = TfEnv(normalize(eval(self.params['alg']['env'])))
         logger.log('AnalyzeRNNCritic: Created env')
-        # self.eval_rollouts_itrs = []
-        if not os.path.exists(self._eval_rollouts_itrs_file):
-            eval_rollouts_itrs = self._eval_all_policies()
-            logger.log('AnalyzeRNNCritic: Eval all policies')
-            with open(self._eval_rollouts_itrs_file, 'wb') as f:
-                pickle.dump(eval_rollouts_itrs, f)
-            logger.log('AnalyzeRNNCritic: Loaded eval rollouts')
-        with open(self._eval_rollouts_itrs_file, 'rb') as f:
-            self.eval_rollouts_itrs = pickle.load(f)
+        self.eval_rollouts_itrs = []
+        # if not os.path.exists(self._eval_rollouts_itrs_file):
+        #     eval_rollouts_itrs = self._eval_all_policies()
+        #     logger.log('AnalyzeRNNCritic: Eval all policies')
+        #     with open(self._eval_rollouts_itrs_file, 'wb') as f:
+        #         pickle.dump(eval_rollouts_itrs, f)
+        #     logger.log('AnalyzeRNNCritic: Loaded eval rollouts')
+        # with open(self._eval_rollouts_itrs_file, 'rb') as f:
+        #     self.eval_rollouts_itrs = pickle.load(f)
         logger.log('AnalyzeRNNCritic: Finished loading data')
 
     #############

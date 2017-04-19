@@ -17,6 +17,9 @@ def global_variables_collection_name():
     else:
         raise Exception
 
+def trainable_variables_collection_name():
+    return tf.GraphKeys.TRAINABLE_VARIABLES
+
 def variables_initializer(vars):
     if tf.__version__ == '0.12.1':
         return tf.variables_initializer(vars)
