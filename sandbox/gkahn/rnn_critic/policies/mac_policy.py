@@ -398,7 +398,7 @@ class MACPolicy(TfPolicy, Serializable):
                 tf_mses.append(tf.reduce_mean(tf.square(tf_sum_rewards
                                                         + (1 - tf_dones[:, h]) * np.power(self._gamma, h+1) * tf_target_get_action_values[:, h]
                                                         - tf_train_values[:, h])))
-        tf_mse = self._graph_calculate_values(tf.expand_dims(tf.stack(tf_mses, 0), 0), self._train_value_horizon)[0]
+        tf_mse = self._graph_calculate_values(tf.expand_dims(tf.pack(tf_mses, 0), 0), self._train_value_horizon)[0]
 
         ### weight decay
         if len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)) > 0:
@@ -478,7 +478,7 @@ class MACPolicy(TfPolicy, Serializable):
                         _, tf_target_get_action_value_h = self._graph_get_action(tf_target_obs_lowd_h,
                                                                                  self._get_action_target, tf_preprocess)
                         tf_target_get_action_values.append(tf_target_get_action_value_h)
-                    tf_target_get_action_values = tf.stack(tf_target_get_action_values, axis=1)
+                    tf_target_get_action_values = tf.pack(tf_target_get_action_values, axis=1)
             else:
                 tf_target_get_action_values = tf.zeros([tf.shape(tf_train_values)[0], self._N])
 
