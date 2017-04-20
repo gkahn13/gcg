@@ -412,7 +412,10 @@ class MACPolicy(TfPolicy, Serializable):
                 self._graph_inference(tf_obs_lowd_repeat_eval, tf_actions, get_action_params['values_softmax'],
                                       tf_preprocess_eval, add_reg=False)  # [num_obs*k, H]
         ### get_action based on select (policy)
-        tf_values_select = tf.reduce_sum(tf_values_all_select * tf_train_values_softmax_all_select, reduction_indices=1)  # [num_obs*K]
+        if self._N > 1 and self._H == 1 and not self._recurrent:
+            tf_values_select = tf_values_all_select[:, 0]
+        else:
+            tf_values_select = tf.reduce_sum(tf_values_all_select * tf_train_values_softmax_all_select, reduction_indices=1)  # [num_obs*K]
         tf_values_select = tf.reshape(tf_values_select, (num_obs, K))  # [num_obs, K]
         tf_values_argmax_select = tf.one_hot(tf.argmax(tf_values_select, 1), depth=K)  # [num_obs, K]
         tf_get_action = tf.reduce_sum(
@@ -420,7 +423,10 @@ class MACPolicy(TfPolicy, Serializable):
             tf.reshape(tf_actions, (num_obs, K, H, action_dim))[:, :, 0, :],
             reduction_indices=1)  # [num_obs, action_dim]
         ### get_action_value based on eval (target)
-        tf_values_eval = tf.reduce_sum(tf_values_all_eval * tf_train_values_softmax_all_eval, reduction_indices=1)  # [num_obs*K]
+        if self._N > 1 and self._H == 1 and not self._recurrent:
+            tf_values_eval = tf_values_all_eval[:, 0]
+        else:
+            tf_values_eval = tf.reduce_sum(tf_values_all_eval * tf_train_values_softmax_all_eval, reduction_indices=1)  # [num_obs*K]
         tf_values_eval = tf.reshape(tf_values_eval, (num_obs, K))  # [num_obs, K]
         tf_get_action_value = tf.reduce_sum(tf_values_argmax_select * tf_values_eval, reduction_indices=1)
 
