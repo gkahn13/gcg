@@ -349,22 +349,23 @@ class MACPolicy(TfPolicy, Serializable):
                 else:
                     raise NotImplementedError
 
-        assert(tf_values.get_shape()[1].value == H)
+        assert(tf_values.get_shape()[1].value == self._N)
 
         return tf_values, tf_values_softmax
 
-    def _graph_get_action(self, tf_obs_lowd, get_action_params, tf_preprocess):
+    def _graph_get_action(self, tf_obs_ph, get_action_params, scope_select, reuse_select, scope_eval, reuse_eval):
         """
-        :param tf_obs_lowd: [batch_size, rnn_state_dim]
+        :param tf_obs_ph: [batch_size, obs_history_len, obs_dim]
         :param H: max horizon to choose action over
         :param get_action_params: how to select actions
-        :param tf_preprocess:
+        :param scope_select: which scope to evaluate values (double Q-learning)
+        :param scope_select: which scope to select values (double Q-learning)
         :return: tf_get_action [batch_size, action_dim], tf_get_action_value [batch_size]
         """
         H = get_action_params['H']
         assert(H <= self._N)
         get_action_type = get_action_params['type']
-        num_obs = tf.shape(tf_obs_lowd)[0]
+        num_obs = tf.shape(tf_obs_ph)[0]
         action_dim = self._env_spec.action_space.flat_dim
 
         ### create actions
@@ -390,22 +391,38 @@ class MACPolicy(TfPolicy, Serializable):
         else:
             raise NotImplementedError
 
+        ### process to lowd
+        with tf.variable_scope(scope_select, reuse=reuse_select):
+            tf_preprocess_select = self._graph_preprocess_placeholders()
+            tf_obs_lowd_select = self._graph_obs_to_lowd(tf_obs_ph, tf_preprocess_select)
+        with tf.variable_scope(scope_eval, reuse=reuse_eval):
+            tf_preprocess_eval = self._graph_preprocess_placeholders()
+            tf_obs_lowd_eval = self._graph_obs_to_lowd(tf_obs_ph, tf_preprocess_eval)
         ### tile
         tf_actions = tf.tile(tf_actions, (num_obs, 1, 1))
-        tf_obs_lowd_repeat = tf_utils.repeat_2d(tf_obs_lowd, K, 0)
+        tf_obs_lowd_repeat_select = tf_utils.repeat_2d(tf_obs_lowd_select, K, 0)
+        tf_obs_lowd_repeat_eval = tf_utils.repeat_2d(tf_obs_lowd_eval, K, 0)
         ### inference to get values
-        tf_values_all, tf_train_values_softmax_all = \
-            self._graph_inference(tf_obs_lowd_repeat, tf_actions, get_action_params['values_softmax'],
-                                  tf_preprocess, add_reg=False)  # [num_obs*k, H]
-        tf_values = tf.reduce_sum(tf_values_all * tf_train_values_softmax_all, reduction_indices=1) # [num_obs*K]
-        tf_values = tf.reshape(tf_values, (num_obs, K))  # [num_obs, K]
-        ### argmax
-        tf_values_argmax = tf.one_hot(tf.argmax(tf_values, 1), depth=K)  # [num_obs, K]
+        with tf.variable_scope(scope_select, reuse=reuse_select):
+            tf_values_all_select, tf_train_values_softmax_all_select = \
+                self._graph_inference(tf_obs_lowd_repeat_select, tf_actions, get_action_params['values_softmax'],
+                                      tf_preprocess_select, add_reg=False)  # [num_obs*k, H]
+        with tf.variable_scope(scope_eval, reuse=reuse_eval):
+            tf_values_all_eval, tf_train_values_softmax_all_eval = \
+                self._graph_inference(tf_obs_lowd_repeat_eval, tf_actions, get_action_params['values_softmax'],
+                                      tf_preprocess_eval, add_reg=False)  # [num_obs*k, H]
+        ### get_action based on select (policy)
+        tf_values_select = tf.reduce_sum(tf_values_all_select * tf_train_values_softmax_all_select, reduction_indices=1)  # [num_obs*K]
+        tf_values_select = tf.reshape(tf_values_select, (num_obs, K))  # [num_obs, K]
+        tf_values_argmax_select = tf.one_hot(tf.argmax(tf_values_select, 1), depth=K)  # [num_obs, K]
         tf_get_action = tf.reduce_sum(
-                tf.tile(tf.expand_dims(tf_values_argmax, 2), (1, 1, action_dim)) *
-                tf.reshape(tf_actions, (num_obs, K, H, action_dim))[:, :, 0, :],
-                reduction_indices=1)  # [num_obs, action_dim]
-        tf_get_action_value = tf.reduce_sum(tf_values_argmax * tf_values, reduction_indices=1)
+            tf.tile(tf.expand_dims(tf_values_argmax_select, 2), (1, 1, action_dim)) *
+            tf.reshape(tf_actions, (num_obs, K, H, action_dim))[:, :, 0, :],
+            reduction_indices=1)  # [num_obs, action_dim]
+        ### get_action_value based on eval (target)
+        tf_values_eval = tf.reduce_sum(tf_values_all_eval * tf_train_values_softmax_all_eval, reduction_indices=1)  # [num_obs*K]
+        tf_values_eval = tf.reshape(tf_values_eval, (num_obs, K))  # [num_obs, K]
+        tf_get_action_value = tf.reduce_sum(tf_values_argmax_select * tf_values_eval, reduction_indices=1)
 
         ### check shapes
         tf.assert_equal(tf.shape(tf_get_action)[0], num_obs)
@@ -490,18 +507,14 @@ class MACPolicy(TfPolicy, Serializable):
                 tf_preprocess = self._graph_preprocess_placeholders()
                 ### process obs to lowd
                 tf_obs_lowd = self._graph_obs_to_lowd(tf_obs_ph, tf_preprocess)
-
-            ### create training policy
-            with tf.variable_scope(policy_scope):
-                ### do inference
+                ### create training policy
                 tf_train_values, tf_train_values_softmax = \
                     self._graph_inference(tf_obs_lowd, tf_actions_ph[:, :self._H, :],
                                           self._values_softmax, tf_preprocess)
 
-            ### create test policy
-            with tf.variable_scope(policy_scope, reuse=True):
-                ### action selection
-                tf_get_action, _ = self._graph_get_action(tf_obs_lowd, self._get_action_test, tf_preprocess)
+            ### action selection
+            tf_get_action, _ = self._graph_get_action(tf_obs_ph, self._get_action_test,
+                                                      policy_scope, True, policy_scope, True)
 
             ### get policy variables
             tf_policy_vars = sorted(tf.get_collection(xplatform.global_variables_collection_name(),
@@ -512,24 +525,19 @@ class MACPolicy(TfPolicy, Serializable):
             ### create target network
             if self._use_target:
                 target_scope = 'target' if self._separate_target_params else 'policy'
-                target_reuse = not self._separate_target_params
-                with tf.variable_scope(target_scope, reuse=target_reuse):
-                    ### create preprocess placeholders
-                    tf_target_preprocess = self._graph_preprocess_placeholders()
-                    ### action selection
-                    tf_target_get_action_values = []
-                    for i, h in enumerate(range(self._obs_history_len, self._obs_history_len + self._N)):
-                        if i > 0:
-                            tf.get_variable_scope().reuse_variables()
-                        ### slice current h with history
-                        tf_obs_target_ph_h = tf_obs_target_ph[:, h-self._obs_history_len:h, :]
-                        ### preprocess obs to lowd
-                        tf_target_obs_lowd_h = self._graph_obs_to_lowd(tf_obs_target_ph_h, tf_target_preprocess, add_reg=False)
-                        _, tf_target_get_action_value_h = self._graph_get_action(tf_target_obs_lowd_h,
-                                                                                 self._get_action_target,
-                                                                                 tf_target_preprocess)
-                        tf_target_get_action_values.append(tf_target_get_action_value_h)
-                    tf_target_get_action_values = tf.pack(tf_target_get_action_values, axis=1)
+                ### action selection
+                tf_target_get_action_values = []
+                for i, h in enumerate(range(self._obs_history_len, self._obs_history_len + self._N)):
+                    ### slice current h with history
+                    tf_obs_target_ph_h = tf_obs_target_ph[:, h-self._obs_history_len:h, :]
+                    _, tf_target_get_action_value_h = self._graph_get_action(tf_obs_target_ph_h,
+                                                                             self._get_action_target,
+                                                                             scope_select=policy_scope,
+                                                                             reuse_select=True,
+                                                                             scope_eval=target_scope,
+                                                                             reuse_eval=(target_scope == policy_scope) or i > 0)
+                    tf_target_get_action_values.append(tf_target_get_action_value_h)
+                tf_target_get_action_values = tf.pack(tf_target_get_action_values, axis=1)
             else:
                 tf_target_get_action_values = tf.zeros([tf.shape(tf_train_values)[0], self._N])
 
