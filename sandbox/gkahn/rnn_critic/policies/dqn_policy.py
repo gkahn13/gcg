@@ -27,6 +27,7 @@ class DQNPolicy(MACPolicy, Serializable):
 
         assert(self._H == 1)
         assert(self._N == 1)
+        assert(not self._recurrent)
 
     ###########################
     ### TF graph operations ###

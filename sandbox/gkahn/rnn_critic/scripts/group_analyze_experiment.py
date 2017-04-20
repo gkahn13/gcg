@@ -123,6 +123,8 @@ class PlotAnalyzeRNNCritic(object):
             self._plot_analyze_InvertedPendulum()
         elif isinstance(self._env, GymEnv) and 'tennis' in self._env.env_id.lower():
             self._plot_analyze_Tennis()
+        elif isinstance(self._env, GymEnv) and 'reacher' in self._env.env_id.lower():
+            self._plot_analyze_Reacher()
         else:
             pass
 
@@ -757,6 +759,70 @@ class PlotAnalyzeRNNCritic(object):
         f.savefig(self._analyze_img_file, bbox_inches='tight', dpi=200)
         plt.close(f)
 
+    def _plot_analyze_Reacher(self):
+        f, axes = create_best_fit_axes(len(self._analyze_groups), figsize=(15, 15))
+
+        ### plot cum reward versus time step
+        for ax, analyze_group in zip(axes.ravel(), self._analyze_groups):
+            data_interp = DataAverageInterpolation()
+            min_step = max_step = None
+            for analyze in analyze_group:
+                rollouts = list(itertools.chain(*analyze.train_rollouts_itrs))
+                rollouts = sorted(rollouts, key=lambda r: r['steps'][-1])
+                steps, cum_rewards = [], []
+                for r in rollouts:
+                    steps.append(r['steps'][-1])
+                    cum_rewards.append(np.sum(r['rewards']))
+
+                def moving_avg_std(idxs, data, window):
+                    avg_idxs, means, stds = [], [], []
+                    for i in range(window, len(data)):
+                        avg_idxs.append(np.mean(idxs[i - window:i]))
+                        means.append(np.mean(data[i - window:i]))
+                        stds.append(np.std(data[i - window:i]))
+                    return avg_idxs, np.asarray(means), np.asarray(stds)
+
+                steps, cum_rewards, _ = moving_avg_std(steps, cum_rewards, window=50)
+
+                data_interp.add_data(steps, cum_rewards)
+                if min_step is None:
+                    min_step = steps[0]
+                if max_step is None:
+                    max_step = steps[-1]
+                min_step = max(min_step, steps[0])
+                max_step = min(max_step, steps[-1])
+
+            steps = np.r_[min_step:max_step:50.][1:-1]
+            cum_rewards_mean, cum_rewards_std = data_interp.eval(steps)
+
+            ax.plot(steps, cum_rewards_mean, color=analyze.plot['color'], label=analyze.plot['label'])
+            ax.fill_between(steps, cum_rewards_mean - cum_rewards_std, cum_rewards_mean + cum_rewards_std,
+                            color=analyze.plot['color'], alpha=0.4)
+
+            ax.grid()
+            ax.set_title(analyze_group[0].plot['label'], {'fontsize': 10})
+            ax.set_ylabel('Cumulative reward')
+            ax.set_xlabel('Steps')
+            xfmt = ticker.ScalarFormatter()
+            xfmt.set_powerlimits((0, 0))
+            ax.xaxis.set_major_formatter(xfmt)
+
+        ymin, ymax = np.inf, -np.inf
+        xmin, xmax = np.inf, -np.inf
+        for ax in axes.ravel():
+            ymin = min(ymin, ax.get_ylim()[0])
+            ymax = max(ymax, ax.get_ylim()[1])
+            xmin = min(xmin, ax.get_xlim()[0])
+            xmax = max(xmax, ax.get_xlim()[1])
+
+        for ax in axes.ravel():
+            ax.set_ylim((ymin, ymax))
+            ax.set_xlim((xmin, xmax))
+
+        plt.tight_layout()
+        f.savefig(self._analyze_img_file, bbox_inches='tight', dpi=200)
+        plt.close(f)
+
     def _plot_analyze_Tennis(self):
         f, axes = plt.subplots(1 + len(self._analyze_groups), 1, figsize=(15, 5 * len(self._analyze_groups)),
                                sharex=True)
@@ -849,29 +915,29 @@ if __name__ == '__main__':
     SAVE_FOLDER = '/home/gkahn/code/rllab/data/local/rnn-critic/'
 
     analyze_groups = []
-    for start in range(59, 155, 3):
+    for start in range(1, 22, 3):
         analyze_group = []
         for i in range(start, start + 3):
-            print('\nip{0:03d}\n'.format(i))
-            analyze = AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'ip{0:03d}'.format(i)),
-                                       plot={
-                                           'label': '',
-                                           'color': 'k',
-                                       },
-                                       clear_obs=True,
-                                       create_new_envs=False)
-            analyze.plot['label'] = 'N: {0}, H: {1}, horizon: {2}, H_test: {3}, H_targ: {4}'.format(
-                analyze.params['policy']['N'],
-                analyze.params['policy']['H'],
-                analyze.params['policy']['train_value_horizon'],
-                analyze.params['policy']['get_action_test']['H'],
-                analyze.params['policy']['get_action_target']['H']
-            )
-            analyze_group.append(analyze)
+            print('\nreacher{0:03d}\n'.format(i))
+            try:
+                analyze = AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'reacher{0:03d}'.format(i)),
+                                           plot={
+                                               'label': '',
+                                               'color': 'k',
+                                           },
+                                           clear_obs=True,
+                                           create_new_envs=False)
+                analyze.plot['label'] = 'N: {0}, H: {1}'.format(
+                    analyze.params['policy']['N'],
+                    analyze.params['policy']['H'],
+                )
+                analyze_group.append(analyze)
+            except:
+                print('failed')
 
         analyze_groups.append(analyze_group)
 
 
-    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'ip_059_154', analyze_groups)
+    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'reacher_001_022', analyze_groups)
     plotter.run()
 
