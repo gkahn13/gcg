@@ -42,6 +42,10 @@ class MACMuxPolicy(MACPolicy, Serializable):
 
             ### don't preprocess actions b/c discrete
             tf_actions = tf_actions_ph
+            if H < self._N:
+                tf_actions = tf.concat(1,
+                                       [tf_actions,
+                                        (1. / float(action_dim)) * tf.ones([tf.shape(tf_actions)[0], self._N - self._H, action_dim])])
 
             ### actions --> rnn input at each time step
             rnn_inputs = tf_actions
