@@ -27,7 +27,6 @@ class MACPolicy(TfPolicy, Serializable):
         ### model horizons
         self._N = kwargs.get('N') # number of returns to use (N-step)
         self._H = kwargs.get('H') # action planning horizon for training
-        self._recurrent = kwargs.get('recurrent')
         self._gamma = kwargs.get('gamma') # reward decay
         self._obs_history_len = kwargs.get('obs_history_len') # how many previous observations to use
 
@@ -35,7 +34,8 @@ class MACPolicy(TfPolicy, Serializable):
         self._obs_hidden_layers = list(kwargs.get('obs_hidden_layers'))
         self._action_hidden_layers = list(kwargs.get('action_hidden_layers'))
         self._reward_hidden_layers = list(kwargs.get('reward_hidden_layers'))
-        self._values_softmax_hidden_layers = list(kwargs.get('values_softmax_hidden_layers'))
+        self._value_hidden_layers = list(kwargs.get('value_hidden_layers'))
+        self._lambda_hidden_layers = list(kwargs.get('lambda_hidden_layers'))
         self._rnn_state_dim = kwargs.get('rnn_state_dim')
         self._use_lstm = kwargs.get('use_lstm')
         self._use_bilinear = kwargs.get('use_bilinear')
@@ -80,9 +80,6 @@ class MACPolicy(TfPolicy, Serializable):
         assert((self._N == 1 and self._H == 1) or
                (self._N > 1 and self._H == 1) or
                (self._N > 1 and self._H > 1 and self._N == self._H))
-
-        if self._N > 1 and self._H > 1:
-            assert(self._recurrent) # MAC must be recurrent
 
     ##################
     ### Properties ###
@@ -291,10 +288,10 @@ class MACPolicy(TfPolicy, Serializable):
                             rnn_cell = tf.nn.rnn_cell.BasicRNNCell(self._rnn_state_dim, activation=self._rnn_activation)
                     rnn_outputs, rnn_states = tf.nn.dynamic_rnn(rnn_cell, rnn_inputs, initial_state=istate)
 
-            ### internal state --> values
-            with tf.name_scope('istates_to_values'):
-                tf_values_list = []
-                for n in range(self._N):
+            ### internal state --> nstep rewards
+            with tf.name_scope('istates_to_nstep_rewards'):
+                tf_nstep_rewards = [0] # shifted by one
+                for n in range(self._N - 1): # shifted by one
                     layer = rnn_outputs[:, n, :]
                     for i, num_outputs in enumerate(self._reward_hidden_layers + [1]):
                         activation = self._activation if i < len(self._reward_hidden_layers) else None
@@ -304,54 +301,72 @@ class MACPolicy(TfPolicy, Serializable):
                                                        weights_regularizer=layers.l2_regularizer(1.) if add_reg else None,
                                                        scope='rewards_i{0}'.format(i),
                                                        reuse=tf.get_variable_scope().reuse or (n > 0))
-                    ### de-whiten
-                    tf_values_n = tf.add(tf.matmul(layer, tf.transpose(tf_preprocess['rewards_orth_var'])),
-                                         tf_preprocess['rewards_mean_var'])
-                    tf_values_list.append(tf_values_n)
+                    tf_nstep_rewards.append(layer)
 
+            ### internal state --> nstep values
+            with tf.name_scope('istates_to_nstep_values'):
+                tf_nstep_values = []
+                for n in range(self._N):
+                    layer = rnn_outputs[:, n, :]
+                    for i, num_outputs in enumerate(self._value_hidden_layers + [1]):
+                        activation = self._activation if i < len(self._value_hidden_layers) else None
+                        layer = layers.fully_connected(layer,
+                                                       num_outputs=num_outputs,
+                                                       activation_fn=activation,
+                                                       weights_regularizer=layers.l2_regularizer(1.) if add_reg else None,
+                                                       scope='values_i{0}'.format(i),
+                                                       reuse=tf.get_variable_scope().reuse or (n > 0))
+                    tf_nstep_values.append(layer)
+
+            ### internal state --> nstep lambdas
+            with tf.name_scope('istates_to_nstep_lambdas'):
+                tf_nstep_lambdas = []
+                for n in range(self._N - 1): # since must use last value
+                    layer = rnn_outputs[:, n, :]
+                    for i, num_outputs in enumerate(self._lambda_hidden_layers + [1]):
+                        activation = self._activation if i < len(self._lambda_hidden_layers) else tf.sigmoid
+                        layer = layers.fully_connected(layer,
+                                                       num_outputs=num_outputs,
+                                                       activation_fn=activation,
+                                                       weights_regularizer=layers.l2_regularizer(1.) if add_reg else None,
+                                                       scope='lambdas_i{0}'.format(i),
+                                                       reuse=tf.get_variable_scope().reuse or (n > 0))
+                    tf_nstep_lambdas.append(layer)
+                tf_nstep_lambdas.append(tf.zeros([tf.shape(layer)[0], 1])) # since must use last value
+
+            ### nstep rewards + nstep values --> values
+            with tf.name_scope('nstep_rewards_nstep_values_to_values'):
+                tf_values_list = []
+                for n in range(self._N):
+                    tf_returns = tf_nstep_rewards[:n] + [tf_nstep_values[n]]
+                    tf_values_list.append(
+                        np.sum([np.power(self._gamma, i) * tf_return for i, tf_return in enumerate(tf_returns)]))
                 tf_values = tf.concat(1, tf_values_list)
 
-            ### internal states --> values softmax
-            with tf.name_scope('values_softmax'):
+            ### nstep lambdas --> values softmax and depth
+            with tf.name_scope('nstep_lambdas_to_values_softmax_and_depth'):
                 if values_softmax == 'final':
                     tf_values_softmax = tf.one_hot(self._N - 1, self._N) * tf.ones(tf.shape(tf_values))
+                    tf_values_depth = (self._N - 1) * tf.ones([tf.shape(tf_values)[0]])
                 elif values_softmax == 'mean':
                     tf_values_softmax = (1. / float(self._N)) * tf.ones(tf.shape(tf_values))
+                    tf_values_depth = ((self._N - 1) / 2.) * tf.ones([tf.shape(tf_values)[0]])
                 elif values_softmax == 'learned':
-                    if self._recurrent:
-                        ### use recurrent outputs
-                        tf_values_presoftmax_list = []
-                        for n in range(self._N):
-                            layer = rnn_outputs[:, n, :]
-                            for i, num_outputs in enumerate(self._values_softmax_hidden_layers + [1]):
-                                activation = self._activation if i < len(self._values_softmax_hidden_layers) else None
-                                layer = layers.fully_connected(layer,
-                                                               num_outputs=num_outputs,
-                                                               activation_fn=activation,
-                                                               weights_regularizer=layers.l2_regularizer(1.) if add_reg else None,
-                                                               scope='values_softmax_i{0}'.format(i),
-                                                               reuse=tf.get_variable_scope().reuse or (n > 0))
-                            tf_values_presoftmax_list.append(layer)
-                        tf_values_presoftmax = tf.concat(1, tf_values_presoftmax_list)
-                        tf_values_softmax = tf.nn.softmax(tf_values_presoftmax)
-                    else:
-                        ### just use initial istate
-                        layer = tf_obs_lowd
-                        for i, num_outputs in enumerate(self._values_softmax_hidden_layers + [self._N]):
-                            activation = self._activation if i < len(self._values_softmax_hidden_layers) else None
-                            layer = layers.fully_connected(layer,
-                                                           num_outputs=num_outputs,
-                                                           activation_fn=activation,
-                                                           weights_regularizer=layers.l2_regularizer(1.) if add_reg else None,
-                                                           scope='values_softmax_i{0}'.format(i),
-                                                           reuse=tf.get_variable_scope().reuse)
-                        tf_values_softmax = tf.nn.softmax(layer)
-                else:
-                    raise NotImplementedError
+                    tf_values_softmax_list = []
+                    for n in range(self._N):
+                        tf_values_softmax_list.append(np.prod(tf_nstep_lambdas[:n]) * (1 - tf_nstep_lambdas[n]))
+                    tf_values_softmax = tf.concat(1, tf_values_softmax_list)
+                    tf.assert_less(tf.reduce_max(tf.reduce_sum(tf_values_softmax, 1)), 1.0001)
+                    tf.assert_greater(tf.reduce_min(tf.reduce_sum(tf_values_softmax, 1)), 0.999)
+
+                    curr_depth = 0
+                    for n in range(self._N - 1, -1, -1):
+                        curr_depth = tf_nstep_lambdas[n] * (1 + np.power(self._gamma, n) * curr_depth)
+                    tf_values_depth = curr_depth
 
         assert(tf_values.get_shape()[1].value == self._N)
 
-        return tf_values, tf_values_softmax
+        return tf_values, tf_values_softmax, tf_values_depth
 
     def _graph_get_action(self, tf_obs_ph, get_action_params, scope_select, reuse_select, scope_eval, reuse_eval):
         """
@@ -404,18 +419,15 @@ class MACPolicy(TfPolicy, Serializable):
         tf_obs_lowd_repeat_eval = tf_utils.repeat_2d(tf_obs_lowd_eval, K, 0)
         ### inference to get values
         with tf.variable_scope(scope_select, reuse=reuse_select):
-            tf_values_all_select, tf_train_values_softmax_all_select = \
+            tf_values_all_select, tf_train_values_softmax_all_select, _ = \
                 self._graph_inference(tf_obs_lowd_repeat_select, tf_actions, get_action_params['values_softmax'],
                                       tf_preprocess_select, add_reg=False)  # [num_obs*k, H]
         with tf.variable_scope(scope_eval, reuse=reuse_eval):
-            tf_values_all_eval, tf_train_values_softmax_all_eval = \
+            tf_values_all_eval, tf_train_values_softmax_all_eval, _ = \
                 self._graph_inference(tf_obs_lowd_repeat_eval, tf_actions, get_action_params['values_softmax'],
                                       tf_preprocess_eval, add_reg=False)  # [num_obs*k, H]
         ### get_action based on select (policy)
-        if self._N > 1 and self._H == 1 and not self._recurrent:
-            tf_values_select = tf_values_all_select[:, 0]
-        else:
-            tf_values_select = tf.reduce_sum(tf_values_all_select * tf_train_values_softmax_all_select, reduction_indices=1)  # [num_obs*K]
+        tf_values_select = tf.reduce_sum(tf_values_all_select * tf_train_values_softmax_all_select, reduction_indices=1)  # [num_obs*K]
         tf_values_select = tf.reshape(tf_values_select, (num_obs, K))  # [num_obs, K]
         tf_values_argmax_select = tf.one_hot(tf.argmax(tf_values_select, 1), depth=K)  # [num_obs, K]
         tf_get_action = tf.reduce_sum(
@@ -423,10 +435,7 @@ class MACPolicy(TfPolicy, Serializable):
             tf.reshape(tf_actions, (num_obs, K, H, action_dim))[:, :, 0, :],
             reduction_indices=1)  # [num_obs, action_dim]
         ### get_action_value based on eval (target)
-        if self._N > 1 and self._H == 1 and not self._recurrent:
-            tf_values_eval = tf_values_all_eval[:, 0]
-        else:
-            tf_values_eval = tf.reduce_sum(tf_values_all_eval * tf_train_values_softmax_all_eval, reduction_indices=1)  # [num_obs*K]
+        tf_values_eval = tf.reduce_sum(tf_values_all_eval * tf_train_values_softmax_all_eval, reduction_indices=1)  # [num_obs*K]
         tf_values_eval = tf.reshape(tf_values_eval, (num_obs, K))  # [num_obs, K]
         tf_get_action_value = tf.reduce_sum(tf_values_argmax_select * tf_values_eval, reduction_indices=1)
 
@@ -449,25 +458,13 @@ class MACPolicy(TfPolicy, Serializable):
         tf_dones = tf.cast(tf_dones_ph, tf.float32)
 
         tf_mses = []
-        if self._N > 1 and self._H == 1 and not self._recurrent:
-            ### non-recurrent N-step DQN case
-            for n in range(self._N):
-                tf_sum_rewards = tf.reduce_sum(np.power(self._gamma * np.ones(n+1), np.arange(n+1)) *
-                                               tf_rewards_ph[:,:n+1],
-                                               reduction_indices=1)
-                tf_mses.append(tf.square(tf_sum_rewards
-                                         + (1 - tf_dones[:,n]) * np.power(self._gamma, n+1) * tf_target_get_action_values[:,n]
-                                         - tf_train_values[:,0]))
-        else:
-            ### DQN / recurrent N-step / MAC case
-            ### calculate bellman error for all horizons in [1, self._H]
-            for h in range(self._H):
-                tf_sum_rewards = tf.reduce_sum(np.power(self._gamma * np.ones(h+1), np.arange(h+1)) *
-                                               tf_rewards_ph[:,:h+1],
-                                               reduction_indices=1)
-                tf_mses.append(tf.square(tf_sum_rewards
-                                         + (1 - tf_dones[:,h]) * np.power(self._gamma, h+1) * tf_target_get_action_values[:,h]
-                                         - tf_train_values[:,h]))
+        for n in range(self._N):
+            tf_sum_rewards = tf.reduce_sum(np.power(self._gamma * np.ones(n+1), np.arange(n+1)) *
+                                           tf_rewards_ph[:,:n+1],
+                                           reduction_indices=1)
+            tf_mses.append(tf.square(tf_sum_rewards
+                                     + (1 - tf_dones[:,n]) * np.power(self._gamma, n+1) * tf_target_get_action_values[:,n]
+                                     - tf_train_values[:,n]))
 
         tf_mse = tf.reduce_mean(tf.reduce_sum(tf_train_values_softmax * tf.pack(tf_mses, 1), reduction_indices=1))
 
@@ -514,7 +511,7 @@ class MACPolicy(TfPolicy, Serializable):
                 ### process obs to lowd
                 tf_obs_lowd = self._graph_obs_to_lowd(tf_obs_ph, tf_preprocess)
                 ### create training policy
-                tf_train_values, tf_train_values_softmax = \
+                tf_train_values, tf_train_values_softmax, tf_train_values_depth = \
                     self._graph_inference(tf_obs_lowd, tf_actions_ph[:, :self._H, :],
                                           self._values_softmax, tf_preprocess)
 
@@ -584,7 +581,7 @@ class MACPolicy(TfPolicy, Serializable):
             'mse': tf_mse,
             'opt': tf_opt,
             'lr_ph': tf_lr_ph,
-            'values_softmax': tf_train_values_softmax
+            'values_depth': tf_train_values_depth
         }
 
     ################
@@ -645,14 +642,14 @@ class MACPolicy(TfPolicy, Serializable):
         if self._use_target:
             feed_dict[self._tf_dict['obs_target_ph']] = observations[:, 1:, :]
 
-        cost, mse, values_softmax, _ = self._tf_dict['sess'].run([self._tf_dict['cost'],
-                                                                  self._tf_dict['mse'],
-                                                                  self._tf_dict['values_softmax'],
-                                                                  self._tf_dict['opt']],
-                                                                 feed_dict=feed_dict)
+        cost, mse, values_depth, _ = self._tf_dict['sess'].run([self._tf_dict['cost'],
+                                                                self._tf_dict['mse'],
+                                                                self._tf_dict['values_depth'],
+                                                                self._tf_dict['opt']],
+                                                               feed_dict=feed_dict)
         assert(np.isfinite(cost))
 
-        self._log_stats['SoftmaxFrac'].append(np.mean(np.sum(values_softmax * np.arange(1, self._N+1), axis=1)) / self._N)
+        self._log_stats['Depth'].append(np.mean(values_depth))
         self._log_stats['Cost'].append(cost)
         self._log_stats['mse/cost'].append(mse / cost)
 
@@ -708,7 +705,7 @@ class MACPolicy(TfPolicy, Serializable):
 
     def log(self):
         for k in sorted(self._log_stats.keys()):
-            if k == 'SoftmaxFrac':
+            if k == 'Depth':
                 logger.record_tabular(k+'Mean', np.mean(self._log_stats[k]))
                 logger.record_tabular(k+'Std', np.std(self._log_stats[k]))
             else:
