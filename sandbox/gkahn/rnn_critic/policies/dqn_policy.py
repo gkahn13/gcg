@@ -17,6 +17,8 @@ class DQNPolicy(MACPolicy, Serializable):
         kwargs['obs_hidden_layers'] = []
         kwargs['action_hidden_layers'] = []
         kwargs['reward_hidden_layers'] = []
+        kwargs['value_hidden_layers'] = []
+        kwargs['lambda_hidden_layers'] = []
         kwargs['rnn_state_dim'] = 0
         kwargs['use_lstm'] = False
         kwargs['use_bilinear'] = False
@@ -27,7 +29,6 @@ class DQNPolicy(MACPolicy, Serializable):
 
         assert(self._H == 1)
         assert(self._N == 1)
-        assert(not self._recurrent)
 
     ###########################
     ### TF graph operations ###
@@ -83,10 +84,11 @@ class DQNPolicy(MACPolicy, Serializable):
         return tf_obs_lowd
 
     @overrides
-    def _graph_inference(self, tf_obs_lowd, tf_actions_ph, tf_preprocess, add_reg=True):
+    def _graph_inference(self, tf_obs_lowd, tf_actions_ph, values_softmax, tf_preprocess, add_reg=True):
         """
         :param tf_obs_lowd: [batch_size, self._rnn_state_dim]
         :param tf_actions_ph: [batch_size, H, action_dim]
+        :param values_softmax: string
         :param tf_preprocess:
         :return: tf_values: [batch_size, H]
         """
@@ -96,10 +98,12 @@ class DQNPolicy(MACPolicy, Serializable):
 
         with tf.name_scope('inference'):
             tf_values = tf.expand_dims(tf.reduce_sum(tf_obs_lowd * tf_actions_ph[:, 0, :], reduction_indices=1), 1)
+            tf_values_softmax = tf.ones(tf.shape(tf_values))
+            tf_values_depth = tf.zeros([tf.shape(tf_values)[0]])
 
         assert(tf_values.get_shape()[1].value == H)
 
-        return tf_values
+        return tf_values, tf_values_softmax, tf_values_depth
 
     # @overrides
     # def _graph_get_action(self, tf_obs_lowd, get_action_params, tf_preprocess):

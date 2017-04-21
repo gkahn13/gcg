@@ -1,5 +1,6 @@
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
+import numpy as np
 
 from rllab.core.serializable import Serializable
 from rllab.misc.overrides import overrides
@@ -23,10 +24,11 @@ class MACMuxPolicy(MACPolicy, Serializable):
     ###########################
 
     @overrides
-    def _graph_inference(self, tf_obs_lowd, tf_actions_ph, tf_preprocess, add_reg=True):
+    def _graph_inference(self, tf_obs_lowd, tf_actions_ph, values_softmax, tf_preprocess, add_reg=True):
         """
         :param tf_obs_lowd: [batch_size, self._rnn_state_dim]
         :param tf_actions_ph: [batch_size, H, action_dim]
+        :param values_softmax: string
         :param tf_preprocess:
         :return: tf_values: [batch_size, H]
         """
@@ -57,11 +59,11 @@ class MACMuxPolicy(MACPolicy, Serializable):
                         rnn_cell = BasicMuxRNNCell(action_dim, self._rnn_state_dim, activation=self._rnn_activation)
                     rnn_outputs, rnn_states = tf.nn.dynamic_rnn(rnn_cell, rnn_inputs, initial_state=istate)
 
-            ### final internal state --> reward
-            with tf.name_scope('final_istate_to_reward'):
-                tf_values_list = []
-                for h in range(H):
-                    layer = rnn_outputs[:, h, :]
+            ### internal state --> nstep rewards
+            with tf.name_scope('istates_to_nstep_rewards'):
+                tf_nstep_rewards = [0]  # shifted by one
+                for n in range(self._N - 1):  # shifted by one
+                    layer = rnn_outputs[:, n, :]
                     for i, num_outputs in enumerate(self._reward_hidden_layers + [1]):
                         activation = self._activation if i < len(self._reward_hidden_layers) else None
                         layer = layers.fully_connected(layer,
@@ -69,14 +71,70 @@ class MACMuxPolicy(MACPolicy, Serializable):
                                                        activation_fn=activation,
                                                        weights_regularizer=layers.l2_regularizer(1.) if add_reg else None,
                                                        scope='rewards_i{0}'.format(i),
-                                                       reuse=tf.get_variable_scope().reuse or (h > 0))
-                    ### de-whiten
-                    tf_values_h = tf.add(tf.matmul(layer, tf.transpose(tf_preprocess['rewards_orth_var'])),
-                                         tf_preprocess['rewards_mean_var'])
-                    tf_values_list.append(tf_values_h)
+                                                       reuse=tf.get_variable_scope().reuse or (n > 0))
+                    tf_nstep_rewards.append(layer)
 
+            ### internal state --> nstep values
+            with tf.name_scope('istates_to_nstep_values'):
+                tf_nstep_values = []
+                for n in range(self._N):
+                    layer = rnn_outputs[:, n, :]
+                    for i, num_outputs in enumerate(self._value_hidden_layers + [1]):
+                        activation = self._activation if i < len(self._value_hidden_layers) else None
+                        layer = layers.fully_connected(layer,
+                                                       num_outputs=num_outputs,
+                                                       activation_fn=activation,
+                                                       weights_regularizer=layers.l2_regularizer(1.) if add_reg else None,
+                                                       scope='values_i{0}'.format(i),
+                                                       reuse=tf.get_variable_scope().reuse or (n > 0))
+                    tf_nstep_values.append(layer)
+
+            ### internal state --> nstep lambdas
+            with tf.name_scope('istates_to_nstep_lambdas'):
+                tf_nstep_lambdas = []
+                for n in range(self._N - 1):  # since must use last value
+                    layer = rnn_outputs[:, n, :]
+                    for i, num_outputs in enumerate(self._lambda_hidden_layers + [1]):
+                        activation = self._activation if i < len(self._lambda_hidden_layers) else tf.sigmoid
+                        layer = layers.fully_connected(layer,
+                                                       num_outputs=num_outputs,
+                                                       activation_fn=activation,
+                                                       weights_regularizer=layers.l2_regularizer(1.) if add_reg else None,
+                                                       scope='lambdas_i{0}'.format(i),
+                                                       reuse=tf.get_variable_scope().reuse or (n > 0))
+                    tf_nstep_lambdas.append(layer)
+                tf_nstep_lambdas.append(tf.zeros([tf.shape(layer)[0], 1]))  # since must use last value
+
+            ### nstep rewards + nstep values --> values
+            with tf.name_scope('nstep_rewards_nstep_values_to_values'):
+                tf_values_list = []
+                for n in range(self._N):
+                    tf_returns = tf_nstep_rewards[:n] + [tf_nstep_values[n]]
+                    tf_values_list.append(
+                        np.sum([np.power(self._gamma, i) * tf_return for i, tf_return in enumerate(tf_returns)]))
                 tf_values = tf.concat(1, tf_values_list)
 
-        assert(tf_values.get_shape()[1].value == H)
+            ### nstep lambdas --> values softmax and depth
+            with tf.name_scope('nstep_lambdas_to_values_softmax_and_depth'):
+                if values_softmax == 'final':
+                    tf_values_softmax = tf.one_hot(self._N - 1, self._N) * tf.ones(tf.shape(tf_values))
+                    tf_values_depth = (self._N - 1) * tf.ones([tf.shape(tf_values)[0]])
+                elif values_softmax == 'mean':
+                    tf_values_softmax = (1. / float(self._N)) * tf.ones(tf.shape(tf_values))
+                    tf_values_depth = ((self._N - 1) / 2.) * tf.ones([tf.shape(tf_values)[0]])
+                elif values_softmax == 'learned':
+                    tf_values_softmax_list = []
+                    for n in range(self._N):
+                        tf_values_softmax_list.append(np.prod(tf_nstep_lambdas[:n]) * (1 - tf_nstep_lambdas[n]))
+                    tf_values_softmax = tf.concat(1, tf_values_softmax_list)
+                    tf.assert_less(tf.reduce_max(tf.reduce_sum(tf_values_softmax, 1)), 1.0001)
+                    tf.assert_greater(tf.reduce_min(tf.reduce_sum(tf_values_softmax, 1)), 0.999)
 
-        return tf_values
+                    curr_depth = 0
+                    for n in range(self._N - 1, -1, -1):
+                        curr_depth = tf_nstep_lambdas[n] * (1 + np.power(self._gamma, n) * curr_depth)
+                    tf_values_depth = curr_depth
+
+        assert (tf_values.get_shape()[1].value == self._N)
+
+        return tf_values, tf_values_softmax, tf_values_depth
