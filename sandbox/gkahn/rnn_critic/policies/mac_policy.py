@@ -459,12 +459,15 @@ class MACPolicy(TfPolicy, Serializable):
 
         tf_mses = []
         for n in range(self._N):
-            tf_sum_rewards = tf.reduce_sum(np.power(self._gamma * np.ones(n+1), np.arange(n+1)) *
+            tf_sum_rewards_n = tf.reduce_sum(np.power(self._gamma * np.ones(n+1), np.arange(n+1)) *
                                            tf_rewards_ph[:,:n+1],
                                            reduction_indices=1)
-            tf_mses.append(tf.square(tf_sum_rewards
-                                     + (1 - tf_dones[:,n]) * np.power(self._gamma, n+1) * tf_target_get_action_values[:,n]
-                                     - tf_train_values[:,n]))
+            tf_target_values_n = (1 - tf_dones[:,n]) * np.power(self._gamma, n+1) * tf_target_get_action_values[:,n]
+            if self._separate_target_params:
+                tf_target_values_n = tf.stop_gradient(tf_target_values_n)
+            tf_train_values_n = tf_train_values[:, n]
+
+            tf_mses.append(tf.square(tf_sum_rewards_n + tf_target_values_n - tf_train_values_n))
 
         tf_mse = tf.reduce_mean(tf.reduce_sum(tf_train_values_softmax * tf.pack(tf_mses, 1), reduction_indices=1))
 
