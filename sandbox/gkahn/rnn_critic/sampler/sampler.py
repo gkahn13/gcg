@@ -100,20 +100,16 @@ class RNNCriticSampler(object):
     ### Add offpolicy ###
     #####################
 
-    def _offpolicy_itr_file(self, offpolicy_folder, itr):
-        return os.path.join(offpolicy_folder, 'itr_{0:d}.pkl'.format(itr))
+    def _rollouts_file(self, folder, itr):
+        return os.path.join(folder, 'itr_{0:d}_rollouts.pkl'.format(itr))
 
     def add_offpolicy(self, offpolicy_folder):
         step = 0
         itr = 0
         replay_pools = itertools.cycle(self._replay_pools)
 
-        while os.path.exists(self._offpolicy_itr_file(offpolicy_folder, itr)):
-            sess, graph = MACPolicy.create_session_and_graph(gpu_device='')
-            with graph.as_default(), sess.as_default():
-                d = joblib.load(self._offpolicy_itr_file(offpolicy_folder, itr))
-                rollouts = d['rollouts']
-                d['policy'].terminate()
+        while os.path.exists(self._rollouts_file(offpolicy_folder, itr)):
+            rollouts = joblib.load(self._rollouts_file(offpolicy_folder, itr))['rollouts']
             itr += 1
 
             for rollout, replay_pool in zip(rollouts, replay_pools):

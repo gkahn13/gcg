@@ -29,7 +29,7 @@ class RNNCritic(RLAlgorithm):
                  replay_pool_size=int(1e6),
                  save_rollouts=False,
                  save_rollouts_observations=True,
-                 offpolicy_folder=None,
+                 offpolicy=None,
                  render=False):
         """
         :param env: Environment
@@ -47,7 +47,7 @@ class RNNCritic(RLAlgorithm):
         :param batch_size: batch size per gradient step
         :param save_rollouts: save rollouts when saving params?
         :param save_rollouts_observations: if save_rollouts, save the observations?
-        :param offpolicy_folder: if none, load rollouts from this folder
+        :param offpolicy: params about doing offpolicy
         :param render: show env
         """
         assert(learn_after_n_steps % n_envs == 0)
@@ -84,9 +84,23 @@ class RNNCritic(RLAlgorithm):
             save_rollouts_observations=save_rollouts_observations
         )
 
-        if offpolicy_folder is not None:
-            logger.log('Loading offpolicy data from {0}'.format(offpolicy_folder))
-            self._sampler.add_offpolicy(offpolicy_folder)
+        if offpolicy is not None:
+            logger.log('Loading offpolicy data from {0}'.format(offpolicy['folder']))
+            self._sampler.add_offpolicy(offpolicy['folder'])
+
+            logger.log('Training with offpolicy data')
+            eval_sampler = RNNCriticSampler(
+                policy=policy,
+                env=env,
+                n_envs=1,
+                replay_pool_size=env.horizon,
+                max_path_length=max_path_length,
+                save_rollouts=False,
+                save_rollouts_observations=False
+            )
+            self._train_offpolicy(offpolicy, eval_sampler)
+
+
 
     ####################
     ### File methods ###
@@ -116,6 +130,44 @@ class RNNCritic(RLAlgorithm):
             logger.save_itr_params(itr, itr_params)
 
             self._save_rollouts_file(itr, self._sampler.get_recent_paths())
+
+    def _train_offpolicy(self, offpolicy, eval_sampler):
+        total_steps = int(offpolicy['total_steps'])
+        update_target_after_n_steps = int(offpolicy['update_target_after_n_steps'])
+        update_target_every_n_steps = int(offpolicy['update_target_every_n_steps'])
+        n_evals_per_step = int(offpolicy['n_evals_per_step'])
+        log_every_n_steps = int(offpolicy['log_every_n_steps'])
+
+        ### update preprocess
+        stats = self._sampler.statistics
+        self._policy.update_preprocess(stats)
+
+        target_updated = False
+        eval_sampler_step = 0
+        for step in range(total_steps):
+            for _ in range(n_evals_per_step):
+                eval_sampler.step(eval_sampler_step)
+                eval_sampler_step += 1
+
+            ### train
+            batch = self._sampler.sample(self._batch_size)
+            self._policy.train_step(step,
+                                    *batch,
+                                    use_target=target_updated)
+
+            ### target
+            if step > update_target_after_n_steps and \
+               step % update_target_every_n_steps == 0:
+                self._policy.update_target()
+                target_updated = True
+
+            ### log
+            if step % log_every_n_steps == 0:
+                logger.log('step %.3e' % step)
+                logger.record_tabular('Step', step)
+                eval_sampler.log()
+                self._policy.log()
+                logger.dump_tabular(with_prefix=False)
 
     @overrides
     def train(self):
