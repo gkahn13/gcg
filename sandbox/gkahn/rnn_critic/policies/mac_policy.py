@@ -66,7 +66,7 @@ class MACPolicy(TfPolicy, Serializable):
         self._get_action_test = kwargs.get('get_action_test')
         self._get_action_target = kwargs.get('get_action_target')
         self._exploration_strategy = None # don't set in init b/c will then be Serialized
-        self._num_get_action = 0  # keep track of how many times get action called
+        self._num_exploration_strategy = 0  # keep track of how many times get action called
 
         ### setup the model
         self._tf_debug = dict()
@@ -662,6 +662,7 @@ class MACPolicy(TfPolicy, Serializable):
 
     def set_exploration_strategy(self, exploration_strategy):
         self._exploration_strategy = exploration_strategy
+        self._num_exploration_strategy = 0 # reset
 
     def get_action(self, observation):
         chosen_actions, action_info = self.get_actions([observation])
@@ -678,12 +679,12 @@ class MACPolicy(TfPolicy, Serializable):
             if self._exploration_strategy is not None:
                 exploration_func = lambda: None
                 exploration_func.get_action = lambda _: (action_i, dict())
-                action_i = self._exploration_strategy.get_action(self._num_get_action + i,
+                action_i = self._exploration_strategy.get_action(self._num_exploration_strategy,
                                                                  observation_i,
                                                                  exploration_func)
-            chosen_actions.append(action_i)
+                self._num_exploration_strategy += 1
 
-        self._num_get_action += len(observations)
+            chosen_actions.append(action_i)
 
         return chosen_actions, {}
 

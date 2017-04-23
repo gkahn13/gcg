@@ -72,8 +72,6 @@ class RNNCritic(RLAlgorithm):
         self._save_rollouts = save_rollouts
         self._save_rollouts_observations = save_rollouts_observations
 
-        policy.set_exploration_strategy(exploration_strategy)
-
         self._sampler = RNNCriticSampler(
             policy=policy,
             env=env,
@@ -100,7 +98,8 @@ class RNNCritic(RLAlgorithm):
             )
             self._train_offpolicy(offpolicy, eval_sampler)
 
-
+        ### set exploration after offpolicy
+        policy.set_exploration_strategy(exploration_strategy)
 
     ####################
     ### File methods ###
