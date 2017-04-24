@@ -120,7 +120,10 @@ class PlotAnalyzeRNNCritic(object):
         elif isinstance(self._env, GymEnv) and 'pong' in self._env.env_id.lower():
             self._plot_analyze_Pong()
         elif isinstance(self._env, GymEnv) and 'invertedpendulum' in self._env.env_id.lower():
-            self._plot_analyze_InvertedPendulum()
+            if 'offpolicy' in analyze_groups[0][0].params['alg']:
+                self._plot_analyze_InvertedPendulum_offpolicy()
+            else:
+                self._plot_analyze_InvertedPendulum()
         elif isinstance(self._env, GymEnv) and 'tennis' in self._env.env_id.lower():
             self._plot_analyze_Tennis()
         elif isinstance(self._env, GymEnv) and 'reacher' in self._env.env_id.lower():
@@ -759,6 +762,62 @@ class PlotAnalyzeRNNCritic(object):
         f.savefig(self._analyze_img_file, bbox_inches='tight', dpi=200)
         plt.close(f)
 
+    def _plot_analyze_InvertedPendulum_offpolicy(self):
+        import IPython; IPython.embed()
+    
+        f, axes = create_best_fit_axes(len(self._analyze_groups), figsize=(15, 15))
+
+        ### plot cum reward versus time step
+        for ax, analyze_group in zip(axes.ravel(), self._analyze_groups):
+            data_interp = DataAverageInterpolation()
+            data_interp_cummax = DataAverageInterpolation()
+            min_step = max_step = None
+            for analyze in analyze_group:
+                assert('offpolicy' in analyze.params['alg'])
+                steps = np.array(analyze.progress['Step'], dtype=np.float32)
+                onpolicy_switch_idx = np.convolve(steps, [-1, 1], 'same').argmax()
+                steps[onpolicy_switch_idx:] += analyze.params['alg']['offpolicy']['total_steps']
+                
+                cum_rewards = analyze.progress['CumRewardMean']
+                cum_rewards_cummax = cum_rewards.cummax()
+           
+                data_interp.add_data(steps, cum_rewards)
+                data_interp_cummax.add_data(steps, cum_rewards_cummax)
+                if min_step is None:
+                    min_step = steps[0]
+                if max_step is None:
+                    max_step = steps[-1]
+                min_step = max(min_step, steps[0])
+                max_step = min(max_step, steps[-1])
+
+            steps = np.r_[min_step:max_step:50.][1:-1]
+            cum_rewards_mean, cum_rewards_std = data_interp.eval(steps)
+            cum_rewards_cummax_mean, cum_rewards_cummax_std = data_interp_cummax.eval(steps)
+
+            ax.plot(steps, cum_rewards_mean, color='k', label=analyze.plot['label'])
+            ax.fill_between(steps, cum_rewards_mean - cum_rewards_std, cum_rewards_mean + cum_rewards_std, color='k', alpha=0.4)
+            
+            ax.plot(steps, cum_rewards_cummax_mean, color='r', label=analyze.plot['label'])
+            ax.fill_between(steps, cum_rewards_cummax_mean - cum_rewards_cummax_std, cum_rewards_cummax_mean + cum_rewards_cummax_std, color='r', alpha=0.4)
+
+            max_path_length = analyze_group[0].params['alg']['max_path_length'] \
+                if 'max_path_length' in analyze_group[0].params['alg'] \
+                else analyze_group[0].env.horizon
+            ax.vlines(analyze.params['alg']['offpolicy']['total_steps'], -0.1*max_path_length, 1.1*max_path_length, color='k', linestyle='--')
+            ax.set_ylim((-0.1*max_path_length, 1.1*max_path_length))
+            ax.grid()
+            ax.set_title(analyze_group[0].plot['label'], {'fontsize': 10})
+            ax.set_ylabel('Cumulative reward')
+            ax.set_xlabel('Steps')
+            xfmt = ticker.ScalarFormatter()
+            xfmt.set_powerlimits((0, 0))
+            ax.xaxis.set_major_formatter(xfmt)
+
+        plt.tight_layout()
+        f.savefig(self._analyze_img_file, bbox_inches='tight', dpi=200)
+        plt.close(f)
+
+
     def _plot_analyze_Reacher(self):
         f, axes = create_best_fit_axes(len(self._analyze_groups), figsize=(15, 15))
 
@@ -915,21 +974,22 @@ if __name__ == '__main__':
     SAVE_FOLDER = '/home/gkahn/code/rllab/data/local/rnn-critic/'
 
     analyze_groups = []
-    for start in range(1, 22, 3):
+    for start in range(341, 370, 3):
         analyze_group = []
         for i in range(start, start + 3):
-            print('\nreacher{0:03d}\n'.format(i))
+            print('\nip{0:03d}\n'.format(i))
             try:
-                analyze = AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'reacher{0:03d}'.format(i)),
+                analyze = AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'ip{0:03d}'.format(i)),
                                            plot={
                                                'label': '',
                                                'color': 'k',
                                            },
                                            clear_obs=True,
                                            create_new_envs=False)
-                analyze.plot['label'] = 'N: {0}, H: {1}'.format(
+                analyze.plot['label'] = 'N: {0}, H: {1}, target_freq: {2}'.format(
                     analyze.params['policy']['N'],
                     analyze.params['policy']['H'],
+                    analyze.params['alg']['update_target_every_n_steps']
                 )
                 analyze_group.append(analyze)
             except:
@@ -938,6 +998,6 @@ if __name__ == '__main__':
         analyze_groups.append(analyze_group)
 
 
-    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'reacher_001_022', analyze_groups)
+    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'ip_341_370', analyze_groups)
     plotter.run()
 

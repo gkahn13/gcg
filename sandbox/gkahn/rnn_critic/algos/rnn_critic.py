@@ -162,7 +162,7 @@ class RNNCritic(RLAlgorithm):
 
             ### log
             if step % log_every_n_steps == 0:
-                logger.log('step %.3e' % step)
+                logger.log('offpolicy step %.3e' % step)
                 logger.record_tabular('Step', step)
                 eval_sampler.log()
                 self._policy.log()
@@ -232,11 +232,11 @@ class RNNCritic(RLAlgorithm):
                     timeit.reset()
                     timeit.start('total')
 
-                ### save model
-                if step % self._save_every_n_steps == 0:
-                    # logger.log('Saving...')
-                    self._save_params(save_itr)
-                    save_itr += 1
+            ### save model
+            if step % self._save_every_n_steps == 0:
+                # logger.log('Saving...')
+                self._save_params(save_itr)
+                save_itr += 1
 
         self._save_params(save_itr)
 
