@@ -230,7 +230,7 @@ class MACPolicy(TfPolicy, Serializable):
         :return: tf_values: [batch_size, H]
         """
         H = tf_actions_ph.get_shape()[1].value
-        assert(tf_obs_lowd.get_shape()[1].value == self._rnn_state_dim)
+        assert(tf_obs_lowd.get_shape()[1].value == (2 * self._rnn_state_dim if self._use_lstm else self._rnn_state_dim))
         tf.assert_equal(tf.shape(tf_obs_lowd)[0], tf.shape(tf_actions_ph)[0])
         action_dim = self.env_spec.action_space.flat_dim
 
