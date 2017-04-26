@@ -216,7 +216,7 @@ class MACValues(torch.nn.Module):
         """
         :return: values, values_softmax
         """
-        # timeit.start('MacValues')
+        # timeit.start('total')
         batch_size = actions.size(0)
         N = actions.size(1)
 
@@ -241,8 +241,9 @@ class MACValues(torch.nn.Module):
 
         ### rewards
         # timeit.start('MacValues:rewards')
-        rewards = [torch.autograd.Variable(torch.zeros(batch_size, 1).cuda())] + \
-                  [self._reward_fc(output) for output in outputs[:-1]]
+        rewards = [self._reward_fc(output) for output in outputs]
+        rewards = [rewards[-1]] + rewards[1:] # shift right
+        rewards[0][:] = 0 # zero out the first one
         # timeit.stop('MacValues:rewards')
 
         ### nstep values
@@ -254,7 +255,7 @@ class MACValues(torch.nn.Module):
         # timeit.start('MacValues:values')
         values = []
         gammas = torch.autograd.Variable(
-            torch.stack([torch.ones(batch_size).cuda() * np.power(self._gamma, i) for i in range(N)], dim=1))
+            torch.stack([torch.ones(batch_size).cuda() * np.power(self._gamma, i) for i in range(N)], dim=1)) # TODO: this takes all the time
         for n in range(N):
             returns = torch.cat(rewards[:n] + [nstep_values[n]], 1)
             values.append((gammas[:, :n+1] * returns).sum(1))
@@ -264,7 +265,7 @@ class MACValues(torch.nn.Module):
         ### values softmax
         values_softmax = torch.autograd.Variable(torch.ones(batch_size, N).cuda() / N) # TODO hard coded
 
-        # timeit.stop('MacValues')
+        # timeit.stop('total')
 
         return values, values_softmax
 
@@ -406,8 +407,9 @@ class MACCost(torch.nn.Module):
         # timeit.stop('MacCost:Rewards')
         ### compute target values
         # timeit.start('MacCost:TargetValues')
-        target_values = torch.cat([self._target_get_action(target_observations[:, h:h+self._obs_history_len, :])[1]
-                                   for h in range(N)], 1).detach()
+        target_observations_stacked = torch.cat([target_observations[:, h:h+self._obs_history_len, :]
+                                                 for h in range(N)], 0)
+        target_values = self._target_get_action(target_observations_stacked)[1].resize(batch_size, N).detach()
         # timeit.stop('MacCost:TargetValues')
         ### compute policy values
         # timeit.start('MacCost:PolicyValues')
@@ -649,19 +651,19 @@ class MACPolicyPytorch(Serializable):
     def train_step(self, step, observations, actions, rewards, dones, use_target):
         self._optimizer.zero_grad()
         observations = observations.astype(np.float32)
-        timeit.start('TrainStep:forward')
+        # timeit.start('TrainStep:forward')
         cost = self._mac_cost(torch.autograd.Variable(torch.from_numpy(observations[:, :self._obs_history_len, :]).cuda().float()),
                               torch.autograd.Variable(torch.from_numpy(actions[:, :self._N, :]).cuda()),
                               torch.autograd.Variable(torch.from_numpy(dones.astype(int)).cuda()),
                               torch.autograd.Variable(torch.from_numpy(rewards).cuda()),
                               torch.autograd.Variable(torch.from_numpy(observations[:, 1:, :]).cuda().float()))
-        timeit.stop('TrainStep:forward')
-        timeit.start('TrainStep:backward')
+        # timeit.stop('TrainStep:forward')
+        # timeit.start('TrainStep:backward')
         cost.backward()
-        timeit.stop('TrainStep:backward')
-        timeit.start('TrainStep:opt')
+        # timeit.stop('TrainStep:backward')
+        # timeit.start('TrainStep:opt')
         self._optimizer.step()
-        timeit.stop('TrainStep:opt')
+        # timeit.stop('TrainStep:opt')
 
         # print('train_step'); import IPython; IPython.embed()
 
@@ -678,13 +680,8 @@ class MACPolicyPytorch(Serializable):
         return chosen_actions[0], action_info
 
     def get_actions(self, observations):
-        import time
-        start = time.time()
-
         torch_observations = torch.autograd.Variable(torch.from_numpy(np.array(observations)).cuda().float())
         actions = self._policy_mac_get_action(torch_observations)[0].cpu().data.numpy()
-
-        elapsed = time.time() - start
 
         # print('get_actions'); import IPython; IPython.embed()
 
