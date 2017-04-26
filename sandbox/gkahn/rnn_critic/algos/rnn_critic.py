@@ -233,7 +233,7 @@ class RNNCritic(RLAlgorithm):
                     timeit.start('total')
 
             ### save model
-            if step % self._save_every_n_steps == 0:
+            if step > 0 and step % self._save_every_n_steps == 0:
                 # logger.log('Saving...')
                 self._save_params(save_itr)
                 save_itr += 1
