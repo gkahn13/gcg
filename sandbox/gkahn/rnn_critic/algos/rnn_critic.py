@@ -1,6 +1,7 @@
 import os
 import joblib
 import pickle
+import torch
 
 from rllab.algos.base import RLAlgorithm
 from rllab.misc.overrides import overrides
@@ -105,9 +106,11 @@ class RNNCritic(RLAlgorithm):
     ### File methods ###
     ####################
 
-    def _save_rollouts_file(self, itr, rollouts):
-        fname = os.path.join(logger.get_snapshot_dir(), 'itr_{0}_rollouts.pkl'.format(itr))
-        joblib.dump({'rollouts': rollouts}, fname, compress=3)
+    def _params_file(self, itr):
+        return os.path.join(logger.get_snapshot_dir(), 'itr_{0}.pth.tar'.format(itr))
+
+    def _rollouts_file(self, itr):
+        return os.path.join(logger.get_snapshot_dir(), 'itr_{0}_rollouts.pkl'.format(itr))
 
     ########################
     ### Training methods ###
@@ -120,15 +123,16 @@ class RNNCritic(RLAlgorithm):
         except:
             env_is_pickleable=False
 
-        with self._policy.session.as_default(), self._policy.session.graph.as_default():
-            itr_params = dict(
-                itr=itr,
-                policy=self._policy,
-                # env=self._env if env_is_pickleable else None
-            )
-            logger.save_itr_params(itr, itr_params)
+        itr_params = dict(
+            itr=itr,
+            policy=self._policy,
+            policy_state_dicts=self._policy.state_dicts()
+            # env=self._env if env_is_pickleable else None
+        )
+        torch.save(itr_params, self._params_file(itr))
 
-            self._save_rollouts_file(itr, self._sampler.get_recent_paths())
+        joblib.dump({'rollouts': self._sampler.get_recent_paths()},
+                    self._rollouts_file(itr), compress=3)
 
     def _train_offpolicy(self, offpolicy, eval_sampler):
         total_steps = int(offpolicy['total_steps'])
