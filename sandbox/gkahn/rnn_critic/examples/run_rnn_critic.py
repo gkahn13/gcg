@@ -35,23 +35,31 @@ def run_rnn_critic(params, params_txt):
     os.environ["CUDA_VISIBLE_DEVICES"] = str(params['policy']['gpu_device'])  # TODO: hack so don't double GPU
     config.USE_TF = True
 
-    from rllab.envs.gym_env import GymEnv
-    from sandbox.gkahn.rnn_critic.envs.premade_gym_env import PremadeGymEnv
-    try:
-        import gym_ple
-    except:
-        pass
-    from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
-    from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
-    from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
-    inner_env = eval(params['alg'].pop('env'))
-    env = TfEnv(normalize(inner_env))
+    def create_env(env_str):
+        from rllab.envs.gym_env import GymEnv
+        from sandbox.gkahn.rnn_critic.envs.premade_gym_env import PremadeGymEnv
+        try:
+            import gym_ple
+        except:
+            pass
+        from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
+        from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
+        from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
 
-    # set seed
-    if params['seed'] is not None:
-        set_seed(params['seed'])
-        if isinstance(inner_env, GymEnv):
-            inner_env.env.seed(params['seed'])
+        inner_env = eval(env_str)
+        env = TfEnv(normalize(inner_env))
+
+        # set seed
+        if params['seed'] is not None:
+            set_seed(params['seed'])
+            if isinstance(inner_env, GymEnv):
+                inner_env.env.seed(params['seed'])
+
+        return env
+
+    env_str = params['alg'].pop('env')
+    env = create_env(env_str)
+    env_eval = create_env(env_str)
 
     # import matplotlib.pyplot as plt
     # f = plt.figure()
@@ -106,6 +114,7 @@ def run_rnn_critic(params, params_txt):
     if 'is_onpolicy' not in params['alg'].keys() or params['alg']['is_onpolicy']:
         algo = RNNCritic(
             env=env,
+            env_eval=env_eval,
             policy=policy,
             exploration_strategy=exploration_strategy,
             max_path_length=params['alg'].pop('max_path_length', env.horizon),

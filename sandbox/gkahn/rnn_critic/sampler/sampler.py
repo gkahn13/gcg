@@ -130,8 +130,8 @@ class RNNCriticSampler(object):
     ### Logging ###
     ###############
 
-    def log(self):
-        RNNCriticReplayPool.log_pools(self._replay_pools)
+    def log(self, prefix=''):
+        RNNCriticReplayPool.log_pools(self._replay_pools, prefix=prefix)
 
     def get_recent_paths(self):
         return RNNCriticReplayPool.get_recent_paths_pools(self._replay_pools)

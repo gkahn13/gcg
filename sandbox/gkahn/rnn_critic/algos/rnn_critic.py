@@ -13,12 +13,15 @@ class RNNCritic(RLAlgorithm):
 
     def __init__(self,
                  env,
+                 env_eval,
                  policy,
                  max_path_length,
                  exploration_strategy,
                  total_steps,
+                 sample_after_n_steps,
                  learn_after_n_steps,
                  train_every_n_steps,
+                 eval_every_n_steps,
                  save_every_n_steps,
                  update_target_after_n_steps,
                  update_target_every_n_steps,
@@ -31,25 +34,6 @@ class RNNCritic(RLAlgorithm):
                  save_rollouts_observations=True,
                  offpolicy=None,
                  render=False):
-        """
-        :param env: Environment
-        :param policy: RNNCriticPolicy
-        :param max_path_length: maximum length of a single rollout
-        :param exploration_strategy: how actions are modified
-        :param total_steps: how many steps to take in total
-        :param learn_after_n_steps: before this many steps, take random actions
-        :param train_every_n_steps: train policy every n steps
-        :param save_every_n_steps: save policy every n steps
-        :param update_target_after_n_steps:
-        :param update_target_every_n_steps: update target every n steps
-        :param update_preprocess_every_n_steps
-        :param log_every_n_steps: log every n steps
-        :param batch_size: batch size per gradient step
-        :param save_rollouts: save rollouts when saving params?
-        :param save_rollouts_observations: if save_rollouts, save the observations?
-        :param offpolicy: params about doing offpolicy
-        :param render: show env
-        """
         assert(learn_after_n_steps % n_envs == 0)
         if train_every_n_steps >= 1:
             assert(int(train_every_n_steps) % n_envs == 0)
@@ -57,12 +41,13 @@ class RNNCritic(RLAlgorithm):
         assert(update_target_every_n_steps % n_envs == 0)
         assert(update_preprocess_every_n_steps % n_envs == 0)
 
-        self._env = env
         self._policy = policy
         self._max_path_length = int(max_path_length)
         self._total_steps = int(total_steps)
+        self._sample_after_n_steps = int(sample_after_n_steps)
         self._learn_after_n_steps = int(learn_after_n_steps)
         self._train_every_n_steps = train_every_n_steps
+        self._eval_every_n_steps = int(eval_every_n_steps)
         self._save_every_n_steps = int(save_every_n_steps)
         self._update_target_after_n_steps = int(update_target_after_n_steps)
         self._update_target_every_n_steps = int(update_target_every_n_steps)
@@ -71,6 +56,8 @@ class RNNCritic(RLAlgorithm):
         self._batch_size = batch_size
         self._save_rollouts = save_rollouts
         self._save_rollouts_observations = save_rollouts_observations
+
+        policy.set_exploration(exploration_strategy)
 
         self._sampler = RNNCriticSampler(
             policy=policy,
@@ -82,115 +69,77 @@ class RNNCritic(RLAlgorithm):
             save_rollouts_observations=save_rollouts_observations
         )
 
+        self._eval_sampler = RNNCriticSampler(
+            policy=policy,
+            env=env_eval,
+            n_envs=1,
+            replay_pool_size=env.horizon,
+            max_path_length=max_path_length,
+            save_rollouts=True,
+            save_rollouts_observations=False
+        )
+
         if offpolicy is not None:
-            logger.log('Loading offpolicy data from {0}'.format(offpolicy['folder']))
-            self._sampler.add_offpolicy(offpolicy['folder'])
-
-            logger.log('Training with offpolicy data')
-            eval_sampler = RNNCriticSampler(
-                policy=policy,
-                env=env,
-                n_envs=1,
-                replay_pool_size=env.horizon,
-                max_path_length=max_path_length,
-                save_rollouts=True,
-                save_rollouts_observations=False
-            )
-            self._train_offpolicy(offpolicy, eval_sampler)
-
-        ### set exploration after offpolicy
-        policy.set_exploration_strategy(exploration_strategy)
+            assert(os.path.exists(offpolicy))
+            logger.log('Loading offpolicy data from {0}'.format(offpolicy))
+            self._sampler.add_offpolicy(offpolicy)
 
     ####################
-    ### File methods ###
+    ### Save methods ###
     ####################
 
-    def _save_rollouts_file(self, itr, rollouts, offpolicy=False):
-        if offpolicy:
-            fname = 'itr_{0}_offpolicy_rollouts.pkl'.format(itr)
+    def _save_rollouts_file(self, itr, rollouts, eval=False):
+        if eval:
+            fname = 'itr_{0}_rollouts_eval.pkl'.format(itr)
         else:
             fname = 'itr_{0}_rollouts.pkl'.format(itr)
         fname = os.path.join(logger.get_snapshot_dir(), fname)
         joblib.dump({'rollouts': rollouts}, fname, compress=3)
 
-    ########################
-    ### Training methods ###
-    ########################
-
-    def _save_params(self, itr):
-        env_is_pickleable = True
-        try:
-            pickle.dumps(self._env)
-        except:
-            env_is_pickleable=False
-
+    def _save_params(self, itr, train_rollouts, eval_rollouts):
         with self._policy.session.as_default(), self._policy.session.graph.as_default():
             itr_params = dict(
                 itr=itr,
                 policy=self._policy,
-                # env=self._env if env_is_pickleable else None
             )
             logger.save_itr_params(itr, itr_params)
 
-            self._save_rollouts_file(itr, self._sampler.get_recent_paths())
+            self._save_rollouts_file(itr, train_rollouts)
+            self._save_rollouts_file(itr, eval_rollouts, eval=True)
 
-    def _train_offpolicy(self, offpolicy, eval_sampler):
-        total_steps = int(offpolicy['total_steps'])
-        update_target_after_n_steps = int(offpolicy['update_target_after_n_steps'])
-        update_target_every_n_steps = int(offpolicy['update_target_every_n_steps'])
-        n_evals_per_step = int(offpolicy['n_evals_per_step'])
-        log_every_n_steps = int(offpolicy['log_every_n_steps'])
-        save_every_n_steps = int(offpolicy['save_every_n_steps'])
-
-        ### update preprocess
-        stats = self._sampler.statistics
-        self._policy.update_preprocess(stats)
-
-        target_updated = False
-        eval_sampler_step = 0
-        save_itr = 0
-        for step in range(total_steps):
-            for _ in range(n_evals_per_step):
-                eval_sampler.step(eval_sampler_step)
-                eval_sampler_step += 1
-
-            ### train
-            batch = self._sampler.sample(self._batch_size)
-            self._policy.train_step(step,
-                                    *batch,
-                                    use_target=target_updated)
-
-            ### target
-            if step > update_target_after_n_steps and \
-               step % update_target_every_n_steps == 0:
-                self._policy.update_target()
-                target_updated = True
-
-            ### log
-            if step % log_every_n_steps == 0:
-                logger.log('offpolicy step %.3e' % step)
-                logger.record_tabular('Step', step)
-                eval_sampler.log()
-                self._policy.log()
-                logger.dump_tabular(with_prefix=False)
-
-            ### save model
-            if step > 0 and step % save_every_n_steps == 0:
-                self._save_rollouts_file(save_itr, eval_sampler.get_recent_paths(), offpolicy=True)
-                save_itr += 1
-
-        self._save_rollouts_file(save_itr, eval_sampler.get_recent_paths(), offpolicy=True)
+    ########################
+    ### Training methods ###
+    ########################
 
     @overrides
     def train(self):
         save_itr = 0
         target_updated = False
+        eval_rollouts = []
+
         timeit.reset()
         timeit.start('total')
         for step in range(0, self._total_steps, self._sampler.n_envs):
-            timeit.start('sample')
-            self._sampler.step(step, take_random_actions=(step <= self._learn_after_n_steps))
-            timeit.stop('sample')
+            ### sample and add to buffer
+            if step > self._sample_after_n_steps:
+                timeit.start('sample')
+                self._sampler.step(step, take_random_actions=(step <= self._learn_after_n_steps))
+                timeit.stop('sample')
+
+            ### sample and DON'T add to buffer (for validation)
+            if step % self._eval_every_n_steps == 0:
+                logger.log('Evaluating')
+                timeit.start('eval')
+                self._policy.turn_off_exploration()
+                eval_rollouts_step = []
+                eval_step = step
+                while len(eval_rollouts_step) == 0:
+                    self._eval_sampler.step(eval_step)
+                    eval_rollouts_step = self._eval_sampler.get_recent_paths()
+                    eval_step += 1
+                eval_rollouts += eval_rollouts_step
+                self._policy.turn_on_exploration()
+                timeit.stop('eval')
 
             if step > self._learn_after_n_steps:
                 ### training step
@@ -200,9 +149,7 @@ class RNNCritic(RLAlgorithm):
                         batch = self._sampler.sample(self._batch_size)
                         timeit.stop('batch')
                         timeit.start('train')
-                        self._policy.train_step(step,
-                                                *batch,
-                                                use_target=target_updated)
+                        self._policy.train_step(step, *batch, use_target=target_updated)
                         timeit.stop('train')
                 else:
                     for _ in range(int(1. / self._train_every_n_steps)):
@@ -210,45 +157,43 @@ class RNNCritic(RLAlgorithm):
                         batch = self._sampler.sample(self._batch_size)
                         timeit.stop('batch')
                         timeit.start('train')
-                        self._policy.train_step(step,
-                                                *batch,
-                                                use_target=target_updated)
+                        self._policy.train_step(step, *batch, use_target=target_updated)
                         timeit.stop('train')
 
                 ### update target network
                 if step > self._update_target_after_n_steps and step % self._update_target_every_n_steps == 0:
-                    # logger.log('Updating target network...')
-                    timeit.start('target')
+                    logger.log('Updating target network')
                     self._policy.update_target()
                     target_updated = True
-                    timeit.stop('target')
 
                 ### update preprocess
                 if step % self._update_preprocess_every_n_steps == 0:
-                    timeit.start('stats')
-                    stats = self._sampler.statistics
-                    timeit.stop('stats')
-                    timeit.start('preprocess')
-                    self._policy.update_preprocess(stats)
-                    timeit.stop('preprocess')
+                    logger.log('Updating preprocess')
+                    self._policy.update_preprocess(self._sampler.statistics)
 
-                if step % self._log_every_n_steps == 0:
-                    logger.log('step %.3e' % step)
-                    logger.record_tabular('Step', step)
-                    self._sampler.log()
-                    self._policy.log()
-                    logger.dump_tabular(with_prefix=False)
-                    timeit.stop('total')
-                    print('')
-                    print(str(timeit))
-                    print('')
-                    timeit.reset()
-                    timeit.start('total')
+            ### log
+            if step % self._log_every_n_steps == 0:
+                logger.log('step %.3e' % step)
+                logger.record_tabular('Step', step)
+                self._sampler.log()
+                self._eval_sampler.log(prefix='Eval')
+                self._policy.log()
+                logger.dump_tabular(with_prefix=False)
+                timeit.stop('total')
+                print('')
+                print(str(timeit))
+                print('')
+                timeit.reset()
+                timeit.start('total')
 
             ### save model
             if step > 0 and step % self._save_every_n_steps == 0:
-                # logger.log('Saving...')
-                self._save_params(save_itr)
+                logger.log('Saving files')
+                self._save_params(save_itr,
+                                  train_rollouts=self._sampler.get_recent_paths(),
+                                  eval_rollouts=eval_rollouts)
                 save_itr += 1
 
-        self._save_params(save_itr)
+        self._save_params(save_itr,
+                          train_rollouts=self._sampler.get_recent_paths(),
+                          eval_rollouts=eval_rollouts)

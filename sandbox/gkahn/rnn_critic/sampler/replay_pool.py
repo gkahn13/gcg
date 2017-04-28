@@ -320,23 +320,23 @@ class RNNCriticReplayPool(object):
         return paths
 
     @staticmethod
-    def log_pools(replay_pools):
+    def log_pools(replay_pools, prefix=''):
         def join(l):
             return list(itertools.chain(*l))
         all_log_stats = [replay_pool.get_log_stats() for replay_pool in replay_pools]
         log_stats = defaultdict(list)
         for k in all_log_stats[0].keys():
             log_stats[k] = join([ls[k] for ls in all_log_stats])
-        logger.record_tabular('CumRewardMean', np.mean(log_stats['CumReward']))
-        logger.record_tabular('CumRewardStd', np.std(log_stats['CumReward']))
-        logger.record_tabular('AvgRewardMean', np.mean(log_stats['AvgReward']))
-        logger.record_tabular('AvgRewardStd', np.std(log_stats['AvgReward']))
-        logger.record_tabular('FinalRewardMean', np.mean(log_stats['FinalReward']))
-        logger.record_tabular('FinalRewardStd', np.std(log_stats['FinalReward']))
-        logger.record_tabular('EpisodeLengthMean', np.mean(log_stats['EpisodeLength']))
-        logger.record_tabular('EpisodeLengthStd', np.std(log_stats['EpisodeLength']))
-        logger.record_tabular('NumEpisodes', len(log_stats['EpisodeLength']))
-        logger.record_tabular('Time', np.mean(log_stats['Time']))
+        logger.record_tabular(prefix+'CumRewardMean', np.mean(log_stats['CumReward']))
+        logger.record_tabular(prefix+'CumRewardStd', np.std(log_stats['CumReward']))
+        logger.record_tabular(prefix+'AvgRewardMean', np.mean(log_stats['AvgReward']))
+        logger.record_tabular(prefix+'AvgRewardStd', np.std(log_stats['AvgReward']))
+        logger.record_tabular(prefix+'FinalRewardMean', np.mean(log_stats['FinalReward']))
+        logger.record_tabular(prefix+'FinalRewardStd', np.std(log_stats['FinalReward']))
+        logger.record_tabular(prefix+'EpisodeLengthMean', np.mean(log_stats['EpisodeLength']))
+        logger.record_tabular(prefix+'EpisodeLengthStd', np.std(log_stats['EpisodeLength']))
+        logger.record_tabular(prefix+'NumEpisodes', len(log_stats['EpisodeLength']))
+        logger.record_tabular(prefix+'Time', np.mean(log_stats['Time']))
 
     @staticmethod
     def get_recent_paths_pools(replay_pools):

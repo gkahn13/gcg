@@ -627,44 +627,44 @@ class PlotAnalyzeRNNCritic(object):
         plt.close(f)
 
     def _plot_analyze_Pong(self):
-        import IPython; IPython.embed()
-
         analyzes = list(itertools.chain(*self._analyze_groups))
         f, axes = plt.subplots(len(analyzes), 1, figsize=(20, 15), sharex=True, sharey=True)
 
         ### plot cum reward versus time step
         for ax, analyze in zip(axes.ravel(), analyzes):
-            rollouts = list(itertools.chain(*analyze.train_rollouts_itrs))
-            rollouts = sorted(rollouts, key=lambda r: r['steps'][-1])
-            steps, cum_rewards = [], []
-            for r in rollouts:
-                steps.append(r['steps'][-1])
-                cum_rewards.append(np.sum(r['rewards']))
+            offpolicy = 'offpolicy' in analyze.params['alg']
 
-            ### offpolicy
-            if len(analyze.offpolicy_rollouts_itrs) > 0:
-                offpolicy_rollouts = list(itertools.chain(*analyze.offpolicy_rollouts_itrs))
-                offpolicy_rollouts = sorted(offpolicy_rollouts, key=lambda r: r['steps'][-1])
-                offpolicy_steps, offpolicy_cum_rewards = [], []
-                for r in offpolicy_rollouts:
-                    offpolicy_steps.append(r['steps'][-1])
-                    offpolicy_cum_rewards.append(np.sum(r['rewards']))
+            steps = np.array(analyze.progress['Step'], dtype=np.float32)
+            if offpolicy and np.convolve(steps, [-1, 1], 'same').max() > 0:
+                onpolicy_switch_idx = np.convolve(steps, [-1, 1], 'same').argmax()
+                steps[onpolicy_switch_idx:] += analyze.params['alg']['offpolicy']['total_steps']
 
-                steps = list(offpolicy_steps) + list(analyze.params['alg']['offpolicy']['total_steps'] * \
-                                                     np.array(steps))
-                cum_rewards = offpolicy_cum_rewards + cum_rewards
+            cum_rewards = analyze.progress['CumRewardMean']
 
-            def moving_avg_std(idxs, data, window):
-                avg_idxs, means, stds = [], [], []
-                for i in range(window, len(data)):
-                    avg_idxs.append(np.mean(idxs[i - window:i]))
-                    means.append(np.mean(data[i - window:i]))
-                    stds.append(np.std(data[i - window:i]))
-                return avg_idxs, np.asarray(means), np.asarray(stds)
+            # rollouts = list(itertools.chain(*analyze.train_rollouts_itrs))
+            # rollouts = sorted(rollouts, key=lambda r: r['steps'][-1])
+            # steps, cum_rewards = [], []
+            # for r in rollouts:
+            #     steps.append(r['steps'][-1])
+            #     cum_rewards.append(np.sum(r['rewards']))
+            #
+            # ### offpolicy
+            # if len(analyze.offpolicy_rollouts_itrs) > 0:
+            #     offpolicy_rollouts = list(itertools.chain(*analyze.offpolicy_rollouts_itrs))
+            #     offpolicy_rollouts = sorted(offpolicy_rollouts, key=lambda r: r['steps'][-1])
+            #     offpolicy_steps, offpolicy_cum_rewards = [], []
+            #     for r in offpolicy_rollouts:
+            #         offpolicy_steps.append(r['steps'][-1])
+            #         offpolicy_cum_rewards.append(np.sum(r['rewards']))
+            #
+            #     steps = list(offpolicy_steps) + list(analyze.params['alg']['offpolicy']['total_steps'] * \
+            #                                          np.array(steps))
+            #     cum_rewards = offpolicy_cum_rewards + cum_rewards
 
             ax.plot(steps, cum_rewards, marker='|', linestyle='',
                     color=analyze.plot['color'], label=analyze.plot['label'])
-
+            if offpolicy:
+                ax.vlines(analyze.params['alg']['offpolicy']['total_steps'], -24, 24, color='k', linestyle='--')
             ax.set_ylim((-24, 24))
             ax.grid()
             ax.set_title(analyze.name)
