@@ -124,6 +124,7 @@ class AnalyzeRNNCritic(object):
         logger.log('AnalyzeRNNCritic: Loaded csv')
 
         self.train_rollouts_itrs = self._load_rollouts_itrs()
+        self.offpolicy_rollouts_itrs = self._load_rollouts_itrs(offpolicy=True)
         logger.log('AnalyzeRNNCritic: Loaded all itrs')
         self.env = TfEnv(normalize(eval(self.params['alg']['env'])))
         logger.log('AnalyzeRNNCritic: Created env')
@@ -145,8 +146,12 @@ class AnalyzeRNNCritic(object):
     def _itr_file(self, itr):
         return os.path.join(self._folder, 'itr_{0:d}.pkl'.format(itr))
 
-    def _itr_rollouts_file(self, itr):
-        return os.path.join(self._folder, 'itr_{0}_rollouts.pkl'.format(itr))
+    def _itr_rollouts_file(self, itr, offpolicy=False):
+        if offpolicy:
+            fname = 'itr_{0}_offpolicy_rollouts.pkl'.format(itr)
+        else:
+            fname = 'itr_{0}_rollouts.pkl'.format(itr)
+        return os.path.join(self._folder, fname)
 
     @property
     def _progress_file(self):
@@ -186,11 +191,11 @@ class AnalyzeRNNCritic(object):
     ### Data loading ###
     ####################
 
-    def _load_rollouts_itrs(self):
+    def _load_rollouts_itrs(self, offpolicy=False):
         train_rollouts_itrs = []
         itr = 0
-        while os.path.exists(self._itr_rollouts_file(itr)) and itr < self._max_itr:
-            rollouts = joblib.load(self._itr_rollouts_file(itr))['rollouts']
+        while os.path.exists(self._itr_rollouts_file(itr, offpolicy=offpolicy)) and itr < self._max_itr:
+            rollouts = joblib.load(self._itr_rollouts_file(itr, offpolicy=offpolicy))['rollouts']
             train_rollouts_itrs.append(rollouts)
             itr += self._skip_itr
 

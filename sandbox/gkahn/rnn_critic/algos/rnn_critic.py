@@ -93,7 +93,7 @@ class RNNCritic(RLAlgorithm):
                 n_envs=1,
                 replay_pool_size=env.horizon,
                 max_path_length=max_path_length,
-                save_rollouts=False,
+                save_rollouts=True,
                 save_rollouts_observations=False
             )
             self._train_offpolicy(offpolicy, eval_sampler)
@@ -105,8 +105,12 @@ class RNNCritic(RLAlgorithm):
     ### File methods ###
     ####################
 
-    def _save_rollouts_file(self, itr, rollouts):
-        fname = os.path.join(logger.get_snapshot_dir(), 'itr_{0}_rollouts.pkl'.format(itr))
+    def _save_rollouts_file(self, itr, rollouts, offpolicy=False):
+        if offpolicy:
+            fname = 'itr_{0}_offpolicy_rollouts.pkl'.format(itr)
+        else:
+            fname = 'itr_{0}_rollouts.pkl'.format(itr)
+        fname = os.path.join(logger.get_snapshot_dir(), fname)
         joblib.dump({'rollouts': rollouts}, fname, compress=3)
 
     ########################
@@ -136,6 +140,7 @@ class RNNCritic(RLAlgorithm):
         update_target_every_n_steps = int(offpolicy['update_target_every_n_steps'])
         n_evals_per_step = int(offpolicy['n_evals_per_step'])
         log_every_n_steps = int(offpolicy['log_every_n_steps'])
+        save_every_n_steps = int(offpolicy['save_every_n_steps'])
 
         ### update preprocess
         stats = self._sampler.statistics
@@ -143,6 +148,7 @@ class RNNCritic(RLAlgorithm):
 
         target_updated = False
         eval_sampler_step = 0
+        save_itr = 0
         for step in range(total_steps):
             for _ in range(n_evals_per_step):
                 eval_sampler.step(eval_sampler_step)
@@ -167,6 +173,13 @@ class RNNCritic(RLAlgorithm):
                 eval_sampler.log()
                 self._policy.log()
                 logger.dump_tabular(with_prefix=False)
+
+            ### save model
+            if step > 0 and step % save_every_n_steps == 0:
+                self._save_rollouts_file(save_itr, eval_sampler.get_recent_paths(), offpolicy=True)
+                save_itr += 1
+
+        self._save_rollouts_file(save_itr, eval_sampler.get_recent_paths(), offpolicy=True)
 
     @overrides
     def train(self):

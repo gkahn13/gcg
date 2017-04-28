@@ -627,75 +627,48 @@ class PlotAnalyzeRNNCritic(object):
         plt.close(f)
 
     def _plot_analyze_Pong(self):
-        f, axes = plt.subplots(1 + len(self._analyze_groups), 1, figsize=(15, 5 * len(self._analyze_groups)),
-                               sharex=True)
+        import IPython; IPython.embed()
 
-        ### plot training cost
-        ax = axes.ravel()[0]
-        for analyze_group in self._analyze_groups:
-            data_interp = DataAverageInterpolation()
-            min_step = max_step = None
-            for analyze in analyze_group:
-                steps = np.array(analyze.progress['Step'])
-                costs = np.array(analyze.progress['Cost'])
-                data_interp.add_data(steps, costs)
-
-                if min_step is None:
-                    min_step = steps[0]
-                if max_step is None:
-                    max_step = steps[-1]
-                min_step = max(min_step, steps[0])
-                max_step = min(max_step, steps[-1])
-
-            steps = np.r_[min_step:max_step:1.]
-            costs_mean, costs_std = data_interp.eval(steps)
-
-            ax.plot(steps, costs_mean, color=analyze.plot['color'], label=analyze.plot['label'])
-            ax.fill_between(steps, costs_mean - costs_std, costs_mean + costs_std,
-                            color=analyze.plot['color'], alpha=0.4)
-        ax.set_ylabel('Training cost')
-        ax.legend(loc='upper right')
+        analyzes = list(itertools.chain(*self._analyze_groups))
+        f, axes = plt.subplots(len(analyzes), 1, figsize=(20, 15), sharex=True, sharey=True)
 
         ### plot cum reward versus time step
-        for ax, analyze_group in zip(axes.ravel()[1:], self._analyze_groups):
-            data_interp = DataAverageInterpolation()
-            min_step = max_step = None
-            for analyze in analyze_group:
-                rollouts = list(itertools.chain(*analyze.train_rollouts_itrs))
-                rollouts = sorted(rollouts, key=lambda r: r['steps'][-1])
-                steps, cum_rewards = [], []
-                for r in rollouts:
-                    steps.append(r['steps'][-1])
-                    cum_rewards.append(np.sum(r['rewards']))
+        for ax, analyze in zip(axes.ravel(), analyzes):
+            rollouts = list(itertools.chain(*analyze.train_rollouts_itrs))
+            rollouts = sorted(rollouts, key=lambda r: r['steps'][-1])
+            steps, cum_rewards = [], []
+            for r in rollouts:
+                steps.append(r['steps'][-1])
+                cum_rewards.append(np.sum(r['rewards']))
 
-                def moving_avg_std(idxs, data, window):
-                    avg_idxs, means, stds = [], [], []
-                    for i in range(window, len(data)):
-                        avg_idxs.append(np.mean(idxs[i - window:i]))
-                        means.append(np.mean(data[i - window:i]))
-                        stds.append(np.std(data[i - window:i]))
-                    return avg_idxs, np.asarray(means), np.asarray(stds)
+            ### offpolicy
+            if len(analyze.offpolicy_rollouts_itrs) > 0:
+                offpolicy_rollouts = list(itertools.chain(*analyze.offpolicy_rollouts_itrs))
+                offpolicy_rollouts = sorted(offpolicy_rollouts, key=lambda r: r['steps'][-1])
+                offpolicy_steps, offpolicy_cum_rewards = [], []
+                for r in offpolicy_rollouts:
+                    offpolicy_steps.append(r['steps'][-1])
+                    offpolicy_cum_rewards.append(np.sum(r['rewards']))
 
-                steps, cum_rewards, _ = moving_avg_std(steps, cum_rewards, window=50)
+                steps = list(offpolicy_steps) + list(analyze.params['alg']['offpolicy']['total_steps'] * \
+                                                     np.array(steps))
+                cum_rewards = offpolicy_cum_rewards + cum_rewards
 
-                data_interp.add_data(steps, cum_rewards)
-                if min_step is None:
-                    min_step = steps[0]
-                if max_step is None:
-                    max_step = steps[-1]
-                min_step = max(min_step, steps[0])
-                max_step = min(max_step, steps[-1])
+            def moving_avg_std(idxs, data, window):
+                avg_idxs, means, stds = [], [], []
+                for i in range(window, len(data)):
+                    avg_idxs.append(np.mean(idxs[i - window:i]))
+                    means.append(np.mean(data[i - window:i]))
+                    stds.append(np.std(data[i - window:i]))
+                return avg_idxs, np.asarray(means), np.asarray(stds)
 
-            steps = np.r_[min_step:max_step:50.][1:-1]
-            cum_rewards_mean, cum_rewards_std = data_interp.eval(steps)
+            ax.plot(steps, cum_rewards, marker='|', linestyle='',
+                    color=analyze.plot['color'], label=analyze.plot['label'])
 
-            ax.plot(steps, cum_rewards_mean, color=analyze.plot['color'], label=analyze.plot['label'])
-            ax.fill_between(steps, cum_rewards_mean - cum_rewards_std, cum_rewards_mean + cum_rewards_std,
-                            color=analyze.plot['color'], alpha=0.4)
-            ax.set_ylim((-22, 22))
+            ax.set_ylim((-24, 24))
             ax.grid()
-            ax.set_title(' '.join([analyze.name for analyze in analyze_group]))
-        ax.set_ylabel('Cumulative reward')
+            ax.set_title(analyze.name)
+            ax.set_ylabel('Cumulative reward')
 
         ### for all plots
         ax.set_xlabel('Steps')
@@ -763,8 +736,6 @@ class PlotAnalyzeRNNCritic(object):
         plt.close(f)
 
     def _plot_analyze_InvertedPendulum_offpolicy(self):
-        import IPython; IPython.embed()
-    
         f, axes = create_best_fit_axes(len(self._analyze_groups), figsize=(15, 15))
 
         ### plot cum reward versus time step
@@ -816,7 +787,6 @@ class PlotAnalyzeRNNCritic(object):
         plt.tight_layout()
         f.savefig(self._analyze_img_file, bbox_inches='tight', dpi=200)
         plt.close(f)
-
 
     def _plot_analyze_Reacher(self):
         f, axes = create_best_fit_axes(len(self._analyze_groups), figsize=(15, 15))
@@ -962,7 +932,6 @@ class PlotAnalyzeRNNCritic(object):
         f.savefig(self._analyze_img_file, bbox_inches='tight', dpi=200)
         plt.close(f)
 
-
     ###########
     ### Run ###
     ###########
@@ -971,25 +940,24 @@ class PlotAnalyzeRNNCritic(object):
         self._plot_analyze()
 
 if __name__ == '__main__':
-    SAVE_FOLDER = '/home/gkahn/code/rllab/data/local/rnn-critic/'
+    SAVE_FOLDER = '/media/gkahn/ExtraDrive1/rllab/rnn_critic/'
 
     analyze_groups = []
-    for start in range(341, 370, 3):
+    for start in range(42, 47, 3):
         analyze_group = []
         for i in range(start, start + 3):
-            print('\nip{0:03d}\n'.format(i))
+            print('\npong{0:03d}\n'.format(i))
             try:
-                analyze = AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'ip{0:03d}'.format(i)),
+                analyze = AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'pong{0:03d}'.format(i)),
                                            plot={
                                                'label': '',
                                                'color': 'k',
                                            },
                                            clear_obs=True,
                                            create_new_envs=False)
-                analyze.plot['label'] = 'N: {0}, H: {1}, target_freq: {2}'.format(
+                analyze.plot['label'] = 'N: {0}, H: {1}'.format(
                     analyze.params['policy']['N'],
                     analyze.params['policy']['H'],
-                    analyze.params['alg']['update_target_every_n_steps']
                 )
                 analyze_group.append(analyze)
             except:
@@ -998,6 +966,6 @@ if __name__ == '__main__':
         analyze_groups.append(analyze_group)
 
 
-    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'ip_341_370', analyze_groups)
+    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'pong_42_47_good_offpolicy', analyze_groups)
     plotter.run()
 
