@@ -84,7 +84,7 @@ class DQNPolicy(MACPolicy, Serializable):
         return tf_obs_lowd
 
     @overrides
-    def _graph_inference(self, tf_obs_lowd, tf_actions_ph, values_softmax, tf_preprocess, add_reg=True):
+    def _graph_inference(self, tf_obs_lowd, tf_actions_ph, values_softmax, tf_preprocess, add_reg=True, pad_inputs=True):
         """
         :param tf_obs_lowd: [batch_size, self._rnn_state_dim]
         :param tf_actions_ph: [batch_size, H, action_dim]
@@ -104,29 +104,6 @@ class DQNPolicy(MACPolicy, Serializable):
         assert(tf_values.get_shape()[1].value == H)
 
         return tf_values, tf_values_softmax, tf_values_depth
-
-    # @overrides
-    # def _graph_get_action(self, tf_obs_lowd, get_action_params, tf_preprocess):
-    #     """
-    #     :param tf_obs_lowd: [batch_size, rnn_state_dim]
-    #     :param H: max horizon to choose action over
-    #     :param get_action_params: how to select actions
-    #     :param tf_preprocess:
-    #     :return: tf_get_action [batch_size, action_dim], tf_get_action_value [batch_size]
-    #     """
-    #     num_obs = tf.shape(tf_obs_lowd)[0]
-    #     action_dim = self._env_spec.action_space.flat_dim
-    #
-    #     tf_values_all = tf_obs_lowd
-    #     tf_get_action = tf.one_hot(tf.argmax(tf_values_all, 1), depth=action_dim)
-    #     tf_get_action_value = tf.reduce_max(tf_values_all, 1)
-    #
-    #     ### check shapes
-    #     tf.assert_equal(tf.shape(tf_get_action)[0], num_obs)
-    #     tf.assert_equal(tf.shape(tf_get_action_value)[0], num_obs)
-    #     assert(tf_get_action.get_shape()[1].value == action_dim)
-    #
-    #     return tf_get_action, tf_get_action_value
 
     ################
     ### Training ###

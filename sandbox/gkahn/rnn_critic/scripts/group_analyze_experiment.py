@@ -627,48 +627,53 @@ class PlotAnalyzeRNNCritic(object):
         plt.close(f)
 
     def _plot_analyze_Pong(self):
-        analyzes = list(itertools.chain(*self._analyze_groups))
-        f, axes = plt.subplots(len(analyzes), 1, figsize=(20, 15), sharex=True, sharey=True)
+        import IPython; IPython.embed()
+
+        f, axes = plt.subplots(len(analyze_groups), 1, figsize=(20, 15), sharex=True, sharey=True)
 
         ### plot cum reward versus time step
-        for ax, analyze in zip(axes.ravel(), analyzes):
-            offpolicy = 'offpolicy' in analyze.params['alg']
+        for ax, analyze_group in zip(axes.ravel(), analyze_groups):
+            data_interp = DataAverageInterpolation()
+            min_step = max_step = None
+            for analyze in analyze_group:
+                rollouts = list(itertools.chain(*analyze.eval_rollouts_itrs))
+                rollouts = sorted(rollouts, key=lambda r: r['steps'][0])
+                steps, cum_rewards = [], []
+                for r in rollouts:
+                    steps.append(r['steps'][-1])
+                    cum_rewards.append(np.sum(r['rewards']))
 
-            steps = np.array(analyze.progress['Step'], dtype=np.float32)
-            if offpolicy and np.convolve(steps, [-1, 1], 'same').max() > 0:
-                onpolicy_switch_idx = np.convolve(steps, [-1, 1], 'same').argmax()
-                steps[onpolicy_switch_idx:] += analyze.params['alg']['offpolicy']['total_steps']
+                def moving_avg_std(idxs, data, window):
+                    avg_idxs, means, stds = [], [], []
+                    for i in range(window, len(data)):
+                        avg_idxs.append(np.mean(idxs[i - window:i]))
+                        means.append(np.mean(data[i - window:i]))
+                        stds.append(np.std(data[i - window:i]))
+                    return avg_idxs, np.asarray(means), np.asarray(stds)
 
-            cum_rewards = analyze.progress['CumRewardMean']
+                steps, cum_rewards, _ = moving_avg_std(steps, cum_rewards, window=100)
 
-            # rollouts = list(itertools.chain(*analyze.train_rollouts_itrs))
-            # rollouts = sorted(rollouts, key=lambda r: r['steps'][-1])
-            # steps, cum_rewards = [], []
-            # for r in rollouts:
-            #     steps.append(r['steps'][-1])
-            #     cum_rewards.append(np.sum(r['rewards']))
-            #
-            # ### offpolicy
-            # if len(analyze.offpolicy_rollouts_itrs) > 0:
-            #     offpolicy_rollouts = list(itertools.chain(*analyze.offpolicy_rollouts_itrs))
-            #     offpolicy_rollouts = sorted(offpolicy_rollouts, key=lambda r: r['steps'][-1])
-            #     offpolicy_steps, offpolicy_cum_rewards = [], []
-            #     for r in offpolicy_rollouts:
-            #         offpolicy_steps.append(r['steps'][-1])
-            #         offpolicy_cum_rewards.append(np.sum(r['rewards']))
-            #
-            #     steps = list(offpolicy_steps) + list(analyze.params['alg']['offpolicy']['total_steps'] * \
-            #                                          np.array(steps))
-            #     cum_rewards = offpolicy_cum_rewards + cum_rewards
+                data_interp.add_data(steps, cum_rewards)
+                if min_step is None:
+                    min_step = steps[0]
+                if max_step is None:
+                    max_step = steps[-1]
+                min_step = max(min_step, steps[0])
+                max_step = min(max_step, steps[-1])
 
-            ax.plot(steps, cum_rewards, marker='|', linestyle='',
-                    color=analyze.plot['color'], label=analyze.plot['label'])
-            if offpolicy:
-                ax.vlines(analyze.params['alg']['offpolicy']['total_steps'], -24, 24, color='k', linestyle='--')
+            steps = np.r_[min_step:max_step:50.][1:-1]
+            cum_rewards_mean, cum_rewards_std = data_interp.eval(steps)
+
+            ax.plot(steps, cum_rewards_mean, color=analyze.plot['color'], label=analyze.plot['label'])
+            ax.fill_between(steps, cum_rewards_mean - cum_rewards_std, cum_rewards_mean + cum_rewards_std,
+                            color=analyze.plot['color'], alpha=0.4)
+
+            ax.vlines(analyze.params['alg']['sample_after_n_steps'], -24, 24, color='k', linestyle='--')
             ax.set_ylim((-24, 24))
             ax.grid()
-            ax.set_title(analyze.name)
-            ax.set_ylabel('Cumulative reward')
+            # ax.set_title(analyze.name)
+            ax.set_ylabel('Cumreward')
+            ax.legend(loc='upper right')
 
         ### for all plots
         ax.set_xlabel('Steps')
@@ -943,29 +948,29 @@ if __name__ == '__main__':
     SAVE_FOLDER = '/media/gkahn/ExtraDrive1/rllab/rnn_critic/'
 
     analyze_groups = []
-    for start in range(42, 47, 3):
+    for start in range(61, 87, 3):
         analyze_group = []
         for i in range(start, start + 3):
             print('\npong{0:03d}\n'.format(i))
-            try:
-                analyze = AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'pong{0:03d}'.format(i)),
-                                           plot={
-                                               'label': '',
-                                               'color': 'k',
-                                           },
-                                           clear_obs=True,
-                                           create_new_envs=False)
-                analyze.plot['label'] = 'N: {0}, H: {1}'.format(
-                    analyze.params['policy']['N'],
-                    analyze.params['policy']['H'],
-                )
-                analyze_group.append(analyze)
-            except:
-                print('failed')
+            # try:
+            analyze = AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'pong{0:03d}'.format(i)),
+                                       plot={
+                                           'label': '',
+                                           'color': 'k',
+                                       },
+                                       clear_obs=True,
+                                       create_new_envs=False)
+            analyze.plot['label'] = 'N: {0}, H: {1}, folder: {2}'.format(
+                analyze.params['policy']['N'],
+                analyze.params['policy']['H'],
+                os.path.basename(analyze.params['alg']['offpolicy'])
+            )
+            analyze_group.append(analyze)
+            # except:
+            #     print('failed')
 
         analyze_groups.append(analyze_group)
 
-
-    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'pong_42_47_good_offpolicy', analyze_groups)
+    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'pong_61_87_good_offpolicy', analyze_groups)
     plotter.run()
 

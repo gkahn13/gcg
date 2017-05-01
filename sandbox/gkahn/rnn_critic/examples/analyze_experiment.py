@@ -120,15 +120,19 @@ class AnalyzeRNNCritic(object):
         with open(self._params_file, 'r') as f:
             self.params = yaml.load(f)
         logger.log('AnalyzeRNNCritic: Loading csv')
-        self.progress = pandas.read_csv(self._progress_file)
+        try:
+            self.progress = pandas.read_csv(self._progress_file)
+        except Exception as e:
+            logger.log('Could not open csv: {0}'.format(str(e)))
+            self.progress = None
         logger.log('AnalyzeRNNCritic: Loaded csv')
 
         self.train_rollouts_itrs = self._load_rollouts_itrs()
-        self.offpolicy_rollouts_itrs = self._load_rollouts_itrs(offpolicy=True)
+        self.eval_rollouts_itrs = self._load_rollouts_itrs(eval=True)
         logger.log('AnalyzeRNNCritic: Loaded all itrs')
         self.env = TfEnv(normalize(eval(self.params['alg']['env'])))
         logger.log('AnalyzeRNNCritic: Created env')
-        self.eval_rollouts_itrs = []
+        # self.eval_rollouts_itrs = []
         # if not os.path.exists(self._eval_rollouts_itrs_file):
         #     eval_rollouts_itrs = self._eval_all_policies()
         #     logger.log('AnalyzeRNNCritic: Eval all policies')
@@ -146,9 +150,9 @@ class AnalyzeRNNCritic(object):
     def _itr_file(self, itr):
         return os.path.join(self._folder, 'itr_{0:d}.pkl'.format(itr))
 
-    def _itr_rollouts_file(self, itr, offpolicy=False):
-        if offpolicy:
-            fname = 'itr_{0}_offpolicy_rollouts.pkl'.format(itr)
+    def _itr_rollouts_file(self, itr, eval=False):
+        if eval:
+            fname = 'itr_{0}_rollouts_eval.pkl'.format(itr)
         else:
             fname = 'itr_{0}_rollouts.pkl'.format(itr)
         return os.path.join(self._folder, fname)
@@ -191,11 +195,11 @@ class AnalyzeRNNCritic(object):
     ### Data loading ###
     ####################
 
-    def _load_rollouts_itrs(self, offpolicy=False):
+    def _load_rollouts_itrs(self, eval=False):
         train_rollouts_itrs = []
         itr = 0
-        while os.path.exists(self._itr_rollouts_file(itr, offpolicy=offpolicy)) and itr < self._max_itr:
-            rollouts = joblib.load(self._itr_rollouts_file(itr, offpolicy=offpolicy))['rollouts']
+        while os.path.exists(self._itr_rollouts_file(itr, eval=eval)) and itr < self._max_itr:
+            rollouts = joblib.load(self._itr_rollouts_file(itr, eval=eval))['rollouts']
             train_rollouts_itrs.append(rollouts)
             itr += self._skip_itr
 

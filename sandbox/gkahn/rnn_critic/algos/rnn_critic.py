@@ -73,7 +73,7 @@ class RNNCritic(RLAlgorithm):
             policy=policy,
             env=env_eval,
             n_envs=1,
-            replay_pool_size=env.horizon,
+            replay_pool_size=int(1.1 * env.horizon),
             max_path_length=max_path_length,
             save_rollouts=True,
             save_rollouts_observations=False
@@ -171,20 +171,20 @@ class RNNCritic(RLAlgorithm):
                     logger.log('Updating preprocess')
                     self._policy.update_preprocess(self._sampler.statistics)
 
-            ### log
-            if step % self._log_every_n_steps == 0:
-                logger.log('step %.3e' % step)
-                logger.record_tabular('Step', step)
-                self._sampler.log()
-                self._eval_sampler.log(prefix='Eval')
-                self._policy.log()
-                logger.dump_tabular(with_prefix=False)
-                timeit.stop('total')
-                print('')
-                print(str(timeit))
-                print('')
-                timeit.reset()
-                timeit.start('total')
+                ### log
+                if step % self._log_every_n_steps == 0:
+                    logger.log('step %.3e' % step)
+                    logger.record_tabular('Step', step)
+                    self._sampler.log()
+                    self._eval_sampler.log(prefix='Eval')
+                    self._policy.log()
+                    logger.dump_tabular(with_prefix=False)
+                    timeit.stop('total')
+                    print('')
+                    print(str(timeit))
+                    print('')
+                    timeit.reset()
+                    timeit.start('total')
 
             ### save model
             if step > 0 and step % self._save_every_n_steps == 0:
