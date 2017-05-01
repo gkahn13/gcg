@@ -28,7 +28,6 @@ class DQNPolicy(MACPolicy, Serializable):
         assert(isinstance(self._env_spec.action_space, Discrete))
 
         assert(self._H == 1)
-        assert(self._N == 1)
 
     ###########################
     ### TF graph operations ###
@@ -93,15 +92,25 @@ class DQNPolicy(MACPolicy, Serializable):
         :return: tf_values: [batch_size, H]
         """
         H = tf_actions_ph.get_shape()[1].value
+        N = self._N if pad_inputs else H
         assert(H == 1)
         tf.assert_equal(tf.shape(tf_obs_lowd)[0], tf.shape(tf_actions_ph)[0])
 
         with tf.name_scope('inference'):
-            tf_values = tf.expand_dims(tf.reduce_sum(tf_obs_lowd * tf_actions_ph[:, 0, :], reduction_indices=1), 1)
-            tf_values_softmax = tf.ones(tf.shape(tf_values))
-            tf_values_depth = tf.zeros([tf.shape(tf_values)[0]])
+            tf_values = tf.tile(tf.reduce_sum(tf_obs_lowd * tf_actions_ph[:, 0, :],
+                                              reduction_indices=1, keep_dims=True),
+                                (1, N))
 
-        assert(tf_values.get_shape()[1].value == H)
+            if values_softmax == 'final':
+                tf_values_softmax = tf.one_hot(N - 1, N) * tf.ones(tf.shape(tf_values))
+                tf_values_depth = (N - 1) * tf.ones([tf.shape(tf_values)[0]])
+            elif values_softmax == 'mean':
+                tf_values_softmax = (1. / float(N)) * tf.ones(tf.shape(tf_values))
+                tf_values_depth = ((N - 1) / 2.) * tf.ones([tf.shape(tf_values)[0]])
+            else:
+                raise NotImplementedError
+
+        assert(tf_values.get_shape()[1].value == N)
 
         return tf_values, tf_values_softmax, tf_values_depth
 
