@@ -103,18 +103,33 @@ class RNNCriticSampler(object):
     def _rollouts_file(self, folder, itr):
         return os.path.join(folder, 'itr_{0:d}_rollouts.pkl'.format(itr))
 
-    def add_offpolicy(self, offpolicy_folder):
+    def add_offpolicy(self, offpolicy_folder, num_offpolicy):
         step = 0
         itr = 0
         replay_pools = itertools.cycle(self._replay_pools)
+        done_adding = False
 
         while os.path.exists(self._rollouts_file(offpolicy_folder, itr)):
             rollouts = joblib.load(self._rollouts_file(offpolicy_folder, itr))['rollouts']
             itr += 1
 
             for rollout, replay_pool in zip(rollouts, replay_pools):
+                r_len = len(rollout['dones'])
+                if step + r_len >= num_offpolicy:
+                    diff = num_offpolicy - step
+                    for k in ('observations', 'actions', 'rewards', 'dones'):
+                        rollout[k] = rollout[k][:diff]
+                    done_adding = True
+                    r_len = len(rollout['dones'])
+
                 replay_pool.store_rollout(step, rollout)
-                step += len(rollout['dones'])
+                step += r_len
+
+                if done_adding:
+                    break
+
+            if done_adding:
+                break
 
     #########################
     ### Sample from pools ###

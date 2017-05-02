@@ -544,15 +544,30 @@ class MACPolicy(TfPolicy, Serializable):
             if self._use_target:
                 target_scope = 'target' if self._separate_target_params else 'policy'
                 ### action selection
-                tf_obs_target_ph_packed = tf.concat(0, [tf_obs_target_ph[:, h-self._obs_history_len:h, :]
-                                                    for h in range(self._obs_history_len, self._obs_history_len + self._N)])
+                # tf_target_get_action_values = []
+                # for i, h in enumerate(range(self._obs_history_len, self._obs_history_len + self._N)):
+                #     ### slice current h with history
+                #     tf_obs_target_ph_h = tf_obs_target_ph[:, h - self._obs_history_len:h, :]
+                #     _, tf_target_get_action_value_h = self._graph_get_action(tf_obs_target_ph_h,
+                #                                                              self._get_action_target,
+                #                                                              scope_select=policy_scope,
+                #                                                              reuse_select=True,
+                #                                                              scope_eval=target_scope,
+                #                                                              reuse_eval=(
+                #                                                                         target_scope == policy_scope) or i > 0)
+                #     tf_target_get_action_values.append(tf_target_get_action_value_h)
+                # tf_target_get_action_values = tf.pack(tf_target_get_action_values, axis=1)
+
+                tf_obs_target_ph_packed = tf.concat(0, [tf_obs_target_ph[:, h - self._obs_history_len:h, :]
+                                                        for h in range(self._obs_history_len, self._obs_history_len + self._N)])
                 _, tf_target_get_action_values = self._graph_get_action(tf_obs_target_ph_packed,
                                                                         self._get_action_target,
                                                                         scope_select=policy_scope,
                                                                         reuse_select=True,
                                                                         scope_eval=target_scope,
                                                                         reuse_eval=(target_scope == policy_scope))
-                tf_target_get_action_values = tf.reshape(tf_target_get_action_values, (-1, self._N))
+                # tf_target_get_action_values = tf.stack(tf.split(0, self._N, tf_target_get_action_values), 1)
+                tf_target_get_action_values = tf.transpose(tf.reshape(tf_target_get_action_values, (self._N, -1)))
             else:
                 tf_target_get_action_values = tf.zeros([tf.shape(tf_train_values)[0], self._N])
 

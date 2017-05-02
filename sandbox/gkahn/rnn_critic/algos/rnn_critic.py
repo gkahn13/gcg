@@ -1,6 +1,7 @@
 import os
 import joblib
 import pickle
+import numpy as np
 
 from rllab.algos.base import RLAlgorithm
 from rllab.misc.overrides import overrides
@@ -33,6 +34,7 @@ class RNNCritic(RLAlgorithm):
                  save_rollouts=False,
                  save_rollouts_observations=True,
                  offpolicy=None,
+                 num_offpolicy=np.inf,
                  render=False):
         assert(learn_after_n_steps % n_envs == 0)
         if train_every_n_steps >= 1:
@@ -82,7 +84,7 @@ class RNNCritic(RLAlgorithm):
         if offpolicy is not None:
             assert(os.path.exists(offpolicy))
             logger.log('Loading offpolicy data from {0}'.format(offpolicy))
-            self._sampler.add_offpolicy(offpolicy)
+            self._sampler.add_offpolicy(offpolicy, int(num_offpolicy))
 
     ####################
     ### Save methods ###

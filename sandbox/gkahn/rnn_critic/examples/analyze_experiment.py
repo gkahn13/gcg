@@ -773,6 +773,11 @@ class AnalyzeRNNCritic(object):
                         color='k', alpha=0.4)
         ax.set_ylabel('Cumulative reward')
 
+        ### plot eval cum reward
+        eval_steps, eval_cum_rewards = zip(*[(r['steps'][0], np.sum(r['rewards']))
+                                             for r in itertools.chain(*eval_rollouts_itrs)])
+        ax.plot(eval_steps, eval_cum_rewards, 'r|', ms=10)
+
         start_step = self.params['alg']['learn_after_n_steps']
         end_step = steps[-1] # self.params['alg']['total_steps']
         save_step = self.params['alg']['save_every_n_steps']
