@@ -97,7 +97,15 @@ def inner_env(env):
         env = env.wrapped_env
     return env
 
-################gi
+def moving_avg_std(idxs, data, window):
+    avg_idxs, means, stds = [], [], []
+    for i in range(window, len(data)):
+        avg_idxs.append(np.mean(idxs[i - window:i]))
+        means.append(np.mean(data[i - window:i]))
+        stds.append(np.std(data[i - window:i]))
+    return avg_idxs, np.asarray(means), np.asarray(stds)
+
+################
 ### Analysis ###
 ################
 
@@ -277,6 +285,8 @@ class AnalyzeRNNCritic(object):
             self._plot_analyze_InvertedPendulum(train_rollouts_itrs, eval_rollouts_itrs)
         elif isinstance(env, GymEnv) and 'tennis' in env.env_id.lower():
             self._plot_analyze_Pong(train_rollouts_itrs, eval_rollouts_itrs)
+        elif isinstance(env, GymEnv) and 'cheetah' in env.env_id.lower():
+            self._plot_analyze_HalfCheetah(train_rollouts_itrs, eval_rollouts_itrs)
         else:
             self._plot_analyze_general(train_rollouts_itrs, eval_rollouts_itrs)
 
@@ -875,6 +885,51 @@ class AnalyzeRNNCritic(object):
         for ax in axes:
             ax.set_xlim((-save_step / 8., end_step))
             ax.set_xticks(itr_steps)
+
+        f.savefig(self._analyze_img_file, bbox_inches='tight')
+        plt.close(f)
+
+    def _plot_analyze_HalfCheetah(self, train_rollouts_itrs, eval_rollouts_itrs):
+        f, axes = plt.subplots(3, 1, figsize=(2 * len(train_rollouts_itrs), 7.5), sharex=True)
+        f.tight_layout()
+
+        train_rollouts = sorted(list(itertools.chain(*train_rollouts_itrs)), key=lambda r: r['steps'][0])
+        eval_rollouts = sorted(list(itertools.chain(*eval_rollouts_itrs)), key=lambda r: r['steps'][0])
+
+        ### plot training cost
+        ax = axes[0]
+        costs = self.progress['Cost'][1:]
+        steps = self.progress['Step'][1:]
+        ax.plot(steps, costs, 'k-')
+        ax.set_ylabel('Cost')
+
+        ### plot train cumreward
+        ax = axes[1]
+        steps = [r['steps'][0] for r in train_rollouts]
+        cumrewards = [np.sum(r['rewards']) for r in train_rollouts]
+        steps, cumrewards_mean, cumrewards_std  = moving_avg_std(steps, cumrewards, window=100)
+        ax.plot(steps, cumrewards_mean, 'k-')
+        ax.fill_between(steps, cumrewards_mean - cumrewards_std, cumrewards_mean + cumrewards_std,
+                        color='k', alpha=0.4)
+        ax.set_ylabel('Train cumreward')
+        ax.grid()
+
+        ### plot eval cumreward
+        ax = axes[2]
+        steps = [r['steps'][0] for r in eval_rollouts]
+        cumrewards = [np.sum(r['rewards']) for r in eval_rollouts]
+        ax.plot(steps, cumrewards, 'r|', markersize=10.)
+        steps, cumrewards_mean, cumrewards_std = moving_avg_std(steps, cumrewards, window=20)
+        ax.plot(steps, cumrewards_mean, 'k-')
+        ax.fill_between(steps, cumrewards_mean - cumrewards_std, cumrewards_mean + cumrewards_std,
+                        color='k', alpha=0.4)
+        ax.set_ylabel('Eval cumreward')
+        ax.grid()
+
+        ax.set_xlabel('Steps')
+        xfmt = ticker.ScalarFormatter()
+        xfmt.set_powerlimits((0, 0))
+        ax.xaxis.set_major_formatter(xfmt)
 
         f.savefig(self._analyze_img_file, bbox_inches='tight')
         plt.close(f)
