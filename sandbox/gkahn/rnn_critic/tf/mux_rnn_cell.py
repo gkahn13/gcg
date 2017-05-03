@@ -4,12 +4,13 @@ import tensorflow as tf
 from tensorflow.python.ops.rnn_cell import RNNCell
 
 class BasicMuxRNNCell(RNNCell):
-    def __init__(self, num_actions, num_units, activation=tf.tanh):
+    def __init__(self, num_actions, num_units, activation=None):
         """
         Each cell consists of num_actions BasicRNNCells, each with num_units
 
         :param num_actions: assumes actions are one-hot vectors
         """
+        activation = activation if activation is not None else tf.tanh
         self._rnn_cells = [tf.nn.rnn_cell.BasicRNNCell(num_units, activation=activation) for _ in range(num_actions)]
         self._num_actions = num_actions
         self._num_units = num_units
@@ -40,13 +41,15 @@ class BasicMuxRNNCell(RNNCell):
         return new_h, new_state
 
 class BasicMuxLSTMCell(RNNCell):
-    def __init__(self, num_actions, num_units, state_is_tuple=True, activation=tf.tanh,
-                 initializer=tf.contrib.layers.xavier_initializer()):
+    def __init__(self, num_actions, num_units, state_is_tuple=True, activation=None,
+                 initializer=None):
         """
         Each cell consists of num_actions BasicRNNCells, each with num_units
 
         :param num_actions: assumes actions are one-hot vectors
         """
+        activation = activation if activation is not None else tf.tanh
+        initializer = initializer if initializer is not None else tf.contrib.layers.xavier_initializer()
         assert(state_is_tuple)
         self._rnn_cells = [tf.nn.rnn_cell.LSTMCell(num_units,
                                                    state_is_tuple=state_is_tuple,

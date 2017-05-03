@@ -1,5 +1,4 @@
 import tensorflow as tf
-import tensorflow.contrib.layers as layers
 
 from rllab.core.serializable import Serializable
 from rllab.misc.overrides import overrides
@@ -35,6 +34,8 @@ class DQNPolicy(MACPolicy, Serializable):
 
     @overrides
     def _graph_obs_to_lowd(self, tf_obs_ph, tf_preprocess, add_reg=True):
+        import tensorflow.contrib.layers as layers
+
         with tf.name_scope('obs_to_lowd'):
             ### whiten observations
             obs_dim = self._env_spec.observation_space.flat_dim

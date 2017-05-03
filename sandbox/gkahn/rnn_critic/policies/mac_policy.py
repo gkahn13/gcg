@@ -5,7 +5,7 @@ import numpy as np
 from sklearn.utils.extmath import cartesian
 
 import tensorflow as tf
-import tensorflow.contrib.layers as layers
+# import tensorflow.contrib.layers as layers
 
 from rllab.core.serializable import Serializable
 import rllab.misc.logger as logger
@@ -91,6 +91,10 @@ class MACPolicy(TfPolicy, Serializable):
         return self._N
 
     @property
+    def gamma(self):
+        return self._gamma
+
+    @property
     def session(self):
         return self._tf_dict['sess']
 
@@ -124,7 +128,11 @@ class MACPolicy(TfPolicy, Serializable):
                                     intra_op_parallelism_threads=1)
         else:
             config = tf.ConfigProto(
-                device_count={'GPU': 0}
+                device_count={'GPU': 0},
+                log_device_placement=False,
+                allow_soft_placement=True,
+                inter_op_parallelism_threads=1,
+                intra_op_parallelism_threads=1
             )
         tf_sess = tf.Session(graph=tf_graph, config=config)
         return tf_sess, tf_graph
@@ -179,6 +187,8 @@ class MACPolicy(TfPolicy, Serializable):
         return tf_preprocess
 
     def _graph_obs_to_lowd(self, tf_obs_ph, tf_preprocess, add_reg=True):
+        import tensorflow.contrib.layers as layers
+
         with tf.name_scope('obs_to_lowd'):
             ### whiten observations
             obs_dim = self._env_spec.observation_space.flat_dim
@@ -233,6 +243,8 @@ class MACPolicy(TfPolicy, Serializable):
         :param pad_inputs: if True, will be N inputs, otherwise will be H inputs
         :return: tf_values: [batch_size, H]
         """
+        import tensorflow.contrib.layers as layers
+
         H = tf_actions_ph.get_shape()[1].value
         N = self._N if pad_inputs else H
         assert(tf_obs_lowd.get_shape()[1].value == (2 * self._rnn_state_dim if self._use_lstm else self._rnn_state_dim))
@@ -531,8 +543,8 @@ class MACPolicy(TfPolicy, Serializable):
                                           self._values_softmax, tf_preprocess)
 
             ### action selection
-            tf_get_action, _ = self._graph_get_action(tf_obs_ph, self._get_action_test,
-                                                      policy_scope, True, policy_scope, True)
+            tf_get_action, tf_get_action_value = self._graph_get_action(tf_obs_ph, self._get_action_test,
+                                                                        policy_scope, True, policy_scope, True)
 
             ### get policy variables
             tf_policy_vars = sorted(tf.get_collection(xplatform.global_variables_collection_name(),
@@ -544,20 +556,6 @@ class MACPolicy(TfPolicy, Serializable):
             if self._use_target:
                 target_scope = 'target' if self._separate_target_params else 'policy'
                 ### action selection
-                # tf_target_get_action_values = []
-                # for i, h in enumerate(range(self._obs_history_len, self._obs_history_len + self._N)):
-                #     ### slice current h with history
-                #     tf_obs_target_ph_h = tf_obs_target_ph[:, h - self._obs_history_len:h, :]
-                #     _, tf_target_get_action_value_h = self._graph_get_action(tf_obs_target_ph_h,
-                #                                                              self._get_action_target,
-                #                                                              scope_select=policy_scope,
-                #                                                              reuse_select=True,
-                #                                                              scope_eval=target_scope,
-                #                                                              reuse_eval=(
-                #                                                                         target_scope == policy_scope) or i > 0)
-                #     tf_target_get_action_values.append(tf_target_get_action_value_h)
-                # tf_target_get_action_values = tf.pack(tf_target_get_action_values, axis=1)
-
                 tf_obs_target_ph_packed = tf.concat(0, [tf_obs_target_ph[:, h - self._obs_history_len:h, :]
                                                         for h in range(self._obs_history_len, self._obs_history_len + self._N)])
                 _, tf_target_get_action_values = self._graph_get_action(tf_obs_target_ph_packed,
@@ -566,7 +564,6 @@ class MACPolicy(TfPolicy, Serializable):
                                                                         reuse_select=True,
                                                                         scope_eval=target_scope,
                                                                         reuse_eval=(target_scope == policy_scope))
-                # tf_target_get_action_values = tf.stack(tf.split(0, self._N, tf_target_get_action_values), 1)
                 tf_target_get_action_values = tf.transpose(tf.reshape(tf_target_get_action_values, (self._N, -1)))
             else:
                 tf_target_get_action_values = tf.zeros([tf.shape(tf_train_values)[0], self._N])
@@ -603,6 +600,7 @@ class MACPolicy(TfPolicy, Serializable):
             'obs_target_ph': tf_obs_target_ph,
             'preprocess': tf_preprocess,
             'get_action': tf_get_action,
+            'get_action_value': tf_get_action_value,
             'update_target_fn': tf_update_target_fn,
             'cost': tf_cost,
             'mse': tf_mse,
@@ -694,12 +692,12 @@ class MACPolicy(TfPolicy, Serializable):
         self._use_exploration_strategy = False
 
     def get_action(self, observation):
-        chosen_actions, action_info = self.get_actions([observation])
-        return chosen_actions[0], action_info
+        chosen_actions, chosen_values, action_info = self.get_actions([observation])
+        return chosen_actions[0], chosen_values[0], action_info
 
     def get_actions(self, observations):
-        actions = self._tf_dict['sess'].run(self._tf_dict['get_action'],
-                                            feed_dict={self._tf_dict['obs_ph']: observations})
+        actions, values = self._tf_dict['sess'].run([self._tf_dict['get_action'], self._tf_dict['get_action_value']],
+                                                    feed_dict={self._tf_dict['obs_ph']: observations})
 
         chosen_actions = []
         for i, (observation_i, action_i) in enumerate(zip(observations, actions)):
@@ -715,7 +713,7 @@ class MACPolicy(TfPolicy, Serializable):
 
             chosen_actions.append(action_i)
 
-        return chosen_actions, {}
+        return chosen_actions, values, {}
 
     @property
     def recurrent(self):

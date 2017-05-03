@@ -36,7 +36,7 @@ def run_rnn_critic(params, params_txt):
     config.USE_TF = True
 
     def create_env(env_str):
-        from rllab.envs.gym_env import GymEnv
+        from rllab.envs.gym_env import GymEnv, FixedIntervalVideoSchedule
         from sandbox.gkahn.rnn_critic.envs.premade_gym_env import PremadeGymEnv
         try:
             import gym_ple
@@ -59,7 +59,12 @@ def run_rnn_critic(params, params_txt):
 
     env_str = params['alg'].pop('env')
     env = create_env(env_str)
-    env_eval = create_env(env_str)
+
+    env_eval_str = params['alg'].pop('env_eval', env_str)
+    env_eval = create_env(env_eval_str)
+
+    env.reset()
+    env_eval.reset()
 
     # import matplotlib.pyplot as plt
     # f = plt.figure()

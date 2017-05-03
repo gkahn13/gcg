@@ -25,6 +25,7 @@ class RNNCriticSampler(object):
 
         self._replay_pools = [RNNCriticReplayPool(env.spec,
                                                   policy.N,
+                                                  policy.gamma,
                                                   replay_pool_size // n_envs,
                                                   obs_history_len=policy.obs_history_len,
                                                   save_rollouts=save_rollouts,
@@ -75,8 +76,9 @@ class RNNCriticSampler(object):
         ### get actions and take step
         if take_random_actions:
             actions = [self._vec_env.action_space.sample() for _ in range(self._n_envs)]
+            est_values = [np.nan] * self._n_envs
         else:
-            actions, _ = self._policy.get_actions(encoded_observations)
+            actions, est_values, _ = self._policy.get_actions(encoded_observations)
         if self._n_envs == 1:
             actions = actions[0]
         next_observations, rewards, dones, _ = self._vec_env.step(actions)
@@ -92,8 +94,8 @@ class RNNCriticSampler(object):
             dones = [dones]
 
         ### add to replay pool
-        for replay_pool, action, reward, done in zip(self._replay_pools, actions, rewards, dones):
-            replay_pool.store_effect(action, reward, done)
+        for replay_pool, action, reward, done, est_value in zip(self._replay_pools, actions, rewards, dones, est_values):
+            replay_pool.store_effect(action, reward, done, est_value)
         self._curr_observations = next_observations
 
     #####################

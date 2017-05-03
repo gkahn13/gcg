@@ -9,16 +9,18 @@ from sandbox.gkahn.rnn_critic.utils.utils import timeit
 
 class RNNCriticReplayPool(object):
 
-    def __init__(self, env_spec, N, size, obs_history_len, save_rollouts=False, save_rollouts_observations=True):
+    def __init__(self, env_spec, N, gamma, size, obs_history_len, save_rollouts=False, save_rollouts_observations=True):
         """
         :param env_spec: for observation/action dimensions
         :param N: horizon length
+        :param gamma: discount factor
         :param size: size of pool
         :param obs_history_len: how many previous obs to include when sampling? (= 1 is only current observation)
         :param save_rollouts: for debugging
         """
         self._env_spec = env_spec
         self._N = N
+        self._gamma = gamma
         self._size = int(size)
         self._obs_history_len = obs_history_len
         self._save_rollouts = save_rollouts
@@ -33,6 +35,8 @@ class RNNCriticReplayPool(object):
         self._actions = np.nan * np.ones((self._size, action_dim), dtype=np.float32)
         self._rewards = np.nan * np.ones((self._size,), dtype=np.float32)
         self._dones = np.ones((self._size,), dtype=bool) # initialize as all done
+        self._est_values = np.nan * np.ones((self._size,), dtype=np.float32)
+        self._values = np.nan * np.ones((self._size,), dtype=np.float32)
         self._index = 0
         self._curr_size = 0
 
@@ -135,17 +139,29 @@ class RNNCriticReplayPool(object):
     def encode_recent_observation(self):
         return self._encode_observation(self._index)
 
-    def store_effect(self, action, reward, done, flatten_action=True, update_log_stats=True):
-        observation = self._observations[self._index]
+    def store_effect(self, action, reward, done, est_value, flatten_action=True, update_log_stats=True):
         self._actions[self._index, :] = self._env_spec.action_space.flatten(action) if flatten_action else action
         self._rewards[self._index] = reward
         self._dones[self._index] = done
+        self._est_values[self._index] = est_value
         self._index = (self._index + 1) % self._size
         self._curr_size = max(self._curr_size, self._index)
 
+        ### compute values
+        if done:
+            indices = self._get_indices(self._last_done_index, self._index)
+            rewards = self._rewards[indices]
+
+            trace = 0
+            values = []
+            for r in rewards[::-1]:
+                trace = r + self._gamma * trace
+                values.insert(0, trace)
+            self._values[indices] = values
+
         ### update log stats
-        if update_log_stats:
-            self._update_log_stats(observation, action, reward, done)
+        if update_log_stats and done:
+            self._update_log_stats()
 
     def store_rollout(self, start_step, rollout):
         """ Directly store rollout (e.g. if loading in offpolicy data) """
@@ -280,32 +296,33 @@ class RNNCriticReplayPool(object):
     ### Logging ###
     ###############
 
-    def _update_log_stats(self, observation, action, reward, done):
-        if done:
-            indices = self._get_indices(self._last_done_index, self._index)
-            ### update log
-            rewards = self._rewards[indices]
-            self._log_stats['FinalReward'].append(rewards[-1])
-            self._log_stats['AvgReward'].append(np.mean(rewards))
-            self._log_stats['CumReward'].append(np.sum(rewards))
-            self._log_stats['EpisodeLength'].append(len(rewards))
+    def _update_log_stats(self):
+        indices = self._get_indices(self._last_done_index, self._index)
 
-            # steps = self._steps[indices]
+        ### update log
+        rewards = self._rewards[indices]
+        est_values = self._est_values[indices]
+        values = self._values[indices]
+        self._log_stats['FinalReward'].append(rewards[-1])
+        self._log_stats['AvgReward'].append(np.mean(rewards))
+        self._log_stats['CumReward'].append(np.sum(rewards))
+        self._log_stats['EpisodeLength'].append(len(rewards))
+        self._log_stats['EstValuesAvgDiff'].append(np.mean((est_values - values) * (est_values - values)))
+        self._log_stats['EstValuesMaxDiff'].append(np.max((est_values - values) * (est_values - values)))
 
-            # for s in self._steps[indices]:
-            #     print(s)
+        ## update paths
+        if self._save_rollouts:
+            self._log_paths.append({
+                'steps': self._steps[indices],
+                'observations': self._observations[indices] if self._save_rollouts_observations else None,
+                'actions': self._actions[indices],
+                'rewards': self._rewards[indices],
+                'dones': self._dones[indices],
+                'est_values': self._est_values[indices],
+                'values': self._values[indices]
+            })
 
-            ## update paths
-            if self._save_rollouts:
-                self._log_paths.append({
-                    'steps': self._steps[indices],
-                    'observations': self._observations[indices] if self._save_rollouts_observations else None,
-                    'actions': self._actions[indices],
-                    'rewards': self._rewards[indices],
-                    'dones': self._dones[indices],
-                })
-
-            self._last_done_index = self._index
+        self._last_done_index = self._index
 
     def get_log_stats(self):
         self._log_stats['Time'] = [time.time() - self._last_get_log_stats_time] if self._last_get_log_stats_time else [0.]
@@ -335,6 +352,10 @@ class RNNCriticReplayPool(object):
         logger.record_tabular(prefix+'FinalRewardStd', np.std(log_stats['FinalReward']))
         logger.record_tabular(prefix+'EpisodeLengthMean', np.mean(log_stats['EpisodeLength']))
         logger.record_tabular(prefix+'EpisodeLengthStd', np.std(log_stats['EpisodeLength']))
+        logger.record_tabular(prefix+'EstValuesAvgDiffMean', np.mean(log_stats['EstValuesAvgDiff']))
+        logger.record_tabular(prefix+'EstValuesAvgDiffStd', np.std(log_stats['EstValuesAvgDiff']))
+        logger.record_tabular(prefix+'EstValuesMaxDiffMean', np.mean(log_stats['EstValuesMaxDiff']))
+        logger.record_tabular(prefix+'EstValuesMaxDiffStd', np.std(log_stats['EstValuesMaxDiff']))
         logger.record_tabular(prefix+'NumEpisodes', len(log_stats['EpisodeLength']))
         logger.record_tabular(prefix+'Time', np.mean(log_stats['Time']))
 

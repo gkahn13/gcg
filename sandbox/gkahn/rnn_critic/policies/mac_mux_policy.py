@@ -1,5 +1,4 @@
 import tensorflow as tf
-import tensorflow.contrib.layers as layers
 import numpy as np
 
 from rllab.core.serializable import Serializable
@@ -32,6 +31,8 @@ class MACMuxPolicy(MACPolicy, Serializable):
         :param tf_preprocess:
         :return: tf_values: [batch_size, H]
         """
+        import tensorflow.contrib.layers as layers
+
         H = tf_actions_ph.get_shape()[1].value
         N = self._N if pad_inputs else H
         tf.assert_equal(tf.shape(tf_obs_lowd)[0], tf.shape(tf_actions_ph)[0])
