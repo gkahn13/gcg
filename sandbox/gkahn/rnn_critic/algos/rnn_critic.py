@@ -59,10 +59,9 @@ class RNNCritic(RLAlgorithm):
         self._save_rollouts = save_rollouts
         self._save_rollouts_observations = save_rollouts_observations
 
-        policy.set_exploration(exploration_strategy)
-
         self._sampler = RNNCriticSampler(
             policy=policy,
+            exploration_strategy=exploration_strategy,
             env=env,
             n_envs=n_envs,
             replay_pool_size=replay_pool_size,
@@ -74,6 +73,7 @@ class RNNCritic(RLAlgorithm):
         self._eval_sampler = RNNCriticSampler(
             policy=policy,
             env=env_eval,
+            exploration_strategy=None,
             n_envs=1,
             replay_pool_size=int(1.1 * env.horizon),
             max_path_length=max_path_length,
@@ -132,7 +132,6 @@ class RNNCritic(RLAlgorithm):
             if step % self._eval_every_n_steps == 0:
                 logger.log('Evaluating')
                 timeit.start('eval')
-                self._policy.turn_off_exploration()
                 eval_rollouts_step = []
                 eval_step = step
                 while len(eval_rollouts_step) == 0:
@@ -140,7 +139,6 @@ class RNNCritic(RLAlgorithm):
                     eval_rollouts_step = self._eval_sampler.get_recent_paths()
                     eval_step += 1
                 eval_rollouts += eval_rollouts_step
-                self._policy.turn_on_exploration()
                 timeit.stop('eval')
 
             if step > self._learn_after_n_steps:

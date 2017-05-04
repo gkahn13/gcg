@@ -268,25 +268,8 @@ class AnalyzeRNNCritic(object):
             self._plot_analyze_ChainEnv(train_rollouts_itrs, eval_rollouts_itrs)
         elif isinstance(env, SparsePointEnv):
             self._plot_analyze_PointEnv(train_rollouts_itrs, eval_rollouts_itrs)
-        elif isinstance(env, GymEnv) and 'CartPole' in env.env_id:
-            self._plot_analyze_CartPole(train_rollouts_itrs, eval_rollouts_itrs)
-        elif isinstance(env, GymEnv) and 'Catcher-ram' in env.env_id:
-            if 'is_onpolicy' not in self.params['alg'].keys() or self.params['alg']['is_onpolicy']:
-                self._plot_analyze_Catcher(train_rollouts_itrs, eval_rollouts_itrs)
-            else:
-                self._plot_analyze_CatcherRamOffpolicy(train_rollouts_itrs, eval_rollouts_itrs)
-        elif isinstance(env, GymEnv) and 'Catcher' in env.env_id:
-            self._plot_analyze_Catcher(train_rollouts_itrs, eval_rollouts_itrs)
-        elif isinstance(env, GymEnv) and 'Swimmer' in env.env_id:
-            self._plot_analyze_Swimmer(train_rollouts_itrs, eval_rollouts_itrs)
-        elif isinstance(env, GymEnv) and 'Pong' in env.env_id:
-            self._plot_analyze_Pong(train_rollouts_itrs, eval_rollouts_itrs)
-        elif isinstance(env, GymEnv) and 'InvertedPendulum' in env.env_id:
-            self._plot_analyze_InvertedPendulum(train_rollouts_itrs, eval_rollouts_itrs)
-        elif isinstance(env, GymEnv) and 'tennis' in env.env_id.lower():
-            self._plot_analyze_Pong(train_rollouts_itrs, eval_rollouts_itrs)
-        elif isinstance(env, GymEnv) and 'cheetah' in env.env_id.lower():
-            self._plot_analyze_HalfCheetah(train_rollouts_itrs, eval_rollouts_itrs)
+        elif isinstance(env, GymEnv):
+            self._plot_analyze_Gym(train_rollouts_itrs, eval_rollouts_itrs)
         else:
             self._plot_analyze_general(train_rollouts_itrs, eval_rollouts_itrs)
 
@@ -527,384 +510,15 @@ class AnalyzeRNNCritic(object):
         f.savefig(self._analyze_img_file, bbox_inches='tight')
         plt.close(f)
 
-    def _plot_analyze_CartPole(self, train_rollouts_itrs, eval_rollouts_itrs):
-        f, axes = plt.subplots(4, 1, figsize=(4 * len(train_rollouts_itrs), 7.5), sharex=True)
-        f.tight_layout()
-
-        ### plot training cost
-        ax = axes[0]
-        costs = self.progress['Cost'][1:]
-        steps = self.progress['Step'][1:]
-        ax.plot(steps, costs, 'k-')
-        ax.set_ylabel('Cost')
-
-        ### plot cum reward
-        ax = axes[1]
-        rollouts = list(itertools.chain(*train_rollouts_itrs))
-        cum_rewards = [np.sum(r['rewards']) for r in rollouts]
-        steps = [r['steps'][-1] for r in rollouts]
-        ax.plot(steps, cum_rewards, color='k', linestyle='', marker='|', markersize=5.)
-        ax.hlines(self.env.horizon, steps[0], steps[-1], colors='r', linestyles='dashed')
-        ax.set_ylabel('Cumulative reward')
-
-        start_step = self.params['alg']['learn_after_n_steps']
-        end_step = self.params['alg']['total_steps']
-        save_step = self.params['alg']['save_every_n_steps']
-        first_save_step = save_step * np.floor(start_step / float(save_step))
-        itr_steps = np.r_[first_save_step:end_step:save_step]
-
-        def plot_reward(ax, rewards):
-            color = 'k'
-            bp = ax.boxplot(rewards,
-                            positions=itr_steps,
-                            widths=0.4 * self._skip_itr * save_step)
-            for key in ('boxes', 'medians', 'whiskers', 'fliers', 'caps'):
-                plt.setp(bp[key], color=color)
-            for cap_line, median_line in zip(bp['caps'][1::2], bp['medians']):
-                cx, cy = cap_line.get_xydata()[1]  # top of median line
-                mx, my = median_line.get_xydata()[1]
-                ax.text(cx, cy, '%.2f' % my,
-                        horizontalalignment='right',
-                        verticalalignment='bottom',
-                        color='r')  # draw above, centered
-            # for line in bp['medians']:
-            #     # get position data for median line
-            #     x, y = line.get_xydata()[1]  # top of median line
-            #     # overlay median value
-            #     ax.text(x, y, '%.2f' % y,
-            #             horizontalalignment='left',
-            #             verticalalignment='center',
-            #             color='r')  # draw above, centered
-            # for line in bp['boxes']:
-            #     x, y = line.get_xydata()[0]  # bottom of left line
-            #     ax.text(x, y, '%.2f' % y,
-            #             horizontalalignment='right',  # centered
-            #             verticalalignment='center',
-            #             color='k', alpha=0.5)  # below
-            #     x, y = line.get_xydata()[3]  # bottom of right line
-            #     ax.text(x, y, '%.2f' % y,
-            #             horizontalalignment='right',  # centered
-            #             verticalalignment='center',
-            #             color='k', alpha=0.5)  # below
-            plt.setp(bp['fliers'], marker='_')
-            plt.setp(bp['fliers'], markeredgecolor=color)
-
-        ### plot train cum reward
-        ax = axes[2]
-        rewards = [[np.sum(rollout['rewards']) for rollout in rollouts] for rollouts in train_rollouts_itrs]
-        plot_reward(ax, rewards)
-        ax.set_ylabel('Train cumulative reward')
-
-        ### plot eval cum reward
-        ax = axes[3]
-        rewards = [[np.sum(rollout['rewards']) for rollout in rollouts] for rollouts in eval_rollouts_itrs]
-        plot_reward(ax, rewards)
-        ax.set_ylabel('Eval cumulative reward')
-        ax.set_xlabel('Steps')
-        xfmt = ticker.ScalarFormatter()
-        xfmt.set_powerlimits((0, 0))
-        ax.xaxis.set_major_formatter(xfmt)
-
-        ### for all
-        for ax in axes:
-            ax.set_xlim((-save_step / 2., end_step))
-            ax.set_xticks(itr_steps)
-
-        f.savefig(self._analyze_img_file, bbox_inches='tight')
-        plt.close(f)
-
-    def _plot_analyze_Catcher(self, train_rollouts_itrs, eval_rollouts_itrs):
-        f, axes = plt.subplots(3, 1, figsize=(20., 7.5), sharex=True)
-        f.tight_layout()
-
-        ### plot training cost
-        ax = axes[0]
-        costs = self.progress['Cost'][1:]
-        steps = self.progress['Step'][1:]
-        ax.plot(steps, costs, 'k-')
-        ax.set_ylabel('Cost')
-
-        ### plot final reward vs step
-        ax = axes[1]
-        rollouts = list(itertools.chain(*train_rollouts_itrs))
-        final_rewards = [r['rewards'][-1] for r in rollouts]
-        steps = [r['steps'][-1] for r in rollouts]
-        steps, final_rewards = zip(*sorted(zip(steps, final_rewards), key=lambda x: x[0]))
-        ax.plot(steps, final_rewards, color='k', marker='|', linestyle='', markersize=10.)
-
-        ### plot training rollout length vs step smoothed
-        ax = axes[2]
-        def moving_avg_std(idxs, data, window):
-            means, stds = [], []
-            for i in range(window, len(data)):
-                means.append(np.mean(data[i-window:i]))
-                stds.append(np.std(data[i - window:i]))
-            return idxs[:-window], np.asarray(means), np.asarray(stds)
-        moving_steps, final_rewards_mean, final_rewards_std = moving_avg_std(steps, final_rewards, 500)
-        ax.plot(moving_steps, final_rewards_mean, 'k-')
-        ax.fill_between(moving_steps, final_rewards_mean - final_rewards_std, final_rewards_mean + final_rewards_std,
-                        color='k', alpha=0.4)
-
-        for ax in axes.ravel()[1:]:
-            ax.set_ylim((-1.5, 1.5))
-            ax.vlines(self.params['alg']['learn_after_n_steps'], ax.get_ylim()[0], ax.get_ylim()[1], colors='g', linestyles='dashed')
-            ax.hlines(1, steps[0], steps[-1], color='k', alpha=0.5, linestyle='dashed')
-            ax.hlines(-1, steps[0], steps[-1], color='k', alpha=0.5, linestyle='dashed')
-            ax.set_ylabel('Final reward')
-
-        ### for all plots
-        ax.set_xlabel('Steps')
-        xfmt = ticker.ScalarFormatter()
-        xfmt.set_powerlimits((0, 0))
-        ax.xaxis.set_major_formatter(xfmt)
-
-        f.savefig(self._analyze_img_file, bbox_inches='tight')
-        plt.close(f)
-
-    def _plot_analyze_CatcherRamOffpolicy(self, train_rollouts_itrs, eval_rollouts_itrs):
-        f, axes = plt.subplots(2, 1, figsize=(20., 7.5), sharex=True)
-        f.tight_layout()
-
-        ### plot training cost
-        ax = axes[0]
-        costs = self.progress['Cost'][1:]
-        steps = self.progress['Step'][1:]
-        ax.plot(steps, costs, 'k-')
-        ax.set_ylabel('Cost')
-
-        end_step = self.params['alg']['total_steps']
-        save_step = self.params['alg']['save_every_n_steps']
-        itr_steps = np.r_[0:end_step:save_step][:len(eval_rollouts_itrs)]
-
-        def plot_episode_lengths(ax, episode_lengths):
-            color = 'k'
-            bp = ax.boxplot(episode_lengths,
-                            positions=itr_steps,
-                            widths=0.4 * self._skip_itr * save_step)
-            for key in ('boxes', 'medians', 'whiskers', 'fliers', 'caps'):
-                plt.setp(bp[key], color=color)
-            for cap_line, median_line in zip(bp['caps'][1::2], bp['medians']):
-                cx, cy = cap_line.get_xydata()[1]  # top of median line
-                mx, my = median_line.get_xydata()[1]
-                ax.text(cx, cy, '%.2f' % my,
-                        horizontalalignment='right',
-                        verticalalignment='bottom',
-                        color='r')  # draw above, centered
-            plt.setp(bp['fliers'], marker='_')
-            plt.setp(bp['fliers'], markeredgecolor=color)
-
-        ### plot eval episode lengths
-        ax = axes[1]
-        episode_lengths = [[len(rollout['rewards']) for rollout in rollouts] for rollouts in eval_rollouts_itrs]
-        plot_episode_lengths(ax, episode_lengths)
-        ax.set_ylabel('Eval episode lengths')
-
-        ### for last plot
-        ax.set_xlabel('Steps')
-        xfmt = ticker.ScalarFormatter()
-        xfmt.set_powerlimits((0, 0))
-        ax.xaxis.set_major_formatter(xfmt)
-
-        ### for all
-        for ax in axes:
-            ax.set_xlim((-save_step/2., end_step))
-            ax.set_xticks(itr_steps)
-
-        f.savefig(self._analyze_img_file, bbox_inches='tight')
-        plt.close(f)
-
-    def _plot_analyze_Swimmer(self, train_rollouts_itrs, eval_rollouts_itrs):
-        f, axes = plt.subplots(2, 1, figsize=(5 * len(train_rollouts_itrs), 10), sharex=True)
-        f.tight_layout()
-
-        ### plot training cost
-        ax = axes[0]
-        costs = self.progress['Cost'][1:]
-        steps = self.progress['Step'][1:]
-        ax.plot(steps, costs, 'k-')
-        ax.set_ylabel('Cost')
-
-        ### plot cum reward
-        ax = axes[1]
-        idxs = np.nonzero(np.isfinite(self.progress['CumRewardMean']))[0]
-        cum_reward_means = self.progress['CumRewardMean'][idxs]
-        cum_reward_stds = self.progress['CumRewardStd'][idxs]
-        steps = np.array(self.progress['Step'][idxs])
-        ax.plot(steps, cum_reward_means, 'k-')
-        ax.fill_between(steps, cum_reward_means - cum_reward_stds, cum_reward_means + cum_reward_stds,
-                        color='k', alpha=0.4)
-        ax.set_ylabel('Cumulative reward')
-
-        start_step = self.params['alg']['learn_after_n_steps']
-        end_step = steps[-1] # self.params['alg']['total_steps']
-        save_step = self.params['alg']['save_every_n_steps']
-        first_save_step = save_step * np.floor(start_step / float(save_step))
-        itr_steps = np.r_[first_save_step:end_step:save_step]
-
-        ax.set_xlabel('Steps')
-        xfmt = ticker.ScalarFormatter()
-        xfmt.set_powerlimits((0, 0))
-        ax.xaxis.set_major_formatter(xfmt)
-
-        ### for all
-        for ax in axes:
-            ax.set_xlim((-save_step/2., end_step))
-            ax.set_xticks(itr_steps)
-
-        f.savefig(self._analyze_img_file, bbox_inches='tight')
-        plt.close(f)
-
-    def _plot_analyze_Pong(self, train_rollouts_itrs, eval_rollouts_itrs):
-        f, axes = plt.subplots(2, 1, figsize=(5 * len(train_rollouts_itrs), 10), sharex=True)
-        f.tight_layout()
-
-        ### plot training cost
-        ax = axes[0]
-        costs = self.progress['Cost'][1:]
-        steps = self.progress['Step'][1:]
-        ax.plot(steps, costs, 'k-')
-        ax.set_ylabel('Cost')
-
-        ### plot cum reward moving average
-        ax = axes[1]
-        rollouts = list(itertools.chain(*train_rollouts_itrs))
-        cum_rewards = [np.sum(r['rewards']) for r in rollouts]
-        steps = [r['steps'][-1] for r in rollouts]
-        steps, cum_rewards = zip(*sorted(zip(steps, cum_rewards), key=lambda x: x[0]))
-        def moving_avg_std(idxs, data, window):
-            means, stds = [], []
-            for i in range(window, len(data)):
-                means.append(np.mean(data[i-window:i]))
-                stds.append(np.std(data[i - window:i]))
-            return idxs[:-window], np.asarray(means), np.asarray(stds)
-        moving_steps, cum_rewards_mean, cum_rewards_std = moving_avg_std(steps, cum_rewards, 50)
-        ax.plot(moving_steps, cum_rewards_mean, 'k-')
-        ax.fill_between(moving_steps, cum_rewards_mean - cum_rewards_std, cum_rewards_mean + cum_rewards_std,
-                        color='k', alpha=0.4)
-        ax.set_ylabel('Cumulative reward')
-
-        ### plot eval cum reward
-        eval_steps, eval_cum_rewards = zip(*[(r['steps'][0], np.sum(r['rewards']))
-                                             for r in itertools.chain(*eval_rollouts_itrs)])
-        ax.plot(eval_steps, eval_cum_rewards, 'r|', ms=10)
-
-        start_step = self.params['alg']['learn_after_n_steps']
-        end_step = steps[-1] # self.params['alg']['total_steps']
-        save_step = self.params['alg']['save_every_n_steps']
-        first_save_step = save_step * np.floor(start_step / float(save_step))
-        itr_steps = np.r_[first_save_step:end_step:save_step]
-
-        ax.set_xlabel('Steps')
-        xfmt = ticker.ScalarFormatter()
-        xfmt.set_powerlimits((0, 0))
-        ax.xaxis.set_major_formatter(xfmt)
-
-        ### for all
-        for ax in axes:
-            ax.set_xlim((-save_step/2., end_step))
-            ax.set_xticks(itr_steps)
-
-        f.savefig(self._analyze_img_file, bbox_inches='tight')
-        plt.close(f)
-
-    def _plot_analyze_InvertedPendulum(self, train_rollouts_itrs, eval_rollouts_itrs):
-        f, axes = plt.subplots(4, 1, figsize=(4 * list(self.progress['Step'])[-1] * 1e-5, 7.5), sharex=True)
-        f.tight_layout()
-
-        max_path_length = self.params['alg']['max_path_length']\
-            if 'max_path_length' in self.params['alg']\
-            else self.env.horizon
-
-        ### plot training cost
-        ax = axes[0]
-        costs = self.progress['Cost'][1:]
-        steps = self.progress['Step'][1:]
-        ax.plot(steps, costs, 'k-')
-        ax.set_ylabel('Cost')
-
-        ### plot cum reward
-        ax = axes[1]
-        rollouts = list(itertools.chain(*train_rollouts_itrs))
-        cum_rewards = [np.sum(r['rewards']) for r in rollouts]
-        steps = [r['steps'][-1] for r in rollouts]
-        steps, cum_rewards = zip(*sorted(zip(steps, cum_rewards), key=lambda x: x[0]))
-        ax.plot(steps, cum_rewards, color='k', linestyle='', marker='|', markersize=5.)
-        ax.hlines(self.env.horizon, steps[0], steps[-1], colors='r', linestyles='dashed')
-        ax.set_ylabel('Cumulative reward')
-        ax.set_ylim((-0.1*max_path_length, 1.1*max_path_length))
-
-        ### plot training cum reward vs step smoothed
-        ax = axes[2]
-        def moving_avg_std(idxs, data, window):
-            means, stds = [], []
-            for i in range(window, len(data)):
-                means.append(np.mean(data[i - window:i]))
-                stds.append(np.std(data[i - window:i]))
-            return idxs[:-window], np.asarray(means), np.asarray(stds)
-        moving_steps, cum_rewards_mean, cum_rewards_std = moving_avg_std(steps, cum_rewards, 10)
-        ax.plot(moving_steps, cum_rewards_mean, 'k-')
-        ax.fill_between(moving_steps, cum_rewards_mean - cum_rewards_std, cum_rewards_mean + cum_rewards_std,
-                        color='k', alpha=0.4)
-        ax.set_ylim((-0.1 * max_path_length, 1.1 * max_path_length))
-
-        start_step = self.params['alg']['learn_after_n_steps']
-        end_step = self.params['alg']['total_steps']
-        save_step = self.params['alg']['save_every_n_steps']
-        first_save_step = save_step * np.floor(start_step / float(save_step))
-        itr_steps = np.r_[first_save_step:end_step:save_step]
-
-        def plot_reward(ax, rewards):
-            color = 'k'
-            bp = ax.boxplot(rewards,
-                            positions=itr_steps,
-                            widths=0.4 * self._skip_itr * save_step)
-            for key in ('boxes', 'medians', 'whiskers', 'fliers', 'caps'):
-                plt.setp(bp[key], color=color)
-            for cap_line, median_line in zip(bp['caps'][1::2], bp['medians']):
-                cx, cy = cap_line.get_xydata()[1]  # top of median line
-                mx, my = median_line.get_xydata()[1]
-                ax.text(cx, cy, '%.2f' % my,
-                        horizontalalignment='right',
-                        verticalalignment='bottom',
-                        color='r')  # draw above, centered
-            plt.setp(bp['fliers'], marker='_')
-            plt.setp(bp['fliers'], markeredgecolor=color)
-
-        ### plot eval cum reward
-        ax = axes[3]
-        rewards = [[np.sum(rollout['rewards']) for rollout in rollouts] for rollouts in eval_rollouts_itrs]
-        plot_reward(ax, rewards)
-        ax.set_ylim((-0.1 * max_path_length, 1.1 * max_path_length))
-        ax.set_ylabel('Eval cumulative reward')
-        ax.set_xlabel('Steps')
-        xfmt = ticker.ScalarFormatter()
-        xfmt.set_powerlimits((0, 0))
-        ax.xaxis.set_major_formatter(xfmt)
-
-        ### for all
-        for ax in axes:
-            ax.set_xlim((-save_step / 8., end_step))
-            ax.set_xticks(itr_steps)
-
-        f.savefig(self._analyze_img_file, bbox_inches='tight')
-        plt.close(f)
-
-    def _plot_analyze_HalfCheetah(self, train_rollouts_itrs, eval_rollouts_itrs):
-        f, axes = plt.subplots(3, 1, figsize=(2 * len(train_rollouts_itrs), 7.5), sharex=True)
+    def _plot_analyze_Gym(self, train_rollouts_itrs, eval_rollouts_itrs):
+        f, axes = plt.subplots(4, 1, figsize=(2 * len(train_rollouts_itrs), 10), sharex=True)
         f.tight_layout()
 
         train_rollouts = sorted(list(itertools.chain(*train_rollouts_itrs)), key=lambda r: r['steps'][0])
         eval_rollouts = sorted(list(itertools.chain(*eval_rollouts_itrs)), key=lambda r: r['steps'][0])
 
-        ### plot training cost
-        ax = axes[0]
-        costs = self.progress['Cost'][1:]
-        steps = self.progress['Step'][1:]
-        ax.plot(steps, costs, 'k-')
-        ax.set_ylabel('Cost')
-
         ### plot train cumreward
-        ax = axes[1]
+        ax = axes[0]
         steps = [r['steps'][0] for r in train_rollouts]
         cumrewards = [np.sum(r['rewards']) for r in train_rollouts]
         steps, cumrewards_mean, cumrewards_std  = moving_avg_std(steps, cumrewards, window=100)
@@ -915,7 +529,7 @@ class AnalyzeRNNCritic(object):
         ax.grid()
 
         ### plot eval cumreward
-        ax = axes[2]
+        ax = axes[1]
         steps = [r['steps'][0] for r in eval_rollouts]
         cumrewards = [np.sum(r['rewards']) for r in eval_rollouts]
         ax.plot(steps, cumrewards, 'r|', markersize=10.)
@@ -925,6 +539,33 @@ class AnalyzeRNNCritic(object):
                         color='k', alpha=0.4)
         ax.set_ylabel('Eval cumreward')
         ax.grid()
+
+        ### plot training cost
+        ax = axes[2]
+        costs = self.progress['Cost'][1:]
+        steps = self.progress['Step'][1:]
+        ax.plot(steps, costs, 'k-')
+        ax.set_ylabel('Cost')
+
+        ### plot value function difference
+        ax = axes[3]
+        est_values_avg_diff_mean = self.progress['EvalEstValuesAvgDiffMean']
+        est_values_avg_diff_std = self.progress['EvalEstValuesAvgDiffStd']
+        est_values_max_diff_mean = self.progress['EvalEstValuesMaxDiffMean']
+        est_values_max_diff_std = self.progress['EvalEstValuesMaxDiffStd']
+        steps = self.progress['Step']
+        ax.plot(steps, est_values_avg_diff_mean, 'k-', label='Avg')
+        ax.fill_between(steps,
+                        est_values_avg_diff_mean - est_values_avg_diff_std,
+                        est_values_avg_diff_mean + est_values_avg_diff_std,
+                        color='k', alpha=0.4)
+        ax.plot(steps, est_values_max_diff_mean, 'r-', label='Max')
+        ax.fill_between(steps,
+                        est_values_max_diff_mean - est_values_max_diff_std,
+                        est_values_max_diff_mean + est_values_max_diff_std,
+                        color='r', alpha=0.4)
+        ax.set_ylabel('EstValueDiff')
+        ax.legend(loc='upper left', ncol=2)
 
         ax.set_xlabel('Steps')
         xfmt = ticker.ScalarFormatter()

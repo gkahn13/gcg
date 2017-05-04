@@ -1,11 +1,10 @@
 from rllab.core.serializable import Serializable
-from rllab.exploration_strategies.base import ExplorationStrategy
 from sandbox.rocky.tf.spaces.discrete import Discrete
 from sandbox.gkahn.rnn_critic.utils import schedules
 
 import numpy as np
 
-class EpsilonGreedyStrategy(ExplorationStrategy, Serializable):
+class EpsilonGreedyStrategy(Serializable):
     """
     Takes random action with probability epsilon
     """
@@ -15,10 +14,11 @@ class EpsilonGreedyStrategy(ExplorationStrategy, Serializable):
         self._env_spec = env_spec
         self._schedule = schedules.PiecewiseSchedule(endpoints=endpoints, outside_value=outside_value)
 
-    def get_action(self, t, observation, policy, **kwargs):
-        if np.random.random() < self._schedule.value(t):
-            action = self._env_spec.action_space.sample()
-        else:
-            action, _ = policy.get_action(observation)
+    def reset(self):
+        pass
 
-        return action
+    def add_exploration(self, t, action):
+        if np.random.random() < self._schedule.value(t):
+            return self._env_spec.action_space.sample()
+        else:
+            return action

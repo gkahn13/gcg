@@ -16,6 +16,7 @@ from sandbox.gkahn.rnn_critic.envs.atari_wrappers import wrap_deepmind
 from sandbox.gkahn.rnn_critic.envs.pygame_wrappers import wrap_pygame
 ### exploration strategies
 from sandbox.gkahn.rnn_critic.exploration_strategies.gaussian_strategy import GaussianStrategy
+from sandbox.gkahn.rnn_critic.exploration_strategies.ou_strategy import OUStrategy
 from sandbox.gkahn.rnn_critic.exploration_strategies.epsilon_greedy_strategy import EpsilonGreedyStrategy
 ### RNN critic
 from sandbox.gkahn.rnn_critic.algos.rnn_critic import RNNCritic
@@ -137,10 +138,10 @@ def run_rnn_critic(params, params_txt):
     ### Analyze ###
     ###############
 
-    import traceback
-    logger.log('Analyzing experiment {0}'.format(logger.get_snapshot_dir()))
-    try:
-        analyze = AnalyzeRNNCritic(logger.get_snapshot_dir())
-        analyze.run()
-    except:
-        logger.log(traceback.format_exc())
+    # import traceback
+    # logger.log('Analyzing experiment {0}'.format(logger.get_snapshot_dir()))
+    # try:
+    #     analyze = AnalyzeRNNCritic(logger.get_snapshot_dir())
+    #     analyze.run()
+    # except:
+    #     logger.log(traceback.format_exc())

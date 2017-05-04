@@ -15,7 +15,9 @@ class GaussianStrategy(ExplorationStrategy, Serializable):
         self._env_spec = env_spec
         self._schedule = schedules.PiecewiseSchedule(endpoints=endpoints, outside_value=outside_value)
 
-    def get_action(self, t, observation, policy, **kwargs):
-        action, _ = policy.get_action(observation)
+    def reset(self):
+        pass
+
+    def add_exploration(self, t, action):
         return np.clip(action + np.random.normal(size=len(action)) * self._schedule.value(t),
                        self._env_spec.action_space.low, self._env_spec.action_space.high)

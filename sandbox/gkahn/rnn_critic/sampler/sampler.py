@@ -18,7 +18,7 @@ from sandbox.gkahn.rnn_critic.envs.single_env_executor import SingleEnvExecutor
 from sandbox.gkahn.rnn_critic.utils.utils import timeit
 
 class RNNCriticSampler(object):
-    def __init__(self, policy, env, n_envs, replay_pool_size, max_path_length,
+    def __init__(self, policy, exploration_strategy, env, n_envs, replay_pool_size, max_path_length,
                  save_rollouts=False, save_rollouts_observations=True):
         self._policy = policy
         self._n_envs = n_envs
@@ -31,23 +31,41 @@ class RNNCriticSampler(object):
                                                   save_rollouts=save_rollouts,
                                                   save_rollouts_observations=save_rollouts_observations)
                               for _ in range(n_envs)]
+
         if self._n_envs > 1:
             envs = [pickle.loads(pickle.dumps(env)) for _ in range(self._n_envs)]
-            ### need to seed each environment if it is GymEnv
-            seed = get_seed()
-            if seed is not None and isinstance(utils.inner_env(env), GymEnv):
-                for i, env in enumerate(envs):
-                    utils.inner_env(env).env.seed(seed + i)
-                self._vec_env = VecEnvExecutor(
-                    envs=envs,
-                    max_path_length=max_path_length
-                )
-            self._curr_observations = self._vec_env.reset()
+            self._exploration_strategies = [pickle.loads(pickle.dumps(exploration_strategy)) for _ in range(self._n_envs)]
         else:
-            self._vec_env = env
-            self._curr_observations = [self._vec_env.reset()]
-            self._max_path_length = max_path_length
-            self._curr_path_length = 0
+            envs = [env]
+            self._exploration_strategies = [exploration_strategy]
+        ### need to seed each environment if it is GymEnv
+        seed = get_seed()
+        if seed is not None and isinstance(utils.inner_env(env), GymEnv):
+            for i, env in enumerate(envs):
+                utils.inner_env(env).env.seed(seed + i)
+            self._vec_env = VecEnvExecutor(
+                envs=envs,
+                max_path_length=max_path_length
+            )
+        self._curr_observations = self._vec_env.reset()
+
+        # if self._n_envs > 1:
+        #     envs = [pickle.loads(pickle.dumps(env)) for _ in range(self._n_envs)]
+        #     ### need to seed each environment if it is GymEnv
+        #     seed = get_seed()
+        #     if seed is not None and isinstance(utils.inner_env(env), GymEnv):
+        #         for i, env in enumerate(envs):
+        #             utils.inner_env(env).env.seed(seed + i)
+        #         self._vec_env = VecEnvExecutor(
+        #             envs=envs,
+        #             max_path_length=max_path_length
+        #         )
+        #     self._curr_observations = self._vec_env.reset()
+        # else:
+        #     self._vec_env = env
+        #     self._curr_observations = [self._vec_env.reset()]
+        #     self._max_path_length = max_path_length
+        #     self._curr_path_length = 0
 
     @property
     def n_envs(self):
@@ -73,29 +91,25 @@ class RNNCriticSampler(object):
             replay_pool.store_observation(step + i, observation)
             encoded_observations.append(replay_pool.encode_recent_observation())
 
-        ### get actions and take step
+        ### get actions
         if take_random_actions:
             actions = [self._vec_env.action_space.sample() for _ in range(self._n_envs)]
             est_values = [np.nan] * self._n_envs
         else:
             actions, est_values, _ = self._policy.get_actions(encoded_observations)
-        if self._n_envs == 1:
-            actions = actions[0]
+            actions = [es.add_exploration(step + i, action) if es is not None else action
+                       for i, (es, action) in enumerate(zip(self._exploration_strategies, actions))]
+
+        ### take step
         next_observations, rewards, dones, _ = self._vec_env.step(actions)
-        if self._n_envs == 1:
-            self._curr_path_length += 1
-            dones = dones or self._curr_path_length > self._max_path_length
-            if dones:
-                next_observations = self._vec_env.reset()
-                self._curr_path_length = 0
-            actions = [actions]
-            next_observations = [next_observations]
-            rewards = [rewards]
-            dones = [dones]
 
         ### add to replay pool
-        for replay_pool, action, reward, done, est_value in zip(self._replay_pools, actions, rewards, dones, est_values):
+        for replay_pool, es, action, reward, done, est_value in \
+                zip(self._replay_pools, self._exploration_strategies, actions, rewards, dones, est_values):
             replay_pool.store_effect(action, reward, done, est_value)
+            if done and es:
+                es.reset()
+
         self._curr_observations = next_observations
 
     #####################

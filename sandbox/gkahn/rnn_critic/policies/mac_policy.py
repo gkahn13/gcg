@@ -65,9 +65,6 @@ class MACPolicy(TfPolicy, Serializable):
         ### action selection and exploration
         self._get_action_test = kwargs.get('get_action_test')
         self._get_action_target = kwargs.get('get_action_target')
-        self._exploration_strategy = None # don't set in init b/c will then be Serialized
-        self._num_exploration_strategy = 0  # keep track of how many times get action called
-        self._use_exploration_strategy = True
 
         ### setup the model
         self._tf_debug = dict()
@@ -682,15 +679,6 @@ class MACPolicy(TfPolicy, Serializable):
     ### Policy methods ###
     ######################
 
-    def set_exploration(self, exploration_strategy):
-        self._exploration_strategy = exploration_strategy
-
-    def turn_on_exploration(self):
-        self._use_exploration_strategy = True
-
-    def turn_off_exploration(self):
-        self._use_exploration_strategy = False
-
     def get_action(self, observation):
         chosen_actions, chosen_values, action_info = self.get_actions([observation])
         return chosen_actions[0], chosen_values[0], action_info
@@ -699,19 +687,10 @@ class MACPolicy(TfPolicy, Serializable):
         actions, values = self._tf_dict['sess'].run([self._tf_dict['get_action'], self._tf_dict['get_action_value']],
                                                     feed_dict={self._tf_dict['obs_ph']: observations})
 
-        chosen_actions = []
-        for i, (observation_i, action_i) in enumerate(zip(observations, actions)):
-            if isinstance(self._env_spec.action_space, Discrete):
-                action_i = int(action_i.argmax())
-            if self._exploration_strategy is not None and self._use_exploration_strategy:
-                exploration_func = lambda: None
-                exploration_func.get_action = lambda _: (action_i, dict())
-                action_i = self._exploration_strategy.get_action(self._num_exploration_strategy,
-                                                                 observation_i,
-                                                                 exploration_func)
-                self._num_exploration_strategy += 1
+        if isinstance(self._env_spec.action_space, Discrete):
+            actions = [int(a.argmax()) for a in actions]
 
-            chosen_actions.append(action_i)
+        return actions, values, {}
 
         return chosen_actions, values, {}
 
