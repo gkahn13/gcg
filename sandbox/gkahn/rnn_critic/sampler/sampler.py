@@ -43,10 +43,10 @@ class RNNCriticSampler(object):
         if seed is not None and isinstance(utils.inner_env(env), GymEnv):
             for i, env in enumerate(envs):
                 utils.inner_env(env).env.seed(seed + i)
-            self._vec_env = VecEnvExecutor(
-                envs=envs,
-                max_path_length=max_path_length
-            )
+        self._vec_env = VecEnvExecutor(
+            envs=envs,
+            max_path_length=max_path_length
+        )
         self._curr_observations = self._vec_env.reset()
 
         # if self._n_envs > 1:

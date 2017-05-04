@@ -46,6 +46,7 @@ def run_rnn_critic(params, params_txt):
         from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
         from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
         from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
+        from sandbox.gkahn.rnn_critic.envs.phd_env import PhdEnv
 
         inner_env = eval(env_str)
         env = TfEnv(normalize(inner_env))
@@ -138,10 +139,10 @@ def run_rnn_critic(params, params_txt):
     ### Analyze ###
     ###############
 
-    # import traceback
-    # logger.log('Analyzing experiment {0}'.format(logger.get_snapshot_dir()))
-    # try:
-    #     analyze = AnalyzeRNNCritic(logger.get_snapshot_dir())
-    #     analyze.run()
-    # except:
-    #     logger.log(traceback.format_exc())
+    import traceback
+    logger.log('Analyzing experiment {0}'.format(logger.get_snapshot_dir()))
+    try:
+        analyze = AnalyzeRNNCritic(logger.get_snapshot_dir())
+        analyze.run()
+    except:
+        logger.log(traceback.format_exc())

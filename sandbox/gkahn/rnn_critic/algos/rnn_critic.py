@@ -130,7 +130,7 @@ class RNNCritic(RLAlgorithm):
 
             ### sample and DON'T add to buffer (for validation)
             if step % self._eval_every_n_steps == 0:
-                logger.log('Evaluating')
+                # logger.log('Evaluating')
                 timeit.start('eval')
                 eval_rollouts_step = []
                 eval_step = step
@@ -162,13 +162,13 @@ class RNNCritic(RLAlgorithm):
 
                 ### update target network
                 if step > self._update_target_after_n_steps and step % self._update_target_every_n_steps == 0:
-                    logger.log('Updating target network')
+                    # logger.log('Updating target network')
                     self._policy.update_target()
                     target_updated = True
 
                 ### update preprocess
                 if step % self._update_preprocess_every_n_steps == 0:
-                    logger.log('Updating preprocess')
+                    # logger.log('Updating preprocess')
                     self._policy.update_preprocess(self._sampler.statistics)
 
                 ### log
