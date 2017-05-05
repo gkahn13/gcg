@@ -13,6 +13,7 @@ from rllab.envs.normalized_env import normalize
 from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
 from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
 from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
+from sandbox.gkahn.rnn_critic.envs.phd_env import PhdEnv
 from rllab.envs.gym_env import GymEnv
 
 from sandbox.gkahn.rnn_critic.examples.analyze_experiment import AnalyzeRNNCritic
@@ -113,6 +114,8 @@ class PlotAnalyzeRNNCritic(object):
             self._plot_analyze_PointEnv()
         elif isinstance(self._env, SparsePointEnv):
             self._plot_analyze_SparsePointEnv()
+        elif isinstance(self._env, PhdEnv):
+            self._plot_analyze_PhdEnv()
         elif isinstance(self._env, GymEnv) and 'CartPole' in self._env.env_id:
             self._plot_analyze_CartPole()
         elif isinstance(self._env, GymEnv) and 'catcher' in self._env.env_id.lower():
@@ -462,6 +465,71 @@ class PlotAnalyzeRNNCritic(object):
         # f.savefig(self._analyze_img_file, bbox_inches='tight', dpi=200)
         # plt.close(f)
 
+    def _plot_analyze_PhdEnv(self):
+        import IPython; IPython.embed()
+
+        # f, axes = create_best_fit_axes(len(self._analyze_groups), figsize=(15, 15), sharex=True)
+        f, axes = plt.subplots(len(self._analyze_groups), 1, figsize=(15, 15), sharex=True, sharey=True)
+
+        ### plot cum reward versus time step
+        for ax, analyze_group in zip(axes.ravel(), self._analyze_groups):
+            data_interp = DataAverageInterpolation()
+            min_step = max_step = None
+            for analyze in analyze_group:
+                rollouts = list(itertools.chain(*analyze.eval_rollouts_itrs))
+                rollouts = sorted(rollouts, key=lambda r: r['steps'][-1])
+                steps, cum_rewards = [], []
+                for r in rollouts:
+                    steps.append(r['steps'][-1])
+                    cum_rewards.append(np.sum(r['rewards']))
+
+                def moving_avg_std(idxs, data, window):
+                    avg_idxs, means, stds = [], [], []
+                    for i in range(window, len(data)):
+                        avg_idxs.append(np.mean(idxs[i - window:i]))
+                        means.append(np.mean(data[i - window:i]))
+                        stds.append(np.std(data[i - window:i]))
+                    return avg_idxs, np.asarray(means), np.asarray(stds)
+
+                steps, cum_rewards, _ = moving_avg_std(steps, cum_rewards, window=50)
+
+                data_interp.add_data(steps, cum_rewards)
+                if min_step is None:
+                    min_step = steps[0]
+                if max_step is None:
+                    max_step = steps[-1]
+                min_step = max(min_step, steps[0])
+                max_step = min(max_step, steps[-1])
+
+            steps = np.r_[min_step:max_step:50.][1:-1]
+            cum_rewards_mean, cum_rewards_std = data_interp.eval(steps)
+
+            ax.plot(steps, cum_rewards_mean, color=analyze.plot['color'], label=analyze.plot['label'])
+            ax.fill_between(steps, cum_rewards_mean - cum_rewards_std, cum_rewards_mean + cum_rewards_std,
+                            color=analyze.plot['color'], alpha=0.4)
+
+            ax.grid()
+            ax.set_title(analyze_group[0].plot['label'], {'fontsize': 10})
+            ax.set_ylabel('Cumulative reward')
+            ax.set_xlabel('Steps')
+            xfmt = ticker.ScalarFormatter()
+            xfmt.set_powerlimits((0, 0))
+            ax.xaxis.set_major_formatter(xfmt)
+
+            length = int(analyze.params['alg']['env'].split('length=')[-1].split(',')[0])
+            r_continue = float(analyze.params['alg']['env'].split('r_continue=')[-1].split(',')[0])
+            r_thesis = float(analyze.params['alg']['env'].split('r_thesis=')[-1].split(')')[0])
+            ax.set_ylim((1.1 * r_continue * length, 1.1*r_thesis))
+
+        ### for all the plots
+        for ax in axes.ravel():
+            ax.vlines(analyze.params['alg']['learn_after_n_steps'], ax.get_ylim()[0], ax.get_ylim()[1],
+                      color='k', linestyle='--')
+
+        plt.tight_layout()
+        f.savefig(self._analyze_img_file, bbox_inches='tight', dpi=200)
+        plt.close(f)
+
     def _plot_analyze_CartPole(self):
         ##############################
         ### Plot fraction one axis ###
@@ -637,7 +705,7 @@ class PlotAnalyzeRNNCritic(object):
         for ax, analyze_group in zip(axes.ravel(), analyze_groups):
             data_interp = DataAverageInterpolation()
             min_step = max_step = None
-            for analyze in analyze_group:
+            for i, analyze in enumerate(analyze_group):
                 rollouts = list(itertools.chain(*analyze.eval_rollouts_itrs))
                 rollouts = sorted(rollouts, key=lambda r: r['steps'][0])
                 steps, cum_rewards = [], []
@@ -655,20 +723,23 @@ class PlotAnalyzeRNNCritic(object):
 
                 steps, cum_rewards, _ = moving_avg_std(steps, cum_rewards, window=100)
 
-                data_interp.add_data(steps, cum_rewards)
-                if min_step is None:
-                    min_step = steps[0]
-                if max_step is None:
-                    max_step = steps[-1]
-                min_step = max(min_step, steps[0])
-                max_step = min(max_step, steps[-1])
+                ax.plot(steps, cum_rewards, color=analyze.plot['color'],
+                        alpha=np.linspace(1., 0.4, len(analyze_group))[i])
 
-            steps = np.r_[min_step:max_step:50.][1:-1]
-            cum_rewards_mean, cum_rewards_std = data_interp.eval(steps)
-
-            ax.plot(steps, cum_rewards_mean, color=analyze.plot['color'], label=analyze.plot['label'])
-            ax.fill_between(steps, cum_rewards_mean - cum_rewards_std, cum_rewards_mean + cum_rewards_std,
-                            color=analyze.plot['color'], alpha=0.4)
+            #     data_interp.add_data(steps, cum_rewards)
+            #     if min_step is None:
+            #         min_step = steps[0]
+            #     if max_step is None:
+            #         max_step = steps[-1]
+            #     min_step = max(min_step, steps[0])
+            #     max_step = min(max_step, steps[-1])
+            #
+            # steps = np.r_[min_step:max_step:50.][1:-1]
+            # cum_rewards_mean, cum_rewards_std = data_interp.eval(steps)
+            #
+            # ax.plot(steps, cum_rewards_mean, color=analyze.plot['color'], label=analyze.plot['label'])
+            # ax.fill_between(steps, cum_rewards_mean - cum_rewards_std, cum_rewards_mean + cum_rewards_std,
+            #                 color=analyze.plot['color'], alpha=0.4)
 
             ax.vlines(analyze.params['alg']['sample_after_n_steps'], -24, 24, color='k', linestyle='--')
             ax.set_ylim((-24, 24))
@@ -864,7 +935,7 @@ class PlotAnalyzeRNNCritic(object):
     def _plot_analyze_HalfCheetah(self):
         import IPython; IPython.embed()
 
-        f, axes = create_best_fit_axes(len(self._analyze_groups), figsize=(15, 15))
+        f, axes = create_best_fit_axes(len(self._analyze_groups), figsize=(15, 15), sharex=True, sharey=True)
 
         ### plot cum reward versus time step
         for ax, analyze_group in zip(axes.ravel(), self._analyze_groups):
@@ -910,18 +981,6 @@ class PlotAnalyzeRNNCritic(object):
             xfmt = ticker.ScalarFormatter()
             xfmt.set_powerlimits((0, 0))
             ax.xaxis.set_major_formatter(xfmt)
-
-        ymin, ymax = np.inf, -np.inf
-        xmin, xmax = np.inf, -np.inf
-        for ax in axes.ravel():
-            ymin = min(ymin, ax.get_ylim()[0])
-            ymax = max(ymax, ax.get_ylim()[1])
-            xmin = min(xmin, ax.get_xlim()[0])
-            xmax = max(xmax, ax.get_xlim()[1])
-
-        for ax in axes.ravel():
-            ax.set_ylim((ymin, ymax))
-            ax.set_xlim((xmin, xmax))
 
         plt.tight_layout()
         f.savefig(self._analyze_img_file, bbox_inches='tight', dpi=200)
@@ -1018,29 +1077,29 @@ if __name__ == '__main__':
     SAVE_FOLDER = '/media/gkahn/ExtraDrive1/rllab/rnn_critic/'
 
     analyze_groups = []
-    for start in range(61, 87, 3):
+    for start in range(105, 116, 3):
         analyze_group = []
         for i in range(start, start + 3):
-            print('\npong{0:03d}\n'.format(i))
-            try:
-                analyze = AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'pong{0:03d}'.format(i)),
-                                           plot={
-                                               'label': '',
-                                               'color': 'k',
-                                           },
-                                           clear_obs=True,
-                                           create_new_envs=False)
-                analyze.plot['label'] = 'N: {0}, H: {1}, folder: {2}'.format(
-                    analyze.params['policy']['N'],
-                    analyze.params['policy']['H'],
-                    analyze.params['alg']['offpolicy']
-                )
-                analyze_group.append(analyze)
-            except:
-                print('failed')
+            print('\nphd{0:03d}\n'.format(i))
+            # try:
+            analyze = AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'phd{0:03d}'.format(i)),
+                                       plot={
+                                           'label': '',
+                                           'color': 'k',
+                                       },
+                                       clear_obs=True,
+                                       create_new_envs=False)
+            analyze.plot['label'] = '{2}, N: {0}, H: {1}'.format(
+                analyze.params['policy']['N'],
+                analyze.params['policy']['H'],
+                analyze.params['policy']['class']
+            )
+            analyze_group.append(analyze)
+            # except:
+            #     print('failed')
 
         analyze_groups.append(analyze_group)
 
-    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'pong_61_87_good_offpolicy', analyze_groups)
+    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'phd_105_116', analyze_groups)
     plotter.run()
 

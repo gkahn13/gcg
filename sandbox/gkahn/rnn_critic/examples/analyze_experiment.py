@@ -20,6 +20,7 @@ from sandbox.rocky.tf.misc import tensor_utils
 from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
 from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
 from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
+from sandbox.gkahn.rnn_critic.envs.phd_env import PhdEnv
 from sandbox.gkahn.rnn_critic.policies.mac_policy import MACPolicy
 from sandbox.gkahn.rnn_critic.sampler.vectorized_rollout_sampler import RNNCriticVectorizedRolloutSampler
 from sandbox.gkahn.rnn_critic.sampler.sampler import RNNCriticSampler
@@ -269,103 +270,74 @@ class AnalyzeRNNCritic(object):
         elif isinstance(env, SparsePointEnv):
             self._plot_analyze_PointEnv(train_rollouts_itrs, eval_rollouts_itrs)
         elif isinstance(env, GymEnv):
-            self._plot_analyze_Gym(train_rollouts_itrs, eval_rollouts_itrs)
+            self._plot_analyze_general(train_rollouts_itrs, eval_rollouts_itrs)
         else:
             self._plot_analyze_general(train_rollouts_itrs, eval_rollouts_itrs)
 
     def _plot_analyze_general(self, train_rollouts_itrs, eval_rollouts_itrs):
-        f, axes = plt.subplots(5, 1, figsize=(2 * len(train_rollouts_itrs), 7.5), sharex=True)
+        f, axes = plt.subplots(4, 1, figsize=(2 * len(train_rollouts_itrs), 10), sharex=True)
         f.tight_layout()
 
-        ### plot training cost
+        train_rollouts = sorted(list(itertools.chain(*train_rollouts_itrs)), key=lambda r: r['steps'][0])
+        eval_rollouts = sorted(list(itertools.chain(*eval_rollouts_itrs)), key=lambda r: r['steps'][0])
+
+        ### plot train cumreward
         ax = axes[0]
+        steps = [r['steps'][0] for r in train_rollouts]
+        cumrewards = [np.sum(r['rewards']) for r in train_rollouts]
+        steps, cumrewards_mean, cumrewards_std = moving_avg_std(steps, cumrewards, window=100)
+        ax.plot(steps, cumrewards_mean, 'k-')
+        ax.fill_between(steps, cumrewards_mean - cumrewards_std, cumrewards_mean + cumrewards_std,
+                        color='k', alpha=0.4)
+        ax.set_ylabel('Train cumreward')
+        ax.grid()
+
+        ### plot eval cumreward
+        ax = axes[1]
+        steps = [r['steps'][0] for r in eval_rollouts]
+        cumrewards = [np.sum(r['rewards']) for r in eval_rollouts]
+        ax.plot(steps, cumrewards, 'r|', markersize=10.)
+        steps, cumrewards_mean, cumrewards_std = moving_avg_std(steps, cumrewards, window=20)
+        ax.plot(steps, cumrewards_mean, 'k-')
+        ax.fill_between(steps, cumrewards_mean - cumrewards_std, cumrewards_mean + cumrewards_std,
+                        color='k', alpha=0.4)
+        ax.set_ylabel('Eval cumreward')
+        ax.grid()
+
+        ### plot training cost
+        ax = axes[2]
         costs = self.progress['Cost'][1:]
         steps = self.progress['Step'][1:]
         ax.plot(steps, costs, 'k-')
         ax.set_ylabel('Cost')
 
-        ### plot avg reward
-        ax = axes[1]
-        avg_reward_means = self.progress['AvgRewardMean']
-        avg_reward_stds = self.progress['AvgRewardStd']
-        steps = self.progress['Step']
-        ax.plot(steps, avg_reward_means, 'k-')
-        ax.fill_between(steps, avg_reward_means - avg_reward_stds, avg_reward_means + avg_reward_stds,
-                        color='k', alpha=0.4)
-        ax.set_ylabel('Average reward')
-
-        ### plot final reward
-        ax = axes[2]
-        final_reward_means = self.progress['FinalRewardMean']
-        final_reward_stds = self.progress['FinalRewardStd']
-        steps = self.progress['Step']
-        ax.plot(steps, final_reward_means, 'k-')
-        ax.fill_between(steps, final_reward_means - final_reward_stds, final_reward_means + final_reward_stds,
-                        color='k', alpha=0.4)
-        ax.set_ylabel('Final reward')
-
-        start_step = self.params['alg']['learn_after_n_steps']
-        end_step = self.params['alg']['total_steps']
-        save_step = self.params['alg']['save_every_n_steps']
-        first_save_step = save_step * np.floor(start_step / float(save_step))
-        itr_steps = np.r_[first_save_step:end_step:save_step]
-
-        def plot_reward(ax, rewards):
-            color = 'k'
-            bp = ax.boxplot(rewards,
-                            positions=itr_steps,
-                            widths=0.4 * self._skip_itr * save_step)
-            for key in ('boxes', 'medians', 'whiskers', 'fliers', 'caps'):
-                plt.setp(bp[key], color=color)
-            for cap_line, median_line in zip(bp['caps'][1::2], bp['medians']):
-                cx, cy = cap_line.get_xydata()[1]  # top of median line
-                mx, my = median_line.get_xydata()[1]
-                ax.text(cx, cy, '%.2f' % my,
-                        horizontalalignment='right',
-                        verticalalignment='bottom',
-                        color='r')  # draw above, centered
-            # for line in bp['medians']:
-            #     # get position data for median line
-            #     x, y = line.get_xydata()[1]  # top of median line
-            #     # overlay median value
-            #     ax.text(x, y, '%.2f' % y,
-            #             horizontalalignment='left',
-            #             verticalalignment='center',
-            #             color='r')  # draw above, centered
-            # for line in bp['boxes']:
-            #     x, y = line.get_xydata()[0]  # bottom of left line
-            #     ax.text(x, y, '%.2f' % y,
-            #             horizontalalignment='right',  # centered
-            #             verticalalignment='center',
-            #             color='k', alpha=0.5)  # below
-            #     x, y = line.get_xydata()[3]  # bottom of right line
-            #     ax.text(x, y, '%.2f' % y,
-            #             horizontalalignment='right',  # centered
-            #             verticalalignment='center',
-            #             color='k', alpha=0.5)  # below
-            plt.setp(bp['fliers'], marker='_')
-            plt.setp(bp['fliers'], markeredgecolor=color)
-
-        ### plot train final reward
+        ### plot value function difference
         ax = axes[3]
-        rewards = [[rollout['rewards'][-1] for rollout in rollouts] for rollouts in train_rollouts_itrs]
-        plot_reward(ax, rewards)
-        ax.set_ylabel('Train final reward')
+        steps = [r['steps'][0] for r in eval_rollouts]
+        est_values_avg_diff = [np.mean(r['est_values'] - r['values']) for r in eval_rollouts]
+        est_values_max_diff = [np.max(r['est_values'] - r['values']) for r in eval_rollouts]
+        est_values_min_diff = [np.min(r['est_values'] - r['values']) for r in eval_rollouts]
 
-        ### plot eval final reward
-        ax = axes[4]
-        rewards = [[rollout['rewards'][-1] for rollout in rollouts] for rollouts in eval_rollouts_itrs]
-        plot_reward(ax, rewards)
-        ax.set_ylabel('Eval final reward')
+        _, est_values_avg_diff_mean, est_values_avg_diff_std = moving_avg_std(steps, est_values_avg_diff, window=20)
+        _, est_values_max_diff_mean, est_values_max_diff_std = moving_avg_std(steps, est_values_max_diff, window=20)
+        steps, est_values_min_diff_mean, est_values_min_diff_std = moving_avg_std(steps, est_values_min_diff, window=20)
+        for mean, std, color, label in [(est_values_avg_diff_mean, est_values_avg_diff_std, 'k', 'Avg'),
+                                        (est_values_max_diff_mean, est_values_max_diff_std, 'r', 'Max'),
+                                        (est_values_min_diff_mean, est_values_min_diff_std, 'b', 'Min')]:
+            ax.plot(steps, mean, color=color, linestyle='-', label=label)
+            ax.fill_between(steps, mean + std, mean - std, color=color, alpha=0.4)
+        ax.set_ylabel('EstValueDiff')
+        ax.legend(loc='lower left', ncol=3)
+
         ax.set_xlabel('Steps')
         xfmt = ticker.ScalarFormatter()
         xfmt.set_powerlimits((0, 0))
         ax.xaxis.set_major_formatter(xfmt)
 
-        ### for all
-        for ax in axes:
-            ax.set_xlim((-save_step/2., end_step))
-            ax.set_xticks(itr_steps)
+        ### for all the plots
+        for ax in axes.ravel():
+            ax.vlines(self.params['alg']['learn_after_n_steps'], ax.get_ylim()[0], ax.get_ylim()[1],
+                      color='k', linestyle='--')
 
         f.savefig(self._analyze_img_file, bbox_inches='tight')
         plt.close(f)
@@ -506,71 +478,6 @@ class AnalyzeRNNCritic(object):
         for ax in axes:
             ax.set_xlim((-save_step/2., end_step))
             ax.set_xticks(itr_steps)
-
-        f.savefig(self._analyze_img_file, bbox_inches='tight')
-        plt.close(f)
-
-    def _plot_analyze_Gym(self, train_rollouts_itrs, eval_rollouts_itrs):
-        f, axes = plt.subplots(4, 1, figsize=(2 * len(train_rollouts_itrs), 10), sharex=True)
-        f.tight_layout()
-
-        train_rollouts = sorted(list(itertools.chain(*train_rollouts_itrs)), key=lambda r: r['steps'][0])
-        eval_rollouts = sorted(list(itertools.chain(*eval_rollouts_itrs)), key=lambda r: r['steps'][0])
-
-        ### plot train cumreward
-        ax = axes[0]
-        steps = [r['steps'][0] for r in train_rollouts]
-        cumrewards = [np.sum(r['rewards']) for r in train_rollouts]
-        steps, cumrewards_mean, cumrewards_std  = moving_avg_std(steps, cumrewards, window=100)
-        ax.plot(steps, cumrewards_mean, 'k-')
-        ax.fill_between(steps, cumrewards_mean - cumrewards_std, cumrewards_mean + cumrewards_std,
-                        color='k', alpha=0.4)
-        ax.set_ylabel('Train cumreward')
-        ax.grid()
-
-        ### plot eval cumreward
-        ax = axes[1]
-        steps = [r['steps'][0] for r in eval_rollouts]
-        cumrewards = [np.sum(r['rewards']) for r in eval_rollouts]
-        ax.plot(steps, cumrewards, 'r|', markersize=10.)
-        steps, cumrewards_mean, cumrewards_std = moving_avg_std(steps, cumrewards, window=20)
-        ax.plot(steps, cumrewards_mean, 'k-')
-        ax.fill_between(steps, cumrewards_mean - cumrewards_std, cumrewards_mean + cumrewards_std,
-                        color='k', alpha=0.4)
-        ax.set_ylabel('Eval cumreward')
-        ax.grid()
-
-        ### plot training cost
-        ax = axes[2]
-        costs = self.progress['Cost'][1:]
-        steps = self.progress['Step'][1:]
-        ax.plot(steps, costs, 'k-')
-        ax.set_ylabel('Cost')
-
-        ### plot value function difference
-        ax = axes[3]
-        est_values_avg_diff_mean = self.progress['EvalEstValuesAvgDiffMean']
-        est_values_avg_diff_std = self.progress['EvalEstValuesAvgDiffStd']
-        est_values_max_diff_mean = self.progress['EvalEstValuesMaxDiffMean']
-        est_values_max_diff_std = self.progress['EvalEstValuesMaxDiffStd']
-        steps = self.progress['Step']
-        ax.plot(steps, est_values_avg_diff_mean, 'k-', label='Avg')
-        ax.fill_between(steps,
-                        est_values_avg_diff_mean - est_values_avg_diff_std,
-                        est_values_avg_diff_mean + est_values_avg_diff_std,
-                        color='k', alpha=0.4)
-        ax.plot(steps, est_values_max_diff_mean, 'r-', label='Max')
-        ax.fill_between(steps,
-                        est_values_max_diff_mean - est_values_max_diff_std,
-                        est_values_max_diff_mean + est_values_max_diff_std,
-                        color='r', alpha=0.4)
-        ax.set_ylabel('EstValueDiff')
-        ax.legend(loc='upper left', ncol=2)
-
-        ax.set_xlabel('Steps')
-        xfmt = ticker.ScalarFormatter()
-        xfmt.set_powerlimits((0, 0))
-        ax.xaxis.set_major_formatter(xfmt)
 
         f.savefig(self._analyze_img_file, bbox_inches='tight')
         plt.close(f)

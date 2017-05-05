@@ -225,7 +225,7 @@ class RNNCriticReplayPool(object):
 
                 d_idx = np.argmax(dones_i)
                 for j in range(d_idx + 1, len(dones_i)):
-                    observations_i[j+self._obs_history_len-1, :] = 0.
+                    # observations_i[j+self._obs_history_len-1, :] = 0.
                     actions_i[j, :] = self._env_spec.action_space.flatten(self._env_spec.action_space.sample())
                     rewards_i[j] = 0.
                     dones_i[j] = True
@@ -307,8 +307,9 @@ class RNNCriticReplayPool(object):
         self._log_stats['AvgReward'].append(np.mean(rewards))
         self._log_stats['CumReward'].append(np.sum(rewards))
         self._log_stats['EpisodeLength'].append(len(rewards))
-        self._log_stats['EstValuesAvgDiff'].append(np.mean((est_values - values) * (est_values - values)))
-        self._log_stats['EstValuesMaxDiff'].append(np.max((est_values - values) * (est_values - values)))
+        self._log_stats['EstValuesAvgDiff'].append(np.mean(est_values - values))
+        self._log_stats['EstValuesMaxDiff'].append(np.max(est_values - values))
+        self._log_stats['EstValuesMinDiff'].append(np.min(est_values - values))
 
         ## update paths
         if self._save_rollouts:
@@ -356,6 +357,8 @@ class RNNCriticReplayPool(object):
         logger.record_tabular(prefix+'EstValuesAvgDiffStd', np.std(log_stats['EstValuesAvgDiff']))
         logger.record_tabular(prefix+'EstValuesMaxDiffMean', np.mean(log_stats['EstValuesMaxDiff']))
         logger.record_tabular(prefix+'EstValuesMaxDiffStd', np.std(log_stats['EstValuesMaxDiff']))
+        logger.record_tabular(prefix+'EstValuesMinDiffMean', np.mean(log_stats['EstValuesMinDiff']))
+        logger.record_tabular(prefix+'EstValuesMinDiffStd', np.std(log_stats['EstValuesMinDiff']))
         logger.record_tabular(prefix+'NumEpisodes', len(log_stats['EpisodeLength']))
         logger.record_tabular(prefix+'Time', np.mean(log_stats['Time']))
 

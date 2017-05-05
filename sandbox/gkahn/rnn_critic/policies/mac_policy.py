@@ -487,9 +487,10 @@ class MACPolicy(TfPolicy, Serializable):
 
             tf_mses.append(tf.square(tf_sum_rewards_n + tf_target_values_n - tf_train_values_n))
 
-        tf_weights = tf_train_values_softmax * (1 - tf.pad(tf_dones[:, :-1], [[0, 0], [1, 0]], 'CONSTANT'))
-        tf_weights /= tf.reduce_sum(tf_weights, 1, keep_dims=True)
-        tf.assert_equal(tf.reduce_mean(tf.reduce_sum(tf_weights, 1)), 1.)
+        # tf_weights = tf_train_values_softmax * (1 - tf.pad(tf_dones[:, :-1], [[0, 0], [1, 0]], 'CONSTANT'))
+        # tf_weights /= tf.reduce_sum(tf_weights, 1, keep_dims=True)
+        # tf.assert_equal(tf.reduce_mean(tf.reduce_sum(tf_weights, 1)), 1.)
+        tf_weights = tf_train_values_softmax
         tf_mse = tf.reduce_mean(tf.reduce_sum(tf_weights * tf.pack(tf_mses, 1), reduction_indices=1))
 
         ### weight decay

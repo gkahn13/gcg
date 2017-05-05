@@ -25,16 +25,16 @@ class PhdEnv(Env):
         self._r_thesis = r_thesis
 
     def _state_to_observation(self, state):
-        # observation = np.zeros(self._num_states, dtype=np.float64)
-        # observation[state] = 1.
-        # return observation
-        observation = np.array([2 * ((float(state) / float(self._num_states)) - 0.5)])
+        observation = np.zeros(self._num_states, dtype=np.float64)
+        observation[state] = 1.
+        return observation
+        # observation = np.array([2 * ((float(state) / float(self._num_states)) - 0.5)])
         return observation
 
     @property
     def observation_space(self):
-        # return Box(0, 1, (self._num_states,))
-        return Box(-1, 1, (1,))
+        return Box(0, 1, (self._num_states,))
+        # return Box(-1, 1, (1,))
 
     @property
     def action_space(self):
@@ -48,13 +48,12 @@ class PhdEnv(Env):
     def step(self, action):
         assert(action == PhdEnv.ESCAPE or action == PhdEnv.CONTINUE)
 
-        observation = self._state_to_observation(self._state)
         done = (self._state >= self._length)
         if done:
             reward = 0
         else:
             is_escape = (action == PhdEnv.ESCAPE)
-            is_thesis = (action == PhdEnv.CONTINUE and self._state == self._length - 1)
+            is_thesis = ((action == PhdEnv.CONTINUE) and (self._state == self._length - 1))
 
             if is_escape:
                 self._state = self._num_states - 2
@@ -65,6 +64,8 @@ class PhdEnv(Env):
             else:
                 self._state += 1
                 reward = self._r_continue
+
+        observation = self._state_to_observation(self._state)
 
         return Step(observation=observation, reward=reward, done=done)
 

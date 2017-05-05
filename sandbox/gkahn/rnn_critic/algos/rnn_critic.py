@@ -75,7 +75,7 @@ class RNNCritic(RLAlgorithm):
             env=env_eval,
             exploration_strategy=None,
             n_envs=1,
-            replay_pool_size=int(1.1 * env.horizon),
+            replay_pool_size=int(np.ceil(1.5 * env.horizon) + 1),
             max_path_length=max_path_length,
             save_rollouts=True,
             save_rollouts_observations=False
