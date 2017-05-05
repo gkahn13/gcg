@@ -29,6 +29,7 @@ class RNNCritic(RLAlgorithm):
                  update_preprocess_every_n_steps,
                  log_every_n_steps,
                  batch_size,
+                 onpolicy_after_n_steps=-1,
                  n_envs=1,
                  replay_pool_size=int(1e6),
                  save_rollouts=False,
@@ -47,6 +48,7 @@ class RNNCritic(RLAlgorithm):
         self._max_path_length = int(max_path_length)
         self._total_steps = int(total_steps)
         self._sample_after_n_steps = int(sample_after_n_steps)
+        self._onpolicy_after_n_steps = int(onpolicy_after_n_steps)
         self._learn_after_n_steps = int(learn_after_n_steps)
         self._train_every_n_steps = train_every_n_steps
         self._eval_every_n_steps = int(eval_every_n_steps)
@@ -125,7 +127,8 @@ class RNNCritic(RLAlgorithm):
             ### sample and add to buffer
             if step > self._sample_after_n_steps:
                 timeit.start('sample')
-                self._sampler.step(step, take_random_actions=(step <= self._learn_after_n_steps))
+                self._sampler.step(step, take_random_actions=(step <= self._learn_after_n_steps or
+                                                              step <= self._onpolicy_after_n_steps))
                 timeit.stop('sample')
 
             ### sample and DON'T add to buffer (for validation)

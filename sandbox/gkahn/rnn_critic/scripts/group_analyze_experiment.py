@@ -1077,7 +1077,7 @@ if __name__ == '__main__':
     SAVE_FOLDER = '/media/gkahn/ExtraDrive1/rllab/rnn_critic/'
 
     analyze_groups = []
-    for start in range(105, 116, 3):
+    for start in range(187, 207, 3):
         analyze_group = []
         for i in range(start, start + 3):
             print('\nphd{0:03d}\n'.format(i))
@@ -1089,9 +1089,12 @@ if __name__ == '__main__':
                                        },
                                        clear_obs=True,
                                        create_new_envs=False)
-            analyze.plot['label'] = '{2}, N: {0}, H: {1}'.format(
+            analyze.plot['label'] = 'N: {0}, H: {1}, H_test: {2}, H_targ: {3}, {4}, {5}'.format(
                 analyze.params['policy']['N'],
                 analyze.params['policy']['H'],
+                analyze.params['policy']['get_action_test']['H'],
+                analyze.params['policy']['get_action_target']['H'],
+                analyze.params['policy']['values_softmax'],
                 analyze.params['policy']['class']
             )
             analyze_group.append(analyze)
@@ -1100,6 +1103,6 @@ if __name__ == '__main__':
 
         analyze_groups.append(analyze_group)
 
-    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'phd_105_116', analyze_groups)
+    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'phd_187_207', analyze_groups)
     plotter.run()
 
