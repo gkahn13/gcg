@@ -45,11 +45,11 @@ from rllab.spaces.box import Box
 
 class CartPoleSwingupEnv(CartPoleEnv):
 
-    def __init__(self, x_threshold=2.4, x_threshold_mult=10):
+    def __init__(self, x_threshold=2.4, x_threshold_reward=0):
         CartPoleEnv.__init__(self)
 
         self.x_threshold = x_threshold
-        self.x_threshold_mult = x_threshold_mult
+        self.x_threshold_reward = x_threshold_reward
 
         # Angle limit set to 2 * theta_threshold_radians so failing observation is still within bounds
         high = np.array([
@@ -76,10 +76,14 @@ class CartPoleSwingupEnv(CartPoleEnv):
         costs = np.power(angle_normalize(theta), 2) + \
                 0.1 * np.power(theta_dot, 2) + \
                 0.001 * np.dot(action, action)
+        # reward = np.power(2*np.pi, 2) - \
+        #          np.power(angle_normalize(theta), 2) - \
+        #          0.1 * np.power(theta_dot, 2) - \
+        #          0.001 * np.dot(action, action)
         done = (np.abs(x) > self.x_threshold)
-        if done:
-            costs *= self.x_threshold_mult
         reward = -costs
+        if done:
+            reward = self.x_threshold_reward
 
         return obs, reward, done, {}
 

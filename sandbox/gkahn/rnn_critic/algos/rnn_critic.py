@@ -34,6 +34,7 @@ class RNNCritic(RLAlgorithm):
                  replay_pool_size=int(1e6),
                  save_rollouts=False,
                  save_rollouts_observations=True,
+                 save_eval_rollouts_observations=False,
                  offpolicy=None,
                  num_offpolicy=np.inf,
                  render=False):
@@ -80,7 +81,7 @@ class RNNCritic(RLAlgorithm):
             replay_pool_size=int(np.ceil(1.5 * max_path_length) + 1),
             max_path_length=max_path_length,
             save_rollouts=True,
-            save_rollouts_observations=False
+            save_rollouts_observations=save_eval_rollouts_observations
         )
 
         if offpolicy is not None:
