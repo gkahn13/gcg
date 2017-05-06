@@ -43,6 +43,7 @@ def run_rnn_critic(params, params_txt):
             import gym_ple
         except:
             pass
+        from rllab.envs.mujoco.swimmer_env import SwimmerEnv
         from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
         from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
         from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
@@ -118,21 +119,18 @@ def run_rnn_critic(params, params_txt):
     ### Create algorithm ###
     ########################
 
-    if 'is_onpolicy' not in params['alg'].keys() or params['alg']['is_onpolicy']:
-        algo = RNNCritic(
-            env=env,
-            env_eval=env_eval,
-            policy=policy,
-            exploration_strategy=exploration_strategy,
-            max_path_length=params['alg'].pop('max_path_length', env.horizon),
-            **params['alg']
-        )
+    if 'max_path_length' in params['alg']:
+        max_path_length = params['alg'].pop('max_path_length')
     else:
-        algo = RNNCriticOffpolicy(
-            env=env,
-            policy=policy,
-            **params['alg']
-        )
+        max_path_length = env.horizon
+    algo = RNNCritic(
+        env=env,
+        env_eval=env_eval,
+        policy=policy,
+        exploration_strategy=exploration_strategy,
+        max_path_length=max_path_length,
+        **params['alg']
+    )
     algo.train()
 
     ###############

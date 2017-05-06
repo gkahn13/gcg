@@ -7,21 +7,23 @@ import numpy as np
 
 class PhdEnv(Env):
     CONTINUE = 0
-    ESCAPE = 1
+    ADVISER = 1
+    ESCAPE = 2
 
     @staticmethod
     def r_thesis_to_finish(r_continue, r_escape, gamma, length):
         return r_escape - r_continue * (1 - np.power(gamma, length)) / ((1 - gamma) * np.power(gamma, length))
 
-    def __init__(self, length=10, r_continue=-1, r_escape=1, r_thesis=12):
+    def __init__(self, length=10, r_continue=-1, r_escape=1, r_adviser=-100, r_thesis=12):
         """
-        [0, 1, ..., length-1, escape terminal, thesis terminal]
+        [0, 1, ..., length-1, escape terminal, adviser terminal, thesis terminal]
         """
         self._length = length
-        self._num_states = length + 2
+        self._num_states = length + 3
 
         self._r_continue = r_continue
         self._r_escape = r_escape
+        self._r_adviser = r_adviser
         self._r_thesis = r_thesis
 
     def _state_to_observation(self, state):
@@ -29,7 +31,7 @@ class PhdEnv(Env):
         observation[state] = 1.
         return observation
         # observation = np.array([2 * ((float(state) / float(self._num_states)) - 0.5)])
-        return observation
+        # return observation
 
     @property
     def observation_space(self):
@@ -38,7 +40,7 @@ class PhdEnv(Env):
 
     @property
     def action_space(self):
-        return Discrete(2) # continue or escape
+        return Discrete(3) # continue or escape or make adviser angry
 
     def reset(self):
         self._state = 0
@@ -46,18 +48,22 @@ class PhdEnv(Env):
         return observation
 
     def step(self, action):
-        assert(action == PhdEnv.ESCAPE or action == PhdEnv.CONTINUE)
+        assert(action == PhdEnv.CONTINUE or action == PhdEnv.ADVISER or action == PhdEnv.ESCAPE)
 
         done = (self._state >= self._length)
         if done:
             reward = 0
         else:
             is_escape = (action == PhdEnv.ESCAPE)
+            is_adviser = (action == PhdEnv.ADVISER)
             is_thesis = ((action == PhdEnv.CONTINUE) and (self._state == self._length - 1))
 
             if is_escape:
-                self._state = self._num_states - 2
+                self._state = self._num_states - 3
                 reward = self._r_escape
+            elif is_adviser:
+                self._state = self._num_states - 2
+                reward = self._r_adviser
             elif is_thesis:
                 self._state = self._num_states - 1
                 reward = self._r_thesis
