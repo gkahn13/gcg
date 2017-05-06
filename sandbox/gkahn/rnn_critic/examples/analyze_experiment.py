@@ -41,6 +41,8 @@ except:
 from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
 from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
 from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
+from sandbox.gkahn.rnn_critic.envs.phd_env import PhdEnv
+from sandbox.gkahn.rnn_critic.envs.cartpole_swingup import CartPoleSwingupEnv
 
 #########################
 ### Utility functions ###
@@ -275,7 +277,7 @@ class AnalyzeRNNCritic(object):
             self._plot_analyze_general(train_rollouts_itrs, eval_rollouts_itrs)
 
     def _plot_analyze_general(self, train_rollouts_itrs, eval_rollouts_itrs):
-        f, axes = plt.subplots(4, 1, figsize=(2 * len(train_rollouts_itrs), 10), sharex=True)
+        f, axes = plt.subplots(5, 1, figsize=(2 * len(train_rollouts_itrs), 10), sharex=True)
         f.tight_layout()
 
         train_rollouts = sorted(list(itertools.chain(*train_rollouts_itrs)), key=lambda r: r['steps'][0])
@@ -304,15 +306,27 @@ class AnalyzeRNNCritic(object):
         ax.set_ylabel('Eval cumreward')
         ax.grid()
 
-        ### plot training cost
+        ### plot eval final reward
         ax = axes[2]
+        steps = [r['steps'][0] for r in eval_rollouts]
+        finalrewards = [r['rewards'][-1] for r in eval_rollouts]
+        ax.plot(steps, finalrewards, 'r|', markersize=10.)
+        steps, finalrewards_mean, finalrewards_std = moving_avg_std(steps, finalrewards, window=20)
+        ax.plot(steps, finalrewards_mean, 'k-')
+        ax.fill_between(steps, finalrewards_mean - finalrewards_std, finalrewards_mean + finalrewards_std,
+                        color='k', alpha=0.4)
+        ax.set_ylabel('Eval finalreward')
+        ax.grid()
+
+        ### plot training cost
+        ax = axes[3]
         costs = self.progress['Cost'][1:]
         steps = self.progress['Step'][1:]
         ax.plot(steps, costs, 'k-')
         ax.set_ylabel('Cost')
 
         ### plot value function difference
-        ax = axes[3]
+        ax = axes[4]
         steps = [r['steps'][0] for r in eval_rollouts]
         est_values_avg_diff = [np.mean(r['est_values'] - r['values']) for r in eval_rollouts]
         est_values_max_diff = [np.max(r['est_values'] - r['values']) for r in eval_rollouts]

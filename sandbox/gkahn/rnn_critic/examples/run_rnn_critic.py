@@ -48,6 +48,7 @@ def run_rnn_critic(params, params_txt):
         from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
         from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
         from sandbox.gkahn.rnn_critic.envs.phd_env import PhdEnv
+        from sandbox.gkahn.rnn_critic.envs.cartpole_swingup import CartPoleSwingupEnv
 
         inner_env = eval(env_str)
         env = TfEnv(normalize(inner_env))
