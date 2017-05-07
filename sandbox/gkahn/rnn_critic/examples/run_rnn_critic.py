@@ -41,6 +41,7 @@ def run_rnn_critic(params, params_txt):
         from sandbox.gkahn.rnn_critic.envs.premade_gym_env import PremadeGymEnv
         try:
             import gym_ple
+            from sandbox.gkahn.rnn_critic.envs.car.collision_car_racing_env import CollisionCarRacingSteeringEnv
         except:
             pass
         from rllab.envs.mujoco.swimmer_env import SwimmerEnv
@@ -49,8 +50,7 @@ def run_rnn_critic(params, params_txt):
         from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
         from sandbox.gkahn.rnn_critic.envs.phd_env import PhdEnv
         from sandbox.gkahn.rnn_critic.envs.cartpole_swingup_env import CartPoleSwingupEnv
-        from sandbox.gkahn.rnn_critic.envs.car.collision_car_racing_env import CollisionCarRacingSteeringEnv
-
+            
         inner_env = eval(env_str)
         env = TfEnv(normalize(inner_env))
 

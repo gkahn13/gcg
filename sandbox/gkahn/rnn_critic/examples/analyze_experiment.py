@@ -43,7 +43,11 @@ from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
 from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
 from sandbox.gkahn.rnn_critic.envs.phd_env import PhdEnv
 from sandbox.gkahn.rnn_critic.envs.cartpole_swingup_env import CartPoleSwingupEnv
-from sandbox.gkahn.rnn_critic.envs.car.collision_car_racing_env import CollisionCarRacingSteeringEnv
+try:
+    from sandbox.gkahn.rnn_critic.envs.car.collision_car_racing_env import CollisionCarRacingSteeringEnv
+except:
+    class CollisionCarRacingSteeringEnv(object):
+        pass
 
 #########################
 ### Utility functions ###
