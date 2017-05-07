@@ -43,6 +43,7 @@ from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
 from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
 from sandbox.gkahn.rnn_critic.envs.phd_env import PhdEnv
 from sandbox.gkahn.rnn_critic.envs.cartpole_swingup_env import CartPoleSwingupEnv
+from sandbox.gkahn.rnn_critic.envs.car.collision_car_racing_env import CollisionCarRacingSteeringEnv
 
 #########################
 ### Utility functions ###
@@ -273,6 +274,8 @@ class AnalyzeRNNCritic(object):
             self._plot_analyze_PointEnv(train_rollouts_itrs, eval_rollouts_itrs)
         elif isinstance(env, CartPoleSwingupEnv):
             self._plot_analyze_CartPoleSwingupEnv(train_rollouts_itrs, eval_rollouts_itrs)
+        elif isinstance(env, CollisionCarRacingSteeringEnv):
+            self._plot_analyze_general(train_rollouts_itrs, eval_rollouts_itrs)
         elif isinstance(env, GymEnv):
             self._plot_analyze_general(train_rollouts_itrs, eval_rollouts_itrs)
         else:
@@ -760,14 +763,74 @@ class AnalyzeRNNCritic(object):
             f.savefig(self._analyze_rollout_img_file(itr, is_train), bbox_inches='tight', dpi=200.)
             plt.close(f)
 
-    def _plot_policies(self, rollouts_itrs, env_itrs):
-        env = env_itrs[0]
-        while hasattr(env, 'wrapped_env'):
-            env = env.wrapped_env
+    def _plot_policies(self):
+        env = inner_env(self.env)
         if isinstance(env, PointEnv):
-            self._plot_policies_PointEnv(rollouts_itrs, env_itrs)
+            self._plot_policies_PointEnv()
+        elif isinstance(env, PhdEnv):
+            self._plot_policies_PhdEnv()
         else:
             pass
+
+    def _plot_policies_PhdEnv(self):
+        obs_dim = self.env.observation_space.flat_dim
+        action_dim = self.env.action_space.flat_dim
+        N = self.params['policy']['N']
+        H = self.params['policy']['get_action_test']['H']
+
+        itr = 0
+        Qvalues_itrs = []
+        get_action_itrs = []
+        get_action_value_itrs = []
+        while os.path.exists(self._itr_file(itr)):
+            # set seed
+            if self.params['seed'] is not None:
+                set_seed(self.params['seed'])
+
+            sess, graph = MACPolicy.create_session_and_graph(gpu_device=1,#self.params['policy']['gpu_device'],
+                                                             gpu_frac=self.params['policy']['gpu_frac'])
+            with graph.as_default(), sess.as_default():
+                policy = self._load_itr_policy(itr)
+                policy.update_target()
+
+                observations = np.eye(obs_dim)
+
+                indices = cartesian([np.arange(action_dim)] * H) + np.r_[0:action_dim * H:action_dim]
+                actions = np.zeros((len(indices), action_dim * H))
+                for i, one_hots in enumerate(indices):
+                    actions[i, one_hots] = 1
+                actions = actions.reshape(len(indices), H, action_dim)
+                actions = np.concatenate((actions, np.zeros((len(actions), N - H, action_dim))), axis=1)
+
+                observations_repeat = np.expand_dims(np.repeat(observations, len(actions), axis=0), 1)
+                actions_tiled = np.tile(actions, (len(observations), 1, 1))
+
+                Qvalues, v_d = policy.get_values(observations_repeat, actions_tiled)
+                Qvalues = np.array([q.max() for q in np.split(Qvalues, len(observations) * action_dim)])
+                Qvalues = Qvalues.reshape(obs_dim, action_dim).T
+                Qvalues = np.array([Qvalues[PhdEnv.ADVISER, :], Qvalues[PhdEnv.CONTINUE, :], Qvalues[PhdEnv.ESCAPE]])
+                Qvalues_itrs.append(Qvalues)
+
+                get_action, get_action_value, a_d = policy.get_actions(np.expand_dims(observations, 1))
+                get_action_itrs.append(get_action)
+                get_action_value_itrs.append(get_action_value)
+
+                assert(np.linalg.norm(get_action_value - Qvalues.max(axis=0)) < 1e-4)
+
+            itr += 1
+
+        f, axes = plt.subplots(len(Qvalues_itrs), 1, figsize=(2 * len(Qvalues_itrs), 15), sharex=True, sharey=True)
+        for ax, Qvalues in zip(axes.ravel(), Qvalues_itrs):
+            im = ax.imshow(Qvalues, cmap='RdBu', vmin=Qvalues.min(), vmax=Qvalues.max())
+            f.colorbar(im, ax=ax)
+
+            for (j, i), Q in np.ndenumerate(Qvalues):
+                ax.text(i, j, '{0:.2f}'.format(Q), ha='center', va='center', color='g')
+
+        f.tight_layout()
+        f.savefig(self._analyze_policy_img_file(None), bbox_inches='tight', dpi=200.)
+        plt.close(f)
+
 
     def _plot_policies_PointEnv(self, rollouts_itrs, env_itrs):
         itr = 0
@@ -996,13 +1059,13 @@ class AnalyzeRNNCritic(object):
 
     def run(self):
         logger.log('AnalyzeRNNCritic: plot_analyze')
-        self._plot_analyze(self.train_rollouts_itrs, self.eval_rollouts_itrs)
+        self._plot_analyze(self.train_rollouts_itrs, self.eval_rollouts_itrs) # TODO
         # logger.log('AnalyzeRNNCritic: plot_rollouts')
         # self._plot_rollouts(self.train_rollouts_itrs, self.eval_rollouts_itrs,
         #                     is_train=False, plot_prior=False)
         # self._plot_rollouts(self.train_rollouts_itrs, self.eval_rollouts_itrs,
         #                     is_train=True, plot_prior=False)
-        # self._plot_policies(self.train_rollouts_itrs, self.env_itrs)
+        self._plot_policies()
         # self._plot_value_function(self.env_itrs)
         # self._plot_Q_function(self.env_itrs)
 

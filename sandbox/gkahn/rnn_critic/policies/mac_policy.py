@@ -437,15 +437,15 @@ class MACPolicy(TfPolicy, Serializable):
         tf_obs_lowd_repeat_eval = tf_utils.repeat_2d(tf_obs_lowd_eval, K, 0)
         ### inference to get values
         with tf.variable_scope(scope_select, reuse=reuse_select):
-            tf_values_all_select, tf_train_values_softmax_all_select, _ = \
+            tf_values_all_select, tf_values_softmax_all_select, _ = \
                 self._graph_inference(tf_obs_lowd_repeat_select, tf_actions, get_action_params['values_softmax'],
                                       tf_preprocess_select, add_reg=False, pad_inputs=False)  # [num_obs*k, H]
         with tf.variable_scope(scope_eval, reuse=reuse_eval):
-            tf_values_all_eval, tf_train_values_softmax_all_eval, _ = \
+            tf_values_all_eval, tf_values_softmax_all_eval, _ = \
                 self._graph_inference(tf_obs_lowd_repeat_eval, tf_actions, get_action_params['values_softmax'],
                                       tf_preprocess_eval, add_reg=False, pad_inputs=False)  # [num_obs*k, H]
         ### get_action based on select (policy)
-        tf_values_select = tf.reduce_sum(tf_values_all_select * tf_train_values_softmax_all_select, reduction_indices=1)  # [num_obs*K]
+        tf_values_select = tf.reduce_sum(tf_values_all_select * tf_values_softmax_all_select, reduction_indices=1)  # [num_obs*K]
         tf_values_select = tf.reshape(tf_values_select, (num_obs, K))  # [num_obs, K]
         tf_values_argmax_select = tf.one_hot(tf.argmax(tf_values_select, 1), depth=K)  # [num_obs, K]
         tf_get_action = tf.reduce_sum(
@@ -453,7 +453,7 @@ class MACPolicy(TfPolicy, Serializable):
             tf.reshape(tf_actions, (num_obs, K, H, action_dim))[:, :, 0, :],
             reduction_indices=1)  # [num_obs, action_dim]
         ### get_action_value based on eval (target)
-        tf_values_eval = tf.reduce_sum(tf_values_all_eval * tf_train_values_softmax_all_eval, reduction_indices=1)  # [num_obs*K]
+        tf_values_eval = tf.reduce_sum(tf_values_all_eval * tf_values_softmax_all_eval, reduction_indices=1)  # [num_obs*K]
         tf_values_eval = tf.reshape(tf_values_eval, (num_obs, K))  # [num_obs, K]
         tf_get_action_value = tf.reduce_sum(tf_values_argmax_select * tf_values_eval, reduction_indices=1)
 
@@ -461,6 +461,17 @@ class MACPolicy(TfPolicy, Serializable):
         tf.assert_equal(tf.shape(tf_get_action)[0], num_obs)
         tf.assert_equal(tf.shape(tf_get_action_value)[0], num_obs)
         assert(tf_get_action.get_shape()[1].value == action_dim)
+
+        if 'tf_actions' not in self._tf_debug:
+            self._tf_debug['tf_obs'] = tf_utils.repeat_2d(tf_obs_ph[:, 0, :], K, 0) # MATCH
+            self._tf_debug['tf_actions'] = tf_actions # MATCH
+            self._tf_debug['tf_values_all_select'] = tf_values_all_select
+            self._tf_debug['tf_values_softmax_all_select'] = tf_values_softmax_all_select
+            self._tf_debug['tf_values_select'] = tf_values_select
+            self._tf_debug['tf_values_argmax_select'] = tf_values_argmax_select
+            self._tf_debug['tf_get_action'] = tf_get_action
+            self._tf_debug['tf_values_eval'] = tf_values_eval
+            self._tf_debug['tf_get_action_value'] = tf_get_action_value
 
         return tf_get_action, tf_get_action_value
 
@@ -540,6 +551,15 @@ class MACPolicy(TfPolicy, Serializable):
                     self._graph_inference(tf_obs_lowd, tf_actions_ph[:, :self._H, :],
                                           self._values_softmax, tf_preprocess)
 
+            with tf.variable_scope(policy_scope, reuse=True):
+                tf_train_values_test, tf_train_values_softmax_test, _ = \
+                    self._graph_inference(tf_obs_lowd, tf_actions_ph[:, :self._get_action_test['H'], :],
+                                          self._values_softmax, tf_preprocess, pad_inputs=False)
+                tf_get_value = tf.reduce_sum(tf_train_values_softmax_test * tf_train_values_test, reduction_indices=1)
+
+                self._tf_debug['tf_train_values'] = tf_train_values
+                self._tf_debug['tf_train_values_softmax'] = tf_train_values_softmax
+
             ### action selection
             tf_get_action, tf_get_action_value = self._graph_get_action(tf_obs_ph, self._get_action_test,
                                                                         policy_scope, True, policy_scope, True)
@@ -597,6 +617,7 @@ class MACPolicy(TfPolicy, Serializable):
             'rewards_ph': tf_rewards_ph,
             'obs_target_ph': tf_obs_target_ph,
             'preprocess': tf_preprocess,
+            'get_value': tf_get_value,
             'get_action': tf_get_action,
             'get_action_value': tf_get_action_value,
             'update_target_fn': tf_update_target_fn,
@@ -691,9 +712,29 @@ class MACPolicy(TfPolicy, Serializable):
         if isinstance(self._env_spec.action_space, Discrete):
             actions = [int(a.argmax()) for a in actions]
 
-        return actions, values, {}
+        d = {}
+        # keys = [k for k in self._tf_debug.keys() if 'train' not in k]
+        # vs = self._tf_dict['sess'].run([self._tf_debug[k] for k in keys],
+        #                                 feed_dict={self._tf_dict['obs_ph']: observations})
+        # for k, v in zip(keys, vs):
+        #     d[k] = v
 
-        return chosen_actions, values, {}
+        return actions, values, d
+
+    def get_values(self, observations, actions):
+        get_values = self._tf_dict['sess'].run(self._tf_dict['get_value'],
+                                               feed_dict={self._tf_dict['obs_ph']: observations,
+                                                          self._tf_dict['actions_ph']: actions})
+
+        d = {}
+        # keys = [k for k in self._tf_debug.keys() if 'train' in k]
+        # values = self._tf_dict['sess'].run([self._tf_debug[k] for k in keys],
+        #                                    feed_dict={self._tf_dict['obs_ph']: observations,
+        #                                               self._tf_dict['actions_ph']: actions})
+        # for k, v in zip(keys, values):
+        #     d[k] = v
+
+        return get_values, d
 
     @property
     def recurrent(self):

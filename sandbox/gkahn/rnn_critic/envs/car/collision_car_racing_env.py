@@ -71,15 +71,14 @@ class CollisionCarRacingSteeringEnv(car_racing.CarRacing):
 
         reward = 0
         for i in range(self.repeat):
-            obs_i, reward_i, _, _ = super(CollisionCarRacingSteeringEnv, self)._step(action)
+            obs_i, _, _, _ = super(CollisionCarRacingSteeringEnv, self)._step(action)
             done = min([len(w.tiles) for w in self.car.wheels]) == 0
-            reward += reward_i
 
             if done:
+                reward -= 100
                 break
-
-        if done:
-            reward = -100
+            else:
+                reward += 1
 
         return self._convert_obs(obs_i), reward, done, {}
 
