@@ -44,9 +44,11 @@ from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
 from sandbox.gkahn.rnn_critic.envs.phd_env import PhdEnv
 from sandbox.gkahn.rnn_critic.envs.cartpole_swingup_env import CartPoleSwingupEnv
 try:
-    from sandbox.gkahn.rnn_critic.envs.car.collision_car_racing_env import CollisionCarRacingSteeringEnv
+    from sandbox.gkahn.rnn_critic.envs.car.collision_car_racing_env import CollisionCarRacingSteeringEnv, CollisionCarRacingDiscreteEnv
 except:
     class CollisionCarRacingSteeringEnv(object):
+        pass
+    class CollisionCarRacingDiscreteEnv(object):
         pass
 
 #########################
