@@ -280,6 +280,8 @@ class AnalyzeRNNCritic(object):
             self._plot_analyze_CartPoleSwingupEnv(train_rollouts_itrs, eval_rollouts_itrs)
         elif isinstance(env, CollisionCarRacingSteeringEnv):
             self._plot_analyze_general(train_rollouts_itrs, eval_rollouts_itrs)
+        elif isinstance(env, PhdEnv):
+            self._plot_analyze_PhdEnv(train_rollouts_itrs, eval_rollouts_itrs)
         elif isinstance(env, GymEnv):
             self._plot_analyze_general(train_rollouts_itrs, eval_rollouts_itrs)
         else:
@@ -336,6 +338,76 @@ class AnalyzeRNNCritic(object):
 
         ### plot value function difference
         ax = axes[4]
+        steps = [r['steps'][0] for r in eval_rollouts]
+        est_values_avg_diff = [np.mean(r['est_values'] - r['values']) for r in eval_rollouts]
+        est_values_max_diff = [np.max(r['est_values'] - r['values']) for r in eval_rollouts]
+        est_values_min_diff = [np.min(r['est_values'] - r['values']) for r in eval_rollouts]
+
+        _, est_values_avg_diff_mean, est_values_avg_diff_std = moving_avg_std(steps, est_values_avg_diff, window=20)
+        _, est_values_max_diff_mean, est_values_max_diff_std = moving_avg_std(steps, est_values_max_diff, window=20)
+        steps, est_values_min_diff_mean, est_values_min_diff_std = moving_avg_std(steps, est_values_min_diff, window=20)
+        for mean, std, color, label in [(est_values_avg_diff_mean, est_values_avg_diff_std, 'k', 'Avg'),
+                                        (est_values_max_diff_mean, est_values_max_diff_std, 'r', 'Max'),
+                                        (est_values_min_diff_mean, est_values_min_diff_std, 'b', 'Min')]:
+            ax.plot(steps, mean, color=color, linestyle='-', label=label)
+            ax.fill_between(steps, mean + std, mean - std, color=color, alpha=0.4)
+        ax.set_ylabel('EstValueDiff')
+        ax.legend(loc='lower left', ncol=3)
+
+        ax.set_xlabel('Steps')
+        xfmt = ticker.ScalarFormatter()
+        xfmt.set_powerlimits((0, 0))
+        ax.xaxis.set_major_formatter(xfmt)
+
+        ### for all the plots
+        for ax in axes.ravel():
+            ax.vlines(self.params['alg']['learn_after_n_steps'], ax.get_ylim()[0], ax.get_ylim()[1],
+                      color='k', linestyle='--')
+
+        f.savefig(self._analyze_img_file, bbox_inches='tight')
+        plt.close(f)
+
+    def _plot_analyze_PhdEnv(self, train_rollouts_itrs, eval_rollouts_itrs):
+        f, axes = plt.subplots(4, 1, figsize=(2 * len(train_rollouts_itrs), 10), sharex=True)
+        f.tight_layout()
+
+        train_rollouts = sorted(list(itertools.chain(*train_rollouts_itrs)), key=lambda r: r['steps'][0])
+        eval_rollouts = sorted(list(itertools.chain(*eval_rollouts_itrs)), key=lambda r: r['steps'][0])
+        max_length = self.env.observation_space.flat_dim - 2
+
+        ### plot train episode length
+        ax = axes[0]
+        steps = [r['steps'][0] for r in train_rollouts]
+        eplens = [len(r['rewards']) for r in train_rollouts]
+        steps, eplens_mean, eplens_std= moving_avg_std(steps, eplens, window=100)
+        ax.plot(steps, eplens_mean, 'k-')
+        ax.fill_between(steps, eplens_mean - eplens_std, eplens_mean + eplens_std,
+                        color='k', alpha=0.4)
+        ax.hlines(max_length, steps[0], steps[-1], color='g', linestyle='--')
+        ax.set_ylabel('Train eplen')
+        ax.grid()
+
+        ### plot eval episode length
+        ax = axes[1]
+        steps = [r['steps'][0] for r in eval_rollouts]
+        eplens = [len(r['rewards']) for r in eval_rollouts]
+        steps, eplens_mean, eplens_std= moving_avg_std(steps, eplens, window=100)
+        ax.plot(steps, eplens_mean, 'k-')
+        ax.fill_between(steps, eplens_mean - eplens_std, eplens_mean + eplens_std,
+                        color='k', alpha=0.4)
+        ax.hlines(max_length, steps[0], steps[-1], color='g', linestyle='--')
+        ax.set_ylabel('Eval eplen')
+        ax.grid()
+
+        ### plot training cost
+        ax = axes[2]
+        costs = self.progress['Cost'][1:]
+        steps = self.progress['Step'][1:]
+        ax.plot(steps, costs, 'k-')
+        ax.set_ylabel('Cost')
+
+        ### plot value function difference
+        ax = axes[3]
         steps = [r['steps'][0] for r in eval_rollouts]
         est_values_avg_diff = [np.mean(r['est_values'] - r['values']) for r in eval_rollouts]
         est_values_max_diff = [np.max(r['est_values'] - r['values']) for r in eval_rollouts]
@@ -835,7 +907,6 @@ class AnalyzeRNNCritic(object):
         f.savefig(self._analyze_policy_img_file(None), bbox_inches='tight', dpi=200.)
         plt.close(f)
 
-
     def _plot_policies_PointEnv(self, rollouts_itrs, env_itrs):
         itr = 0
         rollouts_itrs = []
@@ -1063,13 +1134,13 @@ class AnalyzeRNNCritic(object):
 
     def run(self):
         logger.log('AnalyzeRNNCritic: plot_analyze')
-        self._plot_analyze(self.train_rollouts_itrs, self.eval_rollouts_itrs) # TODO
+        self._plot_analyze(self.train_rollouts_itrs, self.eval_rollouts_itrs)
         # logger.log('AnalyzeRNNCritic: plot_rollouts')
         # self._plot_rollouts(self.train_rollouts_itrs, self.eval_rollouts_itrs,
         #                     is_train=False, plot_prior=False)
         # self._plot_rollouts(self.train_rollouts_itrs, self.eval_rollouts_itrs,
         #                     is_train=True, plot_prior=False)
-        self._plot_policies()
+        # self._plot_policies() # TODO
         # self._plot_value_function(self.env_itrs)
         # self._plot_Q_function(self.env_itrs)
 
