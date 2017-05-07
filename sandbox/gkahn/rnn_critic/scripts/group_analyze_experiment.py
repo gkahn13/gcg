@@ -14,6 +14,7 @@ from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
 from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
 from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
 from sandbox.gkahn.rnn_critic.envs.phd_env import PhdEnv
+from sandbox.gkahn.rnn_critic.envs.cartpole_swingup_env import CartPoleSwingupEnv
 from rllab.envs.gym_env import GymEnv
 
 from sandbox.gkahn.rnn_critic.examples.analyze_experiment import AnalyzeRNNCritic
@@ -133,6 +134,10 @@ class PlotAnalyzeRNNCritic(object):
             self._plot_analyze_Reacher()
         elif isinstance(self._env, GymEnv) and 'cheetah' in self._env.env_id.lower():
             self._plot_analyze_HalfCheetah()
+        elif isinstance(self._env, GymEnv) and 'pendulum' in self._env.env_id.lower():
+            self._plot_analyze_Pendulum()
+        elif isinstance(self._env, CartPoleSwingupEnv):
+            self._plot_analyze_CartPoleSwingup()
         else:
             pass
 
@@ -986,6 +991,112 @@ class PlotAnalyzeRNNCritic(object):
         f.savefig(self._analyze_img_file, bbox_inches='tight', dpi=200)
         plt.close(f)
 
+    def _plot_analyze_Pendulum(self):
+        import IPython; IPython.embed()
+
+        f, axes = create_best_fit_axes(len(self._analyze_groups), figsize=(15, 15), sharex=True, sharey=True)
+
+        ### plot cum reward versus time step
+        for ax, analyze_group in zip(axes.ravel(), self._analyze_groups):
+            data_interp = DataAverageInterpolation()
+            min_step = max_step = None
+            for analyze in analyze_group:
+                rollouts = list(itertools.chain(*analyze.eval_rollouts_itrs))
+                rollouts = sorted(rollouts, key=lambda r: r['steps'][-1])
+                steps, cum_rewards = [], []
+                for r in rollouts:
+                    steps.append(r['steps'][-1])
+                    cum_rewards.append(np.sum(r['rewards']))
+
+                def moving_avg_std(idxs, data, window):
+                    avg_idxs, means, stds = [], [], []
+                    for i in range(window, len(data)):
+                        avg_idxs.append(np.mean(idxs[i - window:i]))
+                        means.append(np.mean(data[i - window:i]))
+                        stds.append(np.std(data[i - window:i]))
+                    return avg_idxs, np.asarray(means), np.asarray(stds)
+
+                steps, cum_rewards, _ = moving_avg_std(steps, cum_rewards, window=50)
+
+                data_interp.add_data(steps, cum_rewards)
+                if min_step is None:
+                    min_step = steps[0]
+                if max_step is None:
+                    max_step = steps[-1]
+                min_step = max(min_step, steps[0])
+                max_step = min(max_step, steps[-1])
+
+            steps = np.r_[min_step:max_step:50.][1:-1]
+            cum_rewards_mean, cum_rewards_std = data_interp.eval(steps)
+
+            ax.plot(steps, cum_rewards_mean, color=analyze.plot['color'], label=analyze.plot['label'])
+            ax.fill_between(steps, cum_rewards_mean - cum_rewards_std, cum_rewards_mean + cum_rewards_std,
+                            color=analyze.plot['color'], alpha=0.4)
+
+            ax.grid()
+            ax.set_title(analyze_group[0].plot['label'], {'fontsize': 7})
+            ax.set_ylabel('Cumulative reward')
+            ax.set_xlabel('Steps')
+            xfmt = ticker.ScalarFormatter()
+            xfmt.set_powerlimits((0, 0))
+            ax.xaxis.set_major_formatter(xfmt)
+
+        plt.tight_layout()
+        f.savefig(self._analyze_img_file, bbox_inches='tight', dpi=200)
+        plt.close(f)
+
+    def _plot_analyze_CartPoleSwingup(self):
+        import IPython; IPython.embed()
+
+        f, axes = create_best_fit_axes(len(self._analyze_groups), figsize=(15, 15), sharex=True, sharey=True)
+
+        ### plot cum reward versus time step
+        for ax, analyze_group in zip(axes.ravel(), self._analyze_groups):
+            data_interp = DataAverageInterpolation()
+            min_step = max_step = None
+            for analyze in analyze_group:
+                rollouts = list(itertools.chain(*analyze.eval_rollouts_itrs))
+                rollouts = sorted(rollouts, key=lambda r: r['steps'][-1])
+                steps = [r['steps'][0] for r in rollouts]
+                thetas = np.abs([np.arccos(r['observations'][-1, 2]) * 180. / np.pi for r in rollouts])
+
+                def moving_avg_std(idxs, data, window):
+                    avg_idxs, means, stds = [], [], []
+                    for i in range(window, len(data)):
+                        avg_idxs.append(np.mean(idxs[i - window:i]))
+                        means.append(np.mean(data[i - window:i]))
+                        stds.append(np.std(data[i - window:i]))
+                    return avg_idxs, np.asarray(means), np.asarray(stds)
+
+                steps, thetas, _ = moving_avg_std(steps, thetas, window=20)
+
+                data_interp.add_data(steps, thetas)
+                if min_step is None:
+                    min_step = steps[0]
+                if max_step is None:
+                    max_step = steps[-1]
+                min_step = max(min_step, steps[0])
+                max_step = min(max_step, steps[-1])
+
+            steps = np.r_[min_step:max_step:50.][1:-1]
+            thetas_mean, thetas_std = data_interp.eval(steps)
+
+            ax.plot(steps, thetas_mean, color=analyze.plot['color'], label=analyze.plot['label'])
+            ax.fill_between(steps, thetas_mean - thetas_std, thetas_mean + thetas_std,
+                            color=analyze.plot['color'], alpha=0.4)
+
+            ax.grid()
+            ax.set_title(analyze_group[0].plot['label'], {'fontsize': 7})
+            ax.set_ylabel('theta')
+            ax.set_xlabel('Steps')
+            xfmt = ticker.ScalarFormatter()
+            xfmt.set_powerlimits((0, 0))
+            ax.xaxis.set_major_formatter(xfmt)
+
+        plt.tight_layout()
+        f.savefig(self._analyze_img_file, bbox_inches='tight', dpi=200)
+        plt.close(f)
+
     def _plot_analyze_Tennis(self):
         f, axes = plt.subplots(1 + len(self._analyze_groups), 1, figsize=(15, 5 * len(self._analyze_groups)),
                                sharex=True)
@@ -1066,6 +1177,8 @@ class PlotAnalyzeRNNCritic(object):
         f.savefig(self._analyze_img_file, bbox_inches='tight', dpi=200)
         plt.close(f)
 
+
+
     ###########
     ### Run ###
     ###########
@@ -1077,24 +1190,23 @@ if __name__ == '__main__':
     SAVE_FOLDER = '/media/gkahn/ExtraDrive1/rllab/rnn_critic/'
 
     analyze_groups = []
-    for start in range(187, 207, 3):
+    for start in range(1, 51, 3):
         analyze_group = []
         for i in range(start, start + 3):
-            print('\nphd{0:03d}\n'.format(i))
+            print('\nswingup{0:03d}\n'.format(i))
             # try:
-            analyze = AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'phd{0:03d}'.format(i)),
+            analyze = AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'swingup{0:03d}'.format(i)),
                                        plot={
                                            'label': '',
                                            'color': 'k',
                                        },
                                        clear_obs=True,
                                        create_new_envs=False)
-            analyze.plot['label'] = 'N: {0}, H: {1}, H_test: {2}, H_targ: {3}, {4}, {5}'.format(
+            analyze.plot['label'] = 'N: {0}, H: {1}, H_test: {2}, H_targ: {3}, {4}'.format(
                 analyze.params['policy']['N'],
                 analyze.params['policy']['H'],
                 analyze.params['policy']['get_action_test']['H'],
                 analyze.params['policy']['get_action_target']['H'],
-                analyze.params['policy']['values_softmax'],
                 analyze.params['policy']['class']
             )
             analyze_group.append(analyze)
@@ -1103,6 +1215,6 @@ if __name__ == '__main__':
 
         analyze_groups.append(analyze_group)
 
-    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'phd_187_207', analyze_groups)
+    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'swingup_001_051', analyze_groups)
     plotter.run()
 

@@ -42,7 +42,7 @@ from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
 from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
 from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
 from sandbox.gkahn.rnn_critic.envs.phd_env import PhdEnv
-from sandbox.gkahn.rnn_critic.envs.cartpole_swingup import CartPoleSwingupEnv
+from sandbox.gkahn.rnn_critic.envs.cartpole_swingup_env import CartPoleSwingupEnv
 
 #########################
 ### Utility functions ###
