@@ -422,7 +422,7 @@ class MACPolicy(TfPolicy, Serializable):
             tf_nstep_values_softmax.append(vsoftmax)
 
         tf_values = tf.concat(1, [self._graph_calculate_value(n, tf_nstep_rewards, tf_nstep_values) for n in range(N)])
-        tf_values_softmax = tf.stack(tf_nstep_values_softmax, 1)
+        tf_values_softmax = tf.pack(tf_nstep_values_softmax, 1)
 
         assert(tf_values.get_shape()[1].value == N)
 
@@ -549,16 +549,14 @@ class MACPolicy(TfPolicy, Serializable):
         ### initial state
         if self._use_lstm:
             istate_select = tf.nn.rnn_cell.LSTMStateTuple(*tf.split(1, 2, tf_obs_lowd_select))
-            istate_eval = tf.nn.rnn_cell.LSTMStateTuple(*tf.split(1, 2, tf_obs_lowd_eval))
         else:
             istate_select = tf_obs_lowd_select
-            istate_eval = tf_obs_lowd_eval
         istate_dim = istate_select.get_shape()[1].value
 
         ### beam search loop
         tf_actions = tf.zeros((num_obs * K, 0, action_dim)) # [num_obs * K, 0, action_dim]
         istate = tf_utils.repeat_2d(istate_select, K, 0) # [num_obs * K, istate_dim]
-        tf_nstep_rewards, tf_nstep_values, tf_nstep_values_softmax = [], [], []
+        tf_nstep_rewards, tf_nstep_values, tf_nstep_values_softmax, tf_values_list = [], [], [], []
         for h in range(H):
             ### generate actions
             # new actions
@@ -580,23 +578,25 @@ class MACPolicy(TfPolicy, Serializable):
             with tf.variable_scope(scope_select, reuse=reuse_select or h > 0):
                 istate, rew, val, vsoftmax = \
                     self._graph_inference_step(h, H, istate, tf_actions[:, h, :], get_action_params['values_softmax'], add_reg=False)
+            assert(H == 1) # TODO: need to gather on these too
             tf_nstep_rewards.append(rew)
             tf_nstep_values.append(val)
             tf_nstep_values_softmax.append(vsoftmax)
+            tf_values_list.append(self._graph_calculate_value(h, tf_nstep_rewards, tf_nstep_values))
 
             ### calculate values
-            tf_values = tf.reduce_sum(tf.stack(tf_nstep_values_softmax, 1) *
-                                      self._graph_calculate_value(h, tf_nstep_rewards, tf_nstep_values),
-                                      reduction_indices=1) # [num_obs * K * M]
+            tf_values = tf.reduce_sum(tf.pack(tf_nstep_values_softmax, 1) *
+                                      tf.concat(1, tf_values_list),
+                                      reduction_indices=1)  # [num_obs * K * M]
             tf_values = tf.reshape(tf_values, (num_obs, K * M)) # [num_obs, K * M]
             tf_utils.assert_shape(tf_values, [num_obs, K * M])
 
             ### get_action based on select (policy)
             K_h = K if h < H - 1 else 1
             tf_topk_values, tf_topk = tf.nn.top_k(tf_values, K_h, sorted=False) # [num_obs, K]
-            tf_topk += K * M * tf.tile(tf.expand_dims(tf.range(num_obs), 1), (1, K_h)) # [num_obs, K]
-            tf_utils.assert_shape(tf_topk, [num_obs, K_h])
-            tf_topk_flat = tf.reshape(tf_topk, (num_obs * K_h, 1)) # [num_obs * K]
+            tf_topk_plus = tf_topk + K * M * tf.tile(tf.expand_dims(tf.range(num_obs), 1), (1, K_h)) # [num_obs, K]
+            tf_utils.assert_shape(tf_topk_plus, [num_obs, K_h])
+            tf_topk_flat = tf.reshape(tf_topk_plus, (num_obs * K_h, 1)) # [num_obs * K]
 
             tf_topk_actions = tf.gather_nd(tf_actions, tf_topk_flat)  # [num_obs * K, h+1, action_dim]
             tf_topk_actions.set_shape([None, h + 1, action_dim])
@@ -609,10 +609,14 @@ class MACPolicy(TfPolicy, Serializable):
             tf_topk_obs_lowd_eval = tf.gather_nd(tf_obs_lowd_eval, tf_topk_flat)
 
             # if 'tf_values_h{0}'.format(h) not in self._tf_debug:
-            #     self._tf_debug['tf_values_h{0}'.format(h)] = tf_values
-            #     self._tf_debug['tf_topk_values_h{0}'.format(h)] = tf_topk_values
-            #     self._tf_debug['tf_topk_flat_h{0}'.format(h)] = tf_topk_flat
-            #     self._tf_debug['tf_topk_actions_h{0}'.format(h)] = tf_topk_actions
+            self._tf_debug['tf_values_softmax_h{0}'.format(h)] = tf.pack(tf_nstep_values_softmax, 1) # MATCH
+            self._tf_debug['tf_actions_h{0}'.format(h)] = tf_actions # MATCH
+            self._tf_debug['tf_values_h{0}'.format(h)] = tf_values
+            self._tf_debug['tf_topk_h{0}'.format(h)] = tf_topk # MATCH
+            self._tf_debug['tf_topk_plus_h{0}'.format(h)] = tf_topk_plus # MATCH
+            self._tf_debug['tf_topk_values_h{0}'.format(h)] = tf_topk_values # MATCH
+            self._tf_debug['tf_topk_flat_h{0}'.format(h)] = tf_topk_flat # MATCH
+            self._tf_debug['tf_topk_actions_h{0}'.format(h)] = tf_topk_actions # MATCH
 
             tf_values = tf_topk_values
             tf_actions = tf_topk_actions
@@ -620,14 +624,14 @@ class MACPolicy(TfPolicy, Serializable):
             tf_obs_lowd_eval = tf_topk_obs_lowd_eval
 
         tf_get_action = tf_actions[:, 0, :]
-        # tf_get_action_value = tf.reshape(tf_values, (num_obs,))
+        tf_get_action_value = tf.reshape(tf_values, (num_obs,))
 
         ### get_action_value based on eval (target)
         with tf.variable_scope(scope_eval, reuse=reuse_eval):
             tf_values_all_eval, tf_values_softmax_all_eval = \
                 self._graph_inference(tf_obs_lowd_eval, tf_actions, get_action_params['values_softmax'],
                                       tf_preprocess_eval, add_reg=False, pad_inputs=False)  # [num_obs*k, H]
-        tf_get_action_value = tf.reduce_sum(tf_values_all_eval * tf_values_softmax_all_eval, reduction_indices=1)  # [num_obs]
+        # tf_get_action_value = tf.reduce_sum(tf_values_all_eval * tf_values_softmax_all_eval, reduction_indices=1)  # [num_obs]
 
         return tf_get_action, tf_get_action_value
 
@@ -708,16 +712,16 @@ class MACPolicy(TfPolicy, Serializable):
         tf.assert_equal(tf.shape(tf_get_action_value)[0], num_obs)
         assert(tf_get_action.get_shape()[1].value == action_dim)
 
-        if 'tf_actions' not in self._tf_debug:
-            self._tf_debug['tf_obs'] = tf_utils.repeat_2d(tf_obs_ph[:, 0, :], K, 0) # MATCH
-            self._tf_debug['tf_actions'] = tf_actions # MATCH
-            self._tf_debug['tf_values_all_select'] = tf_values_all_select
-            self._tf_debug['tf_values_softmax_all_select'] = tf_values_softmax_all_select
-            self._tf_debug['tf_values_select'] = tf_values_select
-            self._tf_debug['tf_values_argmax_select'] = tf_values_argmax_select
-            self._tf_debug['tf_get_action'] = tf_get_action
-            self._tf_debug['tf_values_eval'] = tf_values_eval
-            self._tf_debug['tf_get_action_value'] = tf_get_action_value
+        # if 'tf_actions' not in self._tf_debug:
+        # self._tf_debug['tf_obs'] = tf_utils.repeat_2d(tf_obs_ph[:, 0, :], K, 0) # MATCH
+        # self._tf_debug['tf_actions'] = tf_actions # MATCH
+        # self._tf_debug['tf_values_all_select'] = tf_values_all_select
+        # self._tf_debug['tf_values_softmax_all_select'] = tf_values_softmax_all_select
+        # self._tf_debug['tf_values_select'] = tf_values_select
+        # self._tf_debug['tf_values_argmax_select'] = tf_values_argmax_select
+        # self._tf_debug['tf_get_action'] = tf_get_action
+        self._tf_debug['tf_values_eval'] = tf_values_eval
+        # self._tf_debug['tf_get_action_value'] = tf_get_action_value
 
         return tf_get_action, tf_get_action_value
 
@@ -930,6 +934,15 @@ class MACPolicy(TfPolicy, Serializable):
         }
         if self._use_target:
             feed_dict[self._tf_dict['obs_target_ph']] = observations[:, 1:, :]
+
+        if step > 1.1e4:
+            d = {}
+            keys = [k for k in self._tf_debug.keys()]
+            vs = self._tf_dict['sess'].run([self._tf_debug[k] for k in keys], feed_dict=feed_dict)
+            for k, v in zip(keys, vs):
+                d[k] = v
+
+            import IPython; IPython.embed()
 
         cost, mse, _ = self._tf_dict['sess'].run([self._tf_dict['cost'],
                                                   self._tf_dict['mse'],

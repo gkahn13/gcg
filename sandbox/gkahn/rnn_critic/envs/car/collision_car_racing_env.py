@@ -219,9 +219,9 @@ class CollisionCarRacingDiscreteEnv(car_racing.CarRacing):
         done = min([len(w.tiles) for w in self.car.wheels]) == 0
         speed = np.linalg.norm(self.car.hull.linearVelocity)
         if done:
-            reward = -100 * speed
+            reward = -5 * speed
         else:
-            reward = 1e-3 * speed
+            reward = 1e-1 * speed
 
         return self._convert_obs(obs), reward, done, {}
 
@@ -273,30 +273,30 @@ class CollisionCarRacingDiscreteEnv(car_racing.CarRacing):
 
 
 if __name__ == "__main__":
-    import gym
-    import matplotlib.pyplot as plt
+    # import gym
+    # import matplotlib.pyplot as plt
+    #
+    # env = CollisionCarRacingDiscreteEnv()
+    # env.reset()
+    #
+    # f, ax = plt.subplots(1, 1)
+    # im = None
+    # import time
+    #
+    # start = time.time()
+    # for _ in range(1000):
+    #     obs, _, done, _ = env.step(CollisionCarRacingDiscreteEnv)
+    #     if im is None:
+    #         im = ax.imshow(obs[:, :, 0], cmap='Greys_r')
+    #         plt.show(block=False)
+    #     else:
+    #         im.set_array(obs[:, :, 0])
+    #     f.canvas.draw()
+    #     plt.pause(0.01)
+    #     input(done)
+    # elapsed = time.time() - start
+    # print('FPS: {0}'.format(1000. / elapsed))
+    # import IPython; IPython.embed()
 
     env = CollisionCarRacingDiscreteEnv()
-    env.reset()
-
-    f, ax = plt.subplots(1, 1)
-    im = None
-    import time
-
-    start = time.time()
-    for _ in range(1000):
-        obs, _, done, _ = env.step(CollisionCarRacingDiscreteEnv.GAS)
-        if im is None:
-            im = ax.imshow(obs[:, :, 0], cmap='Greys_r')
-            plt.show(block=False)
-        else:
-            im.set_array(obs[:, :, 0])
-        f.canvas.draw()
-        plt.pause(0.01)
-        input(done)
-    elapsed = time.time() - start
-    print('FPS: {0}'.format(1000. / elapsed))
-    import IPython; IPython.embed()
-
-    # env = CollisionCarRacingDiscreteEnv()
-    # env.play()
+    env.play()

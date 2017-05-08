@@ -290,7 +290,7 @@ class AnalyzeRNNCritic(object):
             self._plot_analyze_general(train_rollouts_itrs, eval_rollouts_itrs)
 
     def _plot_analyze_general(self, train_rollouts_itrs, eval_rollouts_itrs):
-        f, axes = plt.subplots(5, 1, figsize=(2 * len(train_rollouts_itrs), 10), sharex=True)
+        f, axes = plt.subplots(5, 1, figsize=(15, 10), sharex=True)
         f.tight_layout()
 
         train_rollouts = sorted(list(itertools.chain(*train_rollouts_itrs)), key=lambda r: r['steps'][0])
