@@ -41,6 +41,9 @@ def run_rnn_critic(params, params_txt):
         from sandbox.gkahn.rnn_critic.envs.premade_gym_env import PremadeGymEnv
         try:
             import gym_ple
+        except:
+            pass
+        try:
             from sandbox.gkahn.rnn_critic.envs.car.collision_car_racing_env import CollisionCarRacingSteeringEnv, CollisionCarRacingDiscreteEnv
         except:
             pass

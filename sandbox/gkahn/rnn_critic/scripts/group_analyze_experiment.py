@@ -136,6 +136,8 @@ class PlotAnalyzeRNNCritic(object):
             self._plot_analyze_HalfCheetah()
         elif isinstance(self._env, GymEnv) and 'pendulum' in self._env.env_id.lower():
             self._plot_analyze_Pendulum()
+        elif isinstance(self._env, GymEnv) and 'hopper' in self._env.env_id.lower():
+            self._plot_analyze_Hopper()
         elif isinstance(self._env, CartPoleSwingupEnv):
             self._plot_analyze_CartPoleSwingup()
         else:
@@ -1093,6 +1095,47 @@ class PlotAnalyzeRNNCritic(object):
         f.savefig(self._analyze_img_file, bbox_inches='tight', dpi=200)
         plt.close(f)
 
+    def _plot_analyze_Hopper(self):
+        import IPython; IPython.embed()
+
+        f, axes = plt.subplots(len(self._analyze_groups), 1, figsize=(15, 15), sharex=True, sharey=True)
+
+        ### plot cum reward versus time step
+        for ax, analyze_group in zip(axes.ravel(), self._analyze_groups):
+            for analyze in analyze_group:
+                rollouts = list(itertools.chain(*analyze.eval_rollouts_itrs))
+                rollouts = sorted(rollouts, key=lambda r: r['steps'][0])
+                steps, cum_rewards = [], []
+                for r in rollouts:
+                    steps.append(r['steps'][-1])
+                    cum_rewards.append(np.sum(r['rewards']))
+
+                def moving_avg_std(idxs, data, window):
+                    avg_idxs, means, stds = [], [], []
+                    for i in range(window, len(data)):
+                        avg_idxs.append(np.mean(idxs[i - window:i]))
+                        means.append(np.mean(data[i - window:i]))
+                        stds.append(np.std(data[i - window:i]))
+                    return avg_idxs, np.asarray(means), np.asarray(stds)
+
+                steps, cum_rewards_mean, cum_rewards_std = moving_avg_std(steps, cum_rewards, window=500)
+
+                ax.plot(steps, cum_rewards_mean, color=analyze.plot['color'], label=analyze.plot['label'])
+                ax.fill_between(steps, cum_rewards_mean - cum_rewards_std, cum_rewards_mean + cum_rewards_std,
+                                color=analyze.plot['color'], alpha=0.4)
+
+            ax.grid()
+            ax.set_title(analyze_group[0].plot['label'], {'fontsize': 10})
+            ax.set_ylabel('Cumulative reward')
+            ax.set_xlabel('Steps')
+            xfmt = ticker.ScalarFormatter()
+            xfmt.set_powerlimits((0, 0))
+            ax.xaxis.set_major_formatter(xfmt)
+
+        plt.tight_layout()
+        f.savefig(self._analyze_img_file, bbox_inches='tight', dpi=200)
+        plt.close(f)
+
     def _plot_analyze_Tennis(self):
         f, axes = plt.subplots(1 + len(self._analyze_groups), 1, figsize=(15, 5 * len(self._analyze_groups)),
                                sharex=True)
@@ -1186,7 +1229,7 @@ if __name__ == '__main__':
     SAVE_FOLDER = '/media/gkahn/ExtraDrive1/rllab/rnn_critic/'
 
     analyze_groups = []
-    for start in range(209, 226, 3):
+    for start in range(228, 245, 3):
         analyze_group = []
         for i in range(start, start + 3):
             print('\nphd{0:03d}\n'.format(i))
@@ -1209,6 +1252,6 @@ if __name__ == '__main__':
 
         analyze_groups.append(analyze_group)
 
-    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'phd_209_226', analyze_groups)
+    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'phd_228_245', analyze_groups)
     plotter.run()
 

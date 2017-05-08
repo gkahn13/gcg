@@ -1142,13 +1142,15 @@ class AnalyzeRNNCritic(object):
         #                     is_train=False, plot_prior=False)
         # self._plot_rollouts(self.train_rollouts_itrs, self.eval_rollouts_itrs,
         #                     is_train=True, plot_prior=False)
-        # self._plot_policies() # TODO
+        self._plot_policies()
         # self._plot_value_function(self.env_itrs)
         # self._plot_Q_function(self.env_itrs)
 
 
 def main(folder, skip_itr, max_itr):
-    analyze = AnalyzeRNNCritic(os.path.join('/home/gkahn/code/rllab/data/local/rnn-critic/', folder),
+    # DIR = '/home/gkahn/code/rllab/data/local/rnn-critic/'
+    DIR = '/media/gkahn/ExtraDrive1/rllab/rnn_critic/'
+    analyze = AnalyzeRNNCritic(os.path.join(DIR, folder),
                                skip_itr=skip_itr,
                                max_itr=max_itr)
     analyze.run()

@@ -231,7 +231,7 @@ class MACPolicy(TfPolicy, Serializable):
 
         return tf_obs_lowd
 
-    def _graph_inference(self, tf_obs_lowd, tf_actions_ph, values_softmax, tf_preprocess, add_reg=True, pad_inputs=True):
+    def _graph_inference_OLD(self, tf_obs_lowd, tf_actions_ph, values_softmax, tf_preprocess, add_reg=True, pad_inputs=True):
         """
         :param tf_obs_lowd: [batch_size, self._rnn_state_dim]
         :param tf_actions_ph: [batch_size, H, action_dim]
@@ -385,7 +385,254 @@ class MACPolicy(TfPolicy, Serializable):
 
         assert(tf_values.get_shape()[1].value == N)
 
-        return tf_values, tf_values_softmax, tf_values_depth
+        return tf_values, tf_values_softmax
+
+    def _graph_inference(self, tf_obs_lowd, tf_actions_ph, values_softmax, tf_preprocess, add_reg=True, pad_inputs=True):
+        """
+        :param tf_obs_lowd: [batch_size, self._rnn_state_dim]
+        :param tf_actions_ph: [batch_size, H, action_dim]
+        :param values_softmax: string
+        :param tf_preprocess:
+        :param pad_inputs: if True, will be N inputs, otherwise will be H inputs
+        :return: tf_values: [batch_size, H]
+        """
+        H = tf_actions_ph.get_shape()[1].value
+        N = self._N if pad_inputs else H
+        assert(tf_obs_lowd.get_shape()[1].value == (2 * self._rnn_state_dim if self._use_lstm else self._rnn_state_dim))
+        tf.assert_equal(tf.shape(tf_obs_lowd)[0], tf.shape(tf_actions_ph)[0])
+
+        if self._use_lstm:
+            istate = tf.nn.rnn_cell.LSTMStateTuple(*tf.split(1, 2, tf_obs_lowd))  # so state_is_tuple=True
+        else:
+            istate = tf_obs_lowd
+
+        tf_nstep_rewards = []
+        tf_nstep_values = []
+        tf_nstep_values_softmax = []
+        for h in range(N):
+            action = tf_actions_ph[:, h, :] if h < H else None
+
+            next_istate, rew, val, vsoftmax = \
+                self._graph_inference_step(h, N, istate, action, values_softmax, add_reg=add_reg)
+            tf.get_variable_scope().reuse_variables()
+
+            istate = next_istate
+            tf_nstep_rewards.append(rew)
+            tf_nstep_values.append(val)
+            tf_nstep_values_softmax.append(vsoftmax)
+
+        tf_values = tf.concat(1, [self._graph_calculate_value(n, tf_nstep_rewards, tf_nstep_values) for n in range(N)])
+        tf_values_softmax = tf.stack(tf_nstep_values_softmax, 1)
+
+        assert(tf_values.get_shape()[1].value == N)
+
+        return tf_values, tf_values_softmax
+
+    def _graph_inference_step(self, n, N, istate, action, values_softmax, add_reg=True):
+        """
+        :param n: current step
+        :param N: max step
+        :param istate: current internal state
+        :param action: if action is None, input zeros
+        """
+        import tensorflow.contrib.layers as layers
+
+        with tf.name_scope('inference_step'):
+            ### action
+            with tf.name_scope('action'):
+                if action is None:
+                    rnn_input = tf.zeros([tf.shape(istate)[0], self._rnn_state_dim])
+                else:
+                    layer = action
+                    for i, num_outputs in enumerate(self._action_hidden_layers + [self._rnn_state_dim]):
+                        layer = layers.fully_connected(layer, num_outputs=num_outputs, activation_fn=self._activation,
+                                                       weights_regularizer=layers.l2_regularizer(1.) if add_reg else None,
+                                                       scope='actions_i{0}'.format(i),
+                                                       reuse=tf.get_variable_scope().reuse) # TODO
+                    rnn_input = layer
+
+            ### rnn
+            with tf.name_scope('rnn'):
+                if self._use_lstm:
+                    if self._use_bilinear:
+                        rnn_cell = BasicMulintLSTMCell(self._rnn_state_dim,
+                                                       state_is_tuple=True,
+                                                       activation=self._rnn_activation)
+                    else:
+                        rnn_cell = tf.nn.rnn_cell.BasicLSTMCell(self._rnn_state_dim,
+                                                                state_is_tuple=True,
+                                                                activation=self._rnn_activation)
+                else:
+                    if self._use_bilinear:
+                        rnn_cell = BasicMulintRNNCell(self._rnn_state_dim, activation=self._rnn_activation)
+                    else:
+                        rnn_cell = tf.nn.rnn_cell.BasicRNNCell(self._rnn_state_dim, activation=self._rnn_activation)
+                tf_output, next_istate = rnn_cell(rnn_input, istate)
+
+            ### rnn output --> nstep rewards
+            with tf.name_scope('nstep_rewards'):
+                layer = tf_output
+                for i, num_outputs in enumerate(self._reward_hidden_layers + [1]):
+                    activation = self._activation if i < len(self._reward_hidden_layers) else None
+                    layer = layers.fully_connected(layer,
+                                                   num_outputs=num_outputs,
+                                                   activation_fn=activation,
+                                                   weights_regularizer=layers.l2_regularizer(1.) if add_reg else None,
+                                                   scope='rewards_i{0}'.format(i),
+                                                   reuse=tf.get_variable_scope().reuse) # TODO
+                tf_nstep_reward = layer
+
+            ### rnn output --> nstep values
+            with tf.name_scope('nstep_values'):
+                layer = tf_output
+                for i, num_outputs in enumerate(self._value_hidden_layers + [1]):
+                    activation = self._activation if i < len(self._value_hidden_layers) else None
+                    layer = layers.fully_connected(layer,
+                                                   num_outputs=num_outputs,
+                                                   activation_fn=activation,
+                                                   weights_regularizer=layers.l2_regularizer(1.) if add_reg else None,
+                                                   scope='values_i{0}'.format(i),
+                                                   reuse=tf.get_variable_scope().reuse) # TODO
+                tf_nstep_value = layer
+
+            ### nstep lambdas --> values softmax and depth
+            with tf.name_scope('nstep_lambdas'):
+                if values_softmax == 'final':
+                    if n == N - 1:
+                        tf_values_softmax = tf.ones([tf.shape(action)[0]])
+                    else:
+                        tf_values_softmax = tf.zeros([tf.shape(action)[0]])
+                elif values_softmax == 'mean':
+                    tf_values_softmax = (1. / float(N)) * tf.ones([tf.shape(action)[0]])
+                elif values_softmax == 'learned':
+                    raise NotImplementedError
+
+        return next_istate, tf_nstep_reward, tf_nstep_value, tf_values_softmax
+
+    def _graph_calculate_value(self, n, tf_nstep_rewards, tf_nstep_values):
+        tf_returns = tf_nstep_rewards[:n] + [tf_nstep_values[n]]
+        tf_value = np.sum([np.power(self._gamma, i) * tf_return for i, tf_return in enumerate(tf_returns)])
+        return tf_value
+
+    def _graph_generate_random_actions(self, K):
+        action_dim = self._env_spec.action_space.flat_dim
+        if isinstance(self._env_spec.action_space, Discrete):
+            tf_actions = tf.one_hot(tf.random_uniform([K, 1], minval=0, maxval=action_dim, dtype=tf.int32),
+                                    depth=action_dim,
+                                    axis=2)
+        else:
+            action_lb = np.expand_dims(self._env_spec.action_space.low, 0)
+            action_ub = np.expand_dims(self._env_spec.action_space.high, 0)
+            tf_actions = (action_ub - action_lb) * tf.random_uniform([K, action_dim]) + action_lb
+
+        return tf_actions
+
+    def _graph_get_action_beam_search(self, tf_obs_ph, get_action_params, scope_select, reuse_select, scope_eval, reuse_eval):
+        assert(get_action_params['values_softmax'] == 'mean')
+
+        H = get_action_params['H']
+        assert(H <= self._N)
+        num_obs = tf.shape(tf_obs_ph)[0]
+        action_dim = self._env_spec.action_space.flat_dim
+
+        get_action_type = get_action_params['type']
+        M = get_action_params[get_action_type]['M'] # each beam evaluates M actions
+        K = get_action_params[get_action_type]['K'] # select top K actions
+
+        ### process to lowd
+        with tf.variable_scope(scope_select, reuse=reuse_select):
+            tf_preprocess_select = self._graph_preprocess_placeholders()
+            tf_obs_lowd_select = self._graph_obs_to_lowd(tf_obs_ph, tf_preprocess_select)
+        with tf.variable_scope(scope_eval, reuse=reuse_eval):
+            tf_preprocess_eval = self._graph_preprocess_placeholders()
+            tf_obs_lowd_eval = self._graph_obs_to_lowd(tf_obs_ph, tf_preprocess_eval)
+        ### initial state
+        if self._use_lstm:
+            istate_select = tf.nn.rnn_cell.LSTMStateTuple(*tf.split(1, 2, tf_obs_lowd_select))
+            istate_eval = tf.nn.rnn_cell.LSTMStateTuple(*tf.split(1, 2, tf_obs_lowd_eval))
+        else:
+            istate_select = tf_obs_lowd_select
+            istate_eval = tf_obs_lowd_eval
+        istate_dim = istate_select.get_shape()[1].value
+
+        ### beam search loop
+        tf_actions = tf.zeros((num_obs * K, 0, action_dim)) # [num_obs * K, 0, action_dim]
+        istate = tf_utils.repeat_2d(istate_select, K, 0) # [num_obs * K, istate_dim]
+        tf_nstep_rewards, tf_nstep_values, tf_nstep_values_softmax = [], [], []
+        for h in range(H):
+            ### generate actions
+            # new actions
+            tf_actions_h = tf.tile(tf.expand_dims(self._graph_generate_random_actions(K * M), 1), (num_obs, 1, 1)) # [num_obs * K * M, 1, action_dim]
+            # repeat old actions
+            tf_actions = tf.reshape(tf_actions, (num_obs * K, h * action_dim)) # [num_obs * K, h * action_dim]
+            tf_actions = tf_utils.repeat_2d(tf_actions, M, 0) # [num_obs * K * M, h * action_dim]
+            tf_actions = tf.reshape(tf_actions, (num_obs * K * M, h, action_dim)) # [num_obs * K * M, h, action_dim]
+            # combine
+            tf_actions = tf.concat(1, [tf_actions, tf_actions_h]) # [num_obs * K * M, h+1, action_dim]
+            tf_utils.assert_shape(tf_actions, [num_obs * K * M, h+1, action_dim])
+
+            ### repeat istate
+            istate = tf_utils.repeat_2d(istate, M, 0) # [num_obs * K * M, istate_dim]
+            tf_utils.assert_shape(istate, [num_obs * K * M, istate_dim])
+
+            ### inference step
+            with tf.variable_scope(scope_select, reuse=reuse_select or h > 0):
+                istate, rew, val, vsoftmax = \
+                    self._graph_inference_step(h, H, istate, tf_actions[:, h, :], get_action_params['values_softmax'], add_reg=False)
+            tf_nstep_rewards.append(rew)
+            tf_nstep_values.append(val)
+            tf_nstep_values_softmax.append(vsoftmax)
+
+            ### calculate values
+            tf_values = tf.reduce_sum(tf.stack(tf_nstep_values_softmax, 1) *
+                                      self._graph_calculate_value(h, tf_nstep_rewards, tf_nstep_values),
+                                      reduction_indices=1) # [num_obs * K * M]
+            tf_values = tf.reshape(tf_values, (num_obs, K * M)) # [num_obs, K * M]
+            tf_utils.assert_shape(tf_values, [num_obs, K * M])
+
+            ### get_action based on select (policy)
+            K_h = K if h < H - 1 else 1
+            tf_topk_values, tf_topk = tf.nn.top_k(tf_values, K_h, sorted=False) # [num_obs, K]
+            tf_topk += K * M * tf.tile(tf.expand_dims(tf.range(num_obs), 1), (1, K_h)) # [num_obs, K]
+            tf_utils.assert_shape(tf_topk, [num_obs, K_h])
+            tf_topk_flat = tf.reshape(tf_topk, (num_obs * K_h, 1)) # [num_obs * K]
+            tf_topk_actions = tf.gather_nd(tf_actions, tf_topk_flat)  # [num_obs * K, h+1, action_dim]
+            tf_topk_actions.set_shape([None, h + 1, action_dim])
+            tf_utils.assert_shape(tf_topk_actions, [num_obs * K_h, h+1, action_dim])
+            tf_topk_istate = tf.gather_nd(istate, tf_topk_flat) # [num_obs * K, istate_dim]
+            tf_topk_istate.set_shape([None, istate_dim])
+            tf_utils.assert_shape(tf_topk_istate, [num_obs * K_h, istate_dim])
+
+            if 'tf_values_h{0}'.format(h) not in self._tf_debug:
+                self._tf_debug['tf_values_h{0}'.format(h)] = tf_values
+                self._tf_debug['tf_topk_values_h{0}'.format(h)] = tf_topk_values
+                self._tf_debug['tf_topk_flat_h{0}'.format(h)] = tf_topk_flat
+                self._tf_debug['tf_topk_actions_h{0}'.format(h)] = tf_topk_actions
+
+            tf_values = tf_topk_values
+            tf_actions = tf_topk_actions
+            istate = tf_topk_istate
+
+            # ### from gedit
+            # tf_topk_values, tf_topk_indices = tf.nn.top_k(tf_values, K, sorted=False)  # [num_obs, K]
+            # tf_new_indices = tf.concat(1, [repeat_2d(tf.expand_dims(tf.range(num_obs), 1), K, 0),
+            #                                tf.reshape(tf_topk_indices, (num_obs * K, 1))])  # [num_obs * K, 2]
+            # tf_topk_gather_values = tf.reshape(tf.gather_nd(tf_values, tf_new_indices), (num_obs, K))  # [num_obs, K]
+            # tf_topk_gather_actions = tf.reshape(tf.gather_nd(tf_actions, tf_new_indices),
+            #                                     (num_obs, K, action_dim))  # [num_obs, K, action_dim]
+            #
+            # ### get_action based on select (policy)
+            # tf_values = tf.reshape(tf_values, (num_obs, K))  # [num_obs, K]
+            # tf_values_argmax = tf.one_hot(tf.argmax(tf_values, 1), depth=K)  # [num_obs, K]
+            # tf_get_action = tf.reduce_sum(
+            #     tf.tile(tf.expand_dims(tf_values_argmax, 2), (1, 1, action_dim)) *
+            #     tf.reshape(tf_actions, (num_obs, K, H, action_dim))[:, :, 0, :],
+            #     reduction_indices=1)  # [num_obs, action_dim]
+
+        tf_get_action = tf_actions[:, 0, :]
+        tf_get_action_value = tf.reshape(tf_values, (num_obs,))
+
+        return tf_get_action, tf_get_action_value
 
     def _graph_get_action(self, tf_obs_ph, get_action_params, scope_select, reuse_select, scope_eval, reuse_eval):
         """
@@ -421,6 +668,8 @@ class MACPolicy(TfPolicy, Serializable):
             actions = actions.reshape(len(indices), H, action_dim)
             K = len(actions)
             tf_actions = tf.constant(actions, dtype=tf.float32)
+        elif get_action_type == 'beam':
+            return self._graph_get_action_beam_search(tf_obs_ph, get_action_params, scope_select, reuse_select, scope_eval, reuse_eval)
         else:
             raise NotImplementedError
 
@@ -437,11 +686,11 @@ class MACPolicy(TfPolicy, Serializable):
         tf_obs_lowd_repeat_eval = tf_utils.repeat_2d(tf_obs_lowd_eval, K, 0)
         ### inference to get values
         with tf.variable_scope(scope_select, reuse=reuse_select):
-            tf_values_all_select, tf_values_softmax_all_select, _ = \
+            tf_values_all_select, tf_values_softmax_all_select = \
                 self._graph_inference(tf_obs_lowd_repeat_select, tf_actions, get_action_params['values_softmax'],
                                       tf_preprocess_select, add_reg=False, pad_inputs=False)  # [num_obs*k, H]
         with tf.variable_scope(scope_eval, reuse=reuse_eval):
-            tf_values_all_eval, tf_values_softmax_all_eval, _ = \
+            tf_values_all_eval, tf_values_softmax_all_eval = \
                 self._graph_inference(tf_obs_lowd_repeat_eval, tf_actions, get_action_params['values_softmax'],
                                       tf_preprocess_eval, add_reg=False, pad_inputs=False)  # [num_obs*k, H]
         ### get_action based on select (policy)
@@ -547,12 +796,12 @@ class MACPolicy(TfPolicy, Serializable):
                 ### process obs to lowd
                 tf_obs_lowd = self._graph_obs_to_lowd(tf_obs_ph, tf_preprocess)
                 ### create training policy
-                tf_train_values, tf_train_values_softmax, tf_train_values_depth = \
+                tf_train_values, tf_train_values_softmax = \
                     self._graph_inference(tf_obs_lowd, tf_actions_ph[:, :self._H, :],
                                           self._values_softmax, tf_preprocess)
 
             with tf.variable_scope(policy_scope, reuse=True):
-                tf_train_values_test, tf_train_values_softmax_test, _ = \
+                tf_train_values_test, tf_train_values_softmax_test = \
                     self._graph_inference(tf_obs_lowd, tf_actions_ph[:, :self._get_action_test['H'], :],
                                           self._values_softmax, tf_preprocess, pad_inputs=False)
                 tf_get_value = tf.reduce_sum(tf_train_values_softmax_test * tf_train_values_test, reduction_indices=1)
@@ -625,7 +874,6 @@ class MACPolicy(TfPolicy, Serializable):
             'mse': tf_mse,
             'opt': tf_opt,
             'lr_ph': tf_lr_ph,
-            'values_depth': tf_train_values_depth
         }
 
     ################
@@ -686,14 +934,12 @@ class MACPolicy(TfPolicy, Serializable):
         if self._use_target:
             feed_dict[self._tf_dict['obs_target_ph']] = observations[:, 1:, :]
 
-        cost, mse, values_depth, _ = self._tf_dict['sess'].run([self._tf_dict['cost'],
-                                                                self._tf_dict['mse'],
-                                                                self._tf_dict['values_depth'],
-                                                                self._tf_dict['opt']],
-                                                               feed_dict=feed_dict)
+        cost, mse, _ = self._tf_dict['sess'].run([self._tf_dict['cost'],
+                                                  self._tf_dict['mse'],
+                                                  self._tf_dict['opt']],
+                                                 feed_dict=feed_dict)
         assert(np.isfinite(cost))
 
-        self._log_stats['Depth'].append(np.mean(values_depth))
         self._log_stats['Cost'].append(cost)
         self._log_stats['mse/cost'].append(mse / cost)
 
@@ -706,18 +952,20 @@ class MACPolicy(TfPolicy, Serializable):
         return chosen_actions[0], chosen_values[0], action_info
 
     def get_actions(self, observations):
+        d = {}
+        # keys = [k for k in self._tf_debug.keys()]
+        # vs = self._tf_dict['sess'].run([self._tf_debug[k] for k in keys],
+        #                                 feed_dict={self._tf_dict['obs_ph']: observations})
+        # for k, v in zip(keys, vs):
+        #     d[k] = v
+        #
+        # import IPython; IPython.embed()
+
         actions, values = self._tf_dict['sess'].run([self._tf_dict['get_action'], self._tf_dict['get_action_value']],
                                                     feed_dict={self._tf_dict['obs_ph']: observations})
 
         if isinstance(self._env_spec.action_space, Discrete):
             actions = [int(a.argmax()) for a in actions]
-
-        d = {}
-        # keys = [k for k in self._tf_debug.keys() if 'train' not in k]
-        # vs = self._tf_dict['sess'].run([self._tf_debug[k] for k in keys],
-        #                                 feed_dict={self._tf_dict['obs_ph']: observations})
-        # for k, v in zip(keys, vs):
-        #     d[k] = v
 
         return actions, values, d
 
