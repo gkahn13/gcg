@@ -1229,7 +1229,7 @@ if __name__ == '__main__':
     SAVE_FOLDER = '/media/gkahn/ExtraDrive1/rllab/rnn_critic/'
 
     analyze_groups = []
-    for start in range(86, 139, 3):
+    for start in list(range(86, 139, 3)) + [141, 144]:
         analyze_group = []
         for i in range(start, start + 3):
             print('\npend{0:03d}\n'.format(i))
@@ -1254,6 +1254,6 @@ if __name__ == '__main__':
 
         analyze_groups.append(analyze_group)
 
-    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'pend_86_139', analyze_groups)
+    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'pend_086_146', analyze_groups)
     plotter.run()
 

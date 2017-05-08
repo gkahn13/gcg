@@ -24,6 +24,7 @@ from sandbox.gkahn.rnn_critic.algos.rnn_critic_offpolicy import RNNCriticOffpoli
 from sandbox.gkahn.rnn_critic.policies.mac_policy import MACPolicy
 from sandbox.gkahn.rnn_critic.policies.mac_mux_policy import MACMuxPolicy
 from sandbox.gkahn.rnn_critic.policies.dqn_policy import DQNPolicy
+from sandbox.gkahn.rnn_critic.policies.cdqn_policy import CDQNPolicy
 ### RNN analyze
 from sandbox.gkahn.rnn_critic.examples.analyze_experiment import AnalyzeRNNCritic
 

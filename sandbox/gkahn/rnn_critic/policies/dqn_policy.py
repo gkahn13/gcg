@@ -104,16 +104,18 @@ class DQNPolicy(MACPolicy, Serializable):
 
             if values_softmax == 'final':
                 tf_values_softmax = tf.one_hot(N - 1, N) * tf.ones(tf.shape(tf_values))
-                tf_values_depth = (N - 1) * tf.ones([tf.shape(tf_values)[0]])
             elif values_softmax == 'mean':
                 tf_values_softmax = (1. / float(N)) * tf.ones(tf.shape(tf_values))
-                tf_values_depth = ((N - 1) / 2.) * tf.ones([tf.shape(tf_values)[0]])
             else:
                 raise NotImplementedError
 
         assert(tf_values.get_shape()[1].value == N)
 
-        return tf_values, tf_values_softmax, tf_values_depth
+        return tf_values, tf_values_softmax
+
+    @overrides
+    def _graph_inference_step(self, n, N, istate, action, values_softmax, add_reg=True):
+        raise NotImplementedError
 
     ################
     ### Training ###
