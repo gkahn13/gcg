@@ -1014,7 +1014,7 @@ class PlotAnalyzeRNNCritic(object):
                         stds.append(np.std(data[i - window:i]))
                     return avg_idxs, np.asarray(means), np.asarray(stds)
 
-                steps, cum_rewards, _ = moving_avg_std(steps, cum_rewards, window=50)
+                steps, cum_rewards, _ = moving_avg_std(steps, cum_rewards, window=10)
 
                 data_interp.add_data(steps, cum_rewards)
                 if min_step is None:
@@ -1229,22 +1229,24 @@ if __name__ == '__main__':
     SAVE_FOLDER = '/media/gkahn/ExtraDrive1/rllab/rnn_critic/'
 
     analyze_groups = []
-    for start in range(228, 245, 3):
+    for start in range(86, 139, 3):
         analyze_group = []
         for i in range(start, start + 3):
-            print('\nphd{0:03d}\n'.format(i))
+            print('\npend{0:03d}\n'.format(i))
             # try:
-            analyze = AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'phd{0:03d}'.format(i)),
+            analyze = AnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'pend{0:03d}'.format(i)),
                                        plot={
                                            'label': '',
                                            'color': 'k',
                                        },
                                        clear_obs=True,
                                        create_new_envs=False)
-            analyze.plot['label'] = 'N: {0}, H: {1}, r_adviser: {2}'.format(
+            analyze.plot['label'] = 'N: {0}, H: {1}, H_test: {2}, H_targ: {3}, {4}'.format(
                 analyze.params['policy']['N'],
                 analyze.params['policy']['H'],
-                float(analyze.params['alg']['env'].split('r_adviser=')[-1].split(',')[0])
+                analyze.params['policy']['get_action_test']['H'],
+                analyze.params['policy']['get_action_target']['H'],
+                analyze.params['policy']['get_action_test']['type'],
             )
             analyze_group.append(analyze)
             # except:
@@ -1252,6 +1254,6 @@ if __name__ == '__main__':
 
         analyze_groups.append(analyze_group)
 
-    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'phd_228_245', analyze_groups)
+    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'pend_86_139', analyze_groups)
     plotter.run()
 

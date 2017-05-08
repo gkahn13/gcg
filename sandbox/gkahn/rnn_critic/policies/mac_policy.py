@@ -280,12 +280,13 @@ class MACPolicy(TfPolicy, Serializable):
         :param action: if action is None, input zeros
         """
         import tensorflow.contrib.layers as layers
+        batch_size = tf.shape(istate)[0]
 
         with tf.name_scope('inference_step'):
             ### action
             with tf.name_scope('action'):
                 if action is None:
-                    rnn_input = tf.zeros([tf.shape(istate)[0], self._rnn_state_dim])
+                    rnn_input = tf.zeros([batch_size, self._rnn_state_dim])
                 else:
                     layer = action
                     for i, num_outputs in enumerate(self._action_hidden_layers + [self._rnn_state_dim]):
@@ -343,11 +344,11 @@ class MACPolicy(TfPolicy, Serializable):
             with tf.name_scope('nstep_lambdas'):
                 if values_softmax == 'final':
                     if n == N - 1:
-                        tf_values_softmax = tf.ones([tf.shape(action)[0]])
+                        tf_values_softmax = tf.ones([batch_size])
                     else:
-                        tf_values_softmax = tf.zeros([tf.shape(action)[0]])
+                        tf_values_softmax = tf.zeros([batch_size])
                 elif values_softmax == 'mean':
-                    tf_values_softmax = (1. / float(N)) * tf.ones([tf.shape(action)[0]])
+                    tf_values_softmax = (1. / float(N)) * tf.ones([batch_size])
                 elif values_softmax == 'learned':
                     raise NotImplementedError
 
