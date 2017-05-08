@@ -418,7 +418,7 @@ class MACPolicy(TfPolicy, Serializable):
             ### repeat everything
             istate = tf_utils.repeat_2d(istate, M, 0) # [num_obs * K * M, istate_dim]
             tf_nstep_rewards = tf_utils.repeat_2d(tf_nstep_rewards, M, 0) # [num_obs * K * M, h]
-            tf_values = tf.squeeze(tf_utils.repeat_2d(tf.expand_dims(tf_values, 1), M, 0), 1) # [num_obs * K * M, 1]
+            tf_values = tf_utils.repeat_2d(tf.expand_dims(tf_values, 1), M, 0)[:, 0] # [num_obs * K * M, 1]
             tf_utils.assert_shape(istate, [num_obs * K * M, istate_dim])
             tf_utils.assert_shape(tf_nstep_rewards, [num_obs * K * M, h])
 
