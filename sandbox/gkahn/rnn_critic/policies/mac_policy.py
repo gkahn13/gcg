@@ -573,6 +573,7 @@ class MACPolicy(TfPolicy, Serializable):
 
             ### repeat istate
             istate = tf_utils.repeat_2d(istate, M, 0) # [num_obs * K * M, istate_dim]
+            tf_obs_lowd_eval = tf_utils.repeat_2d(tf_obs_lowd_eval, M, 0)
             tf_utils.assert_shape(istate, [num_obs * K * M, istate_dim])
 
             ### inference step
@@ -596,41 +597,37 @@ class MACPolicy(TfPolicy, Serializable):
             tf_topk += K * M * tf.tile(tf.expand_dims(tf.range(num_obs), 1), (1, K_h)) # [num_obs, K]
             tf_utils.assert_shape(tf_topk, [num_obs, K_h])
             tf_topk_flat = tf.reshape(tf_topk, (num_obs * K_h, 1)) # [num_obs * K]
+
             tf_topk_actions = tf.gather_nd(tf_actions, tf_topk_flat)  # [num_obs * K, h+1, action_dim]
             tf_topk_actions.set_shape([None, h + 1, action_dim])
             tf_utils.assert_shape(tf_topk_actions, [num_obs * K_h, h+1, action_dim])
+
             tf_topk_istate = tf.gather_nd(istate, tf_topk_flat) # [num_obs * K, istate_dim]
             tf_topk_istate.set_shape([None, istate_dim])
             tf_utils.assert_shape(tf_topk_istate, [num_obs * K_h, istate_dim])
 
-            if 'tf_values_h{0}'.format(h) not in self._tf_debug:
-                self._tf_debug['tf_values_h{0}'.format(h)] = tf_values
-                self._tf_debug['tf_topk_values_h{0}'.format(h)] = tf_topk_values
-                self._tf_debug['tf_topk_flat_h{0}'.format(h)] = tf_topk_flat
-                self._tf_debug['tf_topk_actions_h{0}'.format(h)] = tf_topk_actions
+            tf_topk_obs_lowd_eval = tf.gather_nd(tf_obs_lowd_eval, tf_topk_flat)
+
+            # if 'tf_values_h{0}'.format(h) not in self._tf_debug:
+            #     self._tf_debug['tf_values_h{0}'.format(h)] = tf_values
+            #     self._tf_debug['tf_topk_values_h{0}'.format(h)] = tf_topk_values
+            #     self._tf_debug['tf_topk_flat_h{0}'.format(h)] = tf_topk_flat
+            #     self._tf_debug['tf_topk_actions_h{0}'.format(h)] = tf_topk_actions
 
             tf_values = tf_topk_values
             tf_actions = tf_topk_actions
             istate = tf_topk_istate
-
-            # ### from gedit
-            # tf_topk_values, tf_topk_indices = tf.nn.top_k(tf_values, K, sorted=False)  # [num_obs, K]
-            # tf_new_indices = tf.concat(1, [repeat_2d(tf.expand_dims(tf.range(num_obs), 1), K, 0),
-            #                                tf.reshape(tf_topk_indices, (num_obs * K, 1))])  # [num_obs * K, 2]
-            # tf_topk_gather_values = tf.reshape(tf.gather_nd(tf_values, tf_new_indices), (num_obs, K))  # [num_obs, K]
-            # tf_topk_gather_actions = tf.reshape(tf.gather_nd(tf_actions, tf_new_indices),
-            #                                     (num_obs, K, action_dim))  # [num_obs, K, action_dim]
-            #
-            # ### get_action based on select (policy)
-            # tf_values = tf.reshape(tf_values, (num_obs, K))  # [num_obs, K]
-            # tf_values_argmax = tf.one_hot(tf.argmax(tf_values, 1), depth=K)  # [num_obs, K]
-            # tf_get_action = tf.reduce_sum(
-            #     tf.tile(tf.expand_dims(tf_values_argmax, 2), (1, 1, action_dim)) *
-            #     tf.reshape(tf_actions, (num_obs, K, H, action_dim))[:, :, 0, :],
-            #     reduction_indices=1)  # [num_obs, action_dim]
+            tf_obs_lowd_eval = tf_topk_obs_lowd_eval
 
         tf_get_action = tf_actions[:, 0, :]
-        tf_get_action_value = tf.reshape(tf_values, (num_obs,))
+        # tf_get_action_value = tf.reshape(tf_values, (num_obs,))
+
+        ### get_action_value based on eval (target)
+        with tf.variable_scope(scope_eval, reuse=reuse_eval):
+            tf_values_all_eval, tf_values_softmax_all_eval = \
+                self._graph_inference(tf_obs_lowd_eval, tf_actions, get_action_params['values_softmax'],
+                                      tf_preprocess_eval, add_reg=False, pad_inputs=False)  # [num_obs*k, H]
+        tf_get_action_value = tf.reduce_sum(tf_values_all_eval * tf_values_softmax_all_eval, reduction_indices=1)  # [num_obs]
 
         return tf_get_action, tf_get_action_value
 
