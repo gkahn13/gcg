@@ -990,8 +990,6 @@ class PlotAnalyzeRNNCritic(object):
         plt.close(f)
 
     def _plot_analyze_Pendulum(self):
-        import IPython; IPython.embed()
-
         f, axes = create_best_fit_axes(len(self._analyze_groups), figsize=(15, 15), sharex=True, sharey=True)
 
         ### plot cum reward versus time step
@@ -1228,8 +1226,15 @@ class PlotAnalyzeRNNCritic(object):
 if __name__ == '__main__':
     SAVE_FOLDER = '/media/gkahn/ExtraDrive1/rllab/rnn_critic/'
 
+    ### pendulum
+    # start_indices = list(range(86, 139, 3)) + list(range(161, 172, 3)) # all
+    start_indices = []
+    start_indices += [157, 148, 151, 161] # N-step DQN
+    start_indices += [86, 141, 144, 164] # predictron
+    start_indices += [86, 110, 134, 167]  # MAC
+
     analyze_groups = []
-    for start in list(range(86, 139, 3)) + [141, 144]:
+    for start in start_indices:
         analyze_group = []
         for i in range(start, start + 3):
             print('\npend{0:03d}\n'.format(i))
@@ -1241,12 +1246,13 @@ if __name__ == '__main__':
                                        },
                                        clear_obs=True,
                                        create_new_envs=False)
-            analyze.plot['label'] = 'N: {0}, H: {1}, H_test: {2}, H_targ: {3}, {4}'.format(
+            analyze.plot['label'] = '{5}, N: {0}, H: {1}, H_test: {2}, H_targ: {3}, {4}'.format(
                 analyze.params['policy']['N'],
                 analyze.params['policy']['H'],
                 analyze.params['policy']['get_action_test']['H'],
                 analyze.params['policy']['get_action_target']['H'],
                 analyze.params['policy']['get_action_test']['type'],
+                analyze.params['policy']['class']
             )
             analyze_group.append(analyze)
             # except:
@@ -1254,6 +1260,6 @@ if __name__ == '__main__':
 
         analyze_groups.append(analyze_group)
 
-    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'pend_086_146', analyze_groups)
+    plotter = PlotAnalyzeRNNCritic(os.path.join(SAVE_FOLDER, 'analyze'), 'pend_086_172_select', analyze_groups)
     plotter.run()
 

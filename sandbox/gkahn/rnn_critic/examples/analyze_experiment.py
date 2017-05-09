@@ -42,7 +42,7 @@ from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
 from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
 from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
 from sandbox.gkahn.rnn_critic.envs.phd_env import PhdEnv
-from sandbox.gkahn.rnn_critic.envs.cartpole_swingup_env import CartPoleSwingupEnv
+from sandbox.gkahn.rnn_critic.envs.cartpole_swingup_env import CartPoleSwingupEnv, CartPoleSwingupImageEnv
 try:
     from sandbox.gkahn.rnn_critic.envs.car.collision_car_racing_env import CollisionCarRacingSteeringEnv, CollisionCarRacingDiscreteEnv
 except:
@@ -278,6 +278,8 @@ class AnalyzeRNNCritic(object):
             self._plot_analyze_ChainEnv(train_rollouts_itrs, eval_rollouts_itrs)
         elif isinstance(env, SparsePointEnv):
             self._plot_analyze_PointEnv(train_rollouts_itrs, eval_rollouts_itrs)
+        elif isinstance(env, CartPoleSwingupImageEnv):
+            self._plot_analyze_general(train_rollouts_itrs, eval_rollouts_itrs)
         elif isinstance(env, CartPoleSwingupEnv):
             self._plot_analyze_CartPoleSwingupEnv(train_rollouts_itrs, eval_rollouts_itrs)
         elif isinstance(env, CollisionCarRacingSteeringEnv):
