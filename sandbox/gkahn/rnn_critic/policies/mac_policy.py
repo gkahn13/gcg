@@ -594,7 +594,7 @@ class MACPolicy(TfPolicy, Serializable):
         tf.assert_equal(batch_size, tf.shape(tf_explore_ph)[0])
 
         if isinstance(self._exploration_strategy, EpsilonGreedyStrategy):
-            mask = tf.cast(tf.tile(tf.random_uniform(batch_size) < tf_explore_ph, (1, action_dim)), tf.float32)
+            mask = tf.cast(tf.tile(tf.random_uniform([batch_size, 1]) < tf_explore_ph, (1, action_dim)), tf.float32)
             tf_actions_explore = (1 - mask) * tf_actions + mask * self._graph_generate_random_actions(batch_size)
         elif isinstance(self._exploration_strategy, GaussianStrategy):
             tf_actions_explore = tf.clip_by_value(tf_actions + tf.random_normal(tf.shape(tf_actions)) * tf_explore_ph,
