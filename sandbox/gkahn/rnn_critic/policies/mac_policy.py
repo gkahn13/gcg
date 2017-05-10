@@ -17,6 +17,10 @@ from sandbox.gkahn.tf.core import xplatform
 from sandbox.gkahn.rnn_critic.utils import schedules, tf_utils
 from sandbox.gkahn.rnn_critic.tf.mulint_rnn_cell import BasicMulintRNNCell, BasicMulintLSTMCell
 
+### exploration strategies
+from sandbox.gkahn.rnn_critic.exploration_strategies.epsilon_greedy_strategy import EpsilonGreedyStrategy
+from sandbox.gkahn.rnn_critic.exploration_strategies.gaussian_strategy import GaussianStrategy
+
 class MACPolicy(TfPolicy, Serializable):
     def __init__(self, **kwargs):
         Serializable.quick_init(self, locals())
@@ -65,6 +69,11 @@ class MACPolicy(TfPolicy, Serializable):
         ### action selection and exploration
         self._get_action_test = kwargs.get('get_action_test')
         self._get_action_target = kwargs.get('get_action_target')
+        self._retrace_lambda = kwargs.get('retrace_lambda')
+        es_params = kwargs.pop('exploration_strategy')
+        es_class = es_params['class']
+        ESClass = eval(es_class)
+        self._exploration_strategy = ESClass(env_spec=self._env_spec, **es_params[es_class])
 
         ### setup the model
         self._tf_debug = dict()
@@ -143,14 +152,20 @@ class MACPolicy(TfPolicy, Serializable):
         with tf.variable_scope('input_output_placeholders'):
             ### policy inputs
             tf_obs_ph = tf.placeholder(obs_dtype, [None, self._obs_history_len, obs_dim], name='tf_obs_ph')
-            tf_actions_ph = tf.placeholder(tf.float32, [None, self._N, action_dim], name='tf_actions_ph')
+            tf_actions_ph = tf.placeholder(tf.float32, [None, self._N + 1, action_dim], name='tf_actions_ph')
             tf_dones_ph = tf.placeholder(tf.bool, [None, self._N], name='tf_dones_ph')
             ### policy outputs
             tf_rewards_ph = tf.placeholder(tf.float32, [None, self._N], name='tf_rewards_ph')
             ### target inputs
-            tf_obs_target_ph = tf.placeholder(obs_dtype, [None, self._N + self._obs_history_len - 1, obs_dim], name='tf_obs_target_ph')
+            tf_obs_target_ph = tf.placeholder(obs_dtype, [None, self._N + self._obs_history_len - 0, obs_dim], name='tf_obs_target_ph')
+            ### policy exploration
+            tf_explore_train_ph = tf.placeholder(tf.float32, [None, self._N + 1], name='tf_explore_train')
+            tf_explore_test_ph = tf.placeholder(tf.float32, [None], name='tf_explore_test')
+            ### importance sampling
+            tf_logprob_prior_ph = tf.placeholder(tf.float32, [None, self._N], name='tf_logprob_prior_ph')
 
-        return tf_obs_ph, tf_actions_ph, tf_dones_ph, tf_rewards_ph, tf_obs_target_ph
+        return tf_obs_ph, tf_actions_ph, tf_dones_ph, tf_rewards_ph, tf_obs_target_ph, \
+               tf_explore_train_ph, tf_explore_test_ph, tf_logprob_prior_ph
 
     def _graph_preprocess_placeholders(self):
         tf_preprocess = dict()
@@ -568,15 +583,63 @@ class MACPolicy(TfPolicy, Serializable):
 
         return tf_get_action, tf_get_action_value
 
-    def _graph_cost(self, tf_train_values, tf_train_values_softmax, tf_rewards_ph, tf_dones_ph, tf_target_get_action_values):
+    def _graph_get_action_explore(self, tf_actions, tf_explore_ph):
+        """
+        :param tf_actions: [batch_size, action_dim]
+        :param tf_explore_ph: [batch_size]
+        :return:
+        """
+        action_dim = self._env_spec.action_space.flat_dim
+        batch_size = tf.shape(tf_actions)[0]
+        tf.assert_equal(batch_size, tf.shape(tf_explore_ph)[0])
+
+        if isinstance(self._exploration_strategy, EpsilonGreedyStrategy):
+            mask = tf.cast(tf.tile(tf.random_uniform(batch_size) < tf_explore_ph, (1, action_dim)), tf.float32)
+            tf_actions_explore = (1 - mask) * tf_actions + mask * self._graph_generate_random_actions(batch_size)
+        elif isinstance(self._exploration_strategy, GaussianStrategy):
+            tf_actions_explore = tf.clip_by_value(tf_actions + tf.random_normal(tf.shape(tf_actions)) * tf_explore_ph,
+                                                  self._env_spec.action_space.low,
+                                                  self._env_spec.action_space.high)
+        else:
+            tf_actions_explore = tf_actions
+
+        return tf_actions_explore
+
+    def _graph_get_action_logprob(self, tf_actions, tf_actions_opt, tf_explore_ph):
+        action_dim = self._env_spec.action_space.flat_dim
+        batch_size = tf.shape(tf_actions)[0]
+        tf.assert_equal(batch_size, tf.shape(tf_explore_ph)[0])
+
+        if isinstance(self._exploration_strategy, EpsilonGreedyStrategy):
+            is_same_actions = tf.cast(tf.argmax(tf_actions, axis=1) == tf.argmax(tf_actions_opt, axis=1), tf.float32)
+            tf_actions_logprob = is_same_actions * tf.log(1 - tf_explore_ph) + \
+                                 (1 - is_same_actions) * tf.log(tf_explore_ph / (max(1, action_dim - 1)))
+        elif isinstance(self._exploration_strategy, GaussianStrategy):
+            x = tf_actions
+            mu = tf_actions_opt
+            k = action_dim
+
+            tf_actions_logprob = -0.5 * np.log(2 * np.pi)\
+                                 -0.5 * k * tf.log(tf_explore_ph)\
+                                 -0.5 * tf.reduce_sum((x - mu) * (x - mu), 1) / tf_explore_ph
+        else:
+            raise NotImplementedError
+
+        return tf_actions_logprob
+
+    def _graph_cost(self, tf_train_values, tf_train_values_softmax, tf_rewards_ph, tf_dones_ph,
+                    tf_target_get_action_values, tf_logprob_curr, tf_logprob_prior):
         """
         :param tf_train_values: [None, self._N]
         :param tf_train_values_softmax: [None, self._N]
         :param tf_rewards_ph: [None, self._N]
         :param tf_dones_ph: [None, self._N]
         :param tf_target_get_action_values: [None, self._N]
+        :param tf_logprob_curr: [None, self._N]
+        :param tf_logprob_prior: [None, self._N]
         :return: tf_cost, tf_mse
         """
+        batch_size = tf.shape(tf_dones_ph)[0]
         tf_dones = tf.cast(tf_dones_ph, tf.float32)
 
         tf_mses = []
@@ -591,11 +654,21 @@ class MACPolicy(TfPolicy, Serializable):
 
             tf_mses.append(tf.square(tf_sum_rewards_n + tf_target_values_n - tf_train_values_n))
 
-        # tf_weights = tf_train_values_softmax * (1 - tf.pad(tf_dones[:, :-1], [[0, 0], [1, 0]], 'CONSTANT'))
-        # tf_weights /= tf.reduce_sum(tf_weights, 1, keep_dims=True)
-        # tf.assert_equal(tf.reduce_mean(tf.reduce_sum(tf_weights, 1)), 1.)
-        tf_weights = tf_train_values_softmax
-        tf_mse = tf.reduce_mean(tf.reduce_sum(tf_weights * tf.pack(tf_mses, 1), reduction_indices=1))
+        if self._retrace_lambda is not None:
+            relu_min = lambda x: -tf.nn.relu(-x)
+            tf_logweights = tf.cumsum(relu_min(tf_logprob_curr - tf_logprob_prior), 1) + \
+                            tf.range(self._N, dtype=tf.float32) * np.log(self._retrace_lambda) # [batch_size, N]
+            # now need to normalize across the columns (aka across the batch for each N-step)
+            tf_weights_tilde = tf.exp(tf_logweights - tf.reduce_max(tf_logweights, 0)) # max for numerical stability
+            tf_weights = tf_weights_tilde / tf.reduce_sum(tf_weights_tilde, 0)
+        else:
+            tf_weights = (1. / tf.cast(batch_size, tf.float32)) * tf.ones(tf.shape(tf_train_values_softmax))
+
+        # tf_train_values_softmax is across multiple N-step returns (columns)
+        # tf_weights is across the batch (rows)
+        tf.assert_equal(tf.reduce_sum(tf_weights, 0), 1.)
+        tf.assert_equal(tf.reduce_sum(tf_train_values_softmax, 1), 1.)
+        tf_mse = tf.reduce_sum(tf_weights * tf_train_values_softmax * tf.pack(tf_mses, 1))
 
         ### weight decay
         if len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)) > 0:
@@ -630,7 +703,8 @@ class MACPolicy(TfPolicy, Serializable):
                 ext.set_seed(ext.get_seed())
 
             ### create input output placeholders
-            tf_obs_ph, tf_actions_ph, tf_dones_ph, tf_rewards_ph, tf_obs_target_ph = self._graph_input_output_placeholders()
+            tf_obs_ph, tf_actions_ph, tf_dones_ph, tf_rewards_ph, tf_obs_target_ph,\
+                tf_explore_train_ph, tf_explore_test_ph, tf_logprob_prior_ph = self._graph_input_output_placeholders()
 
             ### policy
             policy_scope = 'policy'
@@ -656,6 +730,9 @@ class MACPolicy(TfPolicy, Serializable):
             ### action selection
             tf_get_action, tf_get_action_value = self._graph_get_action(tf_obs_ph, self._get_action_test,
                                                                         policy_scope, True, policy_scope, True)
+            ### exploration strategy and logprob
+            tf_get_action_explore = self._graph_get_action_explore(tf_get_action, tf_explore_test_ph)
+            tf_get_action_logprob = self._graph_get_action_logprob(tf_get_action_explore, tf_get_action, tf_explore_test_ph)
 
             ### get policy variables
             tf_policy_vars = sorted(tf.get_collection(xplatform.global_variables_collection_name(),
@@ -668,14 +745,23 @@ class MACPolicy(TfPolicy, Serializable):
                 target_scope = 'target' if self._separate_target_params else 'policy'
                 ### action selection
                 tf_obs_target_ph_packed = tf.concat(0, [tf_obs_target_ph[:, h - self._obs_history_len:h, :]
-                                                        for h in range(self._obs_history_len, self._obs_history_len + self._N)])
-                _, tf_target_get_action_values = self._graph_get_action(tf_obs_target_ph_packed,
-                                                                        self._get_action_target,
-                                                                        scope_select=policy_scope,
-                                                                        reuse_select=True,
-                                                                        scope_eval=target_scope,
-                                                                        reuse_eval=(target_scope == policy_scope))
-                tf_target_get_action_values = tf.transpose(tf.reshape(tf_target_get_action_values, (self._N, -1)))
+                                                        for h in range(self._obs_history_len, self._obs_history_len + self._N + 1)])
+                tf_target_get_action, tf_target_get_action_values = self._graph_get_action(tf_obs_target_ph_packed,
+                                                                                           self._get_action_target,
+                                                                                           scope_select=policy_scope,
+                                                                                           reuse_select=True,
+                                                                                           scope_eval=target_scope,
+                                                                                           reuse_eval=(target_scope == policy_scope))
+
+                ### logprob
+                action_dim = self._env_spec.action_space.flat_dim
+                tf_actions = tf.reshape(tf.reshape(tf_actions_ph, (-1, self._N + 1 * action_dim)), (-1, action_dim)) # [batch_size, N+1, action_dim] --> [batch_size * N+1
+                tf_target_get_action_logprob = self._graph_get_action_logprob(tf_actions,
+                                                                              tf_target_get_action,
+                                                                              tf.reshape(tf_explore_train_ph, (-1,)))
+
+                tf_target_get_action_values = tf.transpose(tf.reshape(tf_target_get_action_values, (self._N + 1, -1)))[:, 1:]
+                tf_logprob_curr = tf.transpose(tf.reshape(tf_target_get_action_logprob, (self._N + 1, -1)))[:, :self._N]
             else:
                 tf_target_get_action_values = tf.zeros([tf.shape(tf_train_values)[0], self._N])
 
@@ -694,7 +780,7 @@ class MACPolicy(TfPolicy, Serializable):
 
             ### optimization
             tf_cost, tf_mse = self._graph_cost(tf_train_values, tf_train_values_softmax, tf_rewards_ph, tf_dones_ph,
-                                               tf_target_get_action_values)
+                                               tf_target_get_action_values, tf_logprob_curr, tf_logprob_prior_ph)
             tf_opt, tf_lr_ph = self._graph_optimize(tf_cost, tf_trainable_policy_vars)
 
             ### initialize
@@ -709,10 +795,15 @@ class MACPolicy(TfPolicy, Serializable):
             'dones_ph': tf_dones_ph,
             'rewards_ph': tf_rewards_ph,
             'obs_target_ph': tf_obs_target_ph,
+            'explore_train_ph': tf_explore_train_ph,
+            'explore_test_ph': tf_explore_test_ph,
+            'logprob_ph': tf_logprob_prior_ph,
             'preprocess': tf_preprocess,
             'get_value': tf_get_value,
             'get_action': tf_get_action,
+            'get_action_explore': tf_get_action_explore,
             'get_action_value': tf_get_action_value,
+            'get_action_logprob': tf_get_action_logprob,
             'update_target_fn': tf_update_target_fn,
             'cost': tf_cost,
             'mse': tf_mse,
@@ -759,24 +850,28 @@ class MACPolicy(TfPolicy, Serializable):
         if self._use_target and self._separate_target_params:
             self._tf_dict['sess'].run(self._tf_dict['update_target_fn'])
 
-    def train_step(self, step, observations, actions, rewards, dones, use_target):
+    def train_step(self, step, steps, observations, actions, rewards, dones, logprobs, use_target):
         """
-        :param observations: [batch_size, H+1 + obs_history_len-1, obs_dim]
-        :param actions: [batch_size, H+1, action_dim]
-        :param rewards: [batch_size, H+1]
-        :param dones: [batch_size, H+1]
+        :param steps: [batch_size, N+1]
+        :param observations: [batch_size, N+1 + obs_history_len-1, obs_dim]
+        :param actions: [batch_size, N+1, action_dim]
+        :param rewards: [batch_size, N+1]
+        :param dones: [batch_size, N+1]
         """
         feed_dict = {
             ### parameters
             self._tf_dict['lr_ph']: self._lr_schedule.value(step),
+            self._tf_dict['explore_train_ph']: np.reshape([self._exploration_strategy.schedule.value(s)
+                                                           for s in steps.ravel()], steps.shape),
             ### policy
             self._tf_dict['obs_ph']: observations[:, :self._obs_history_len, :],
-            self._tf_dict['actions_ph']: actions[:, :self._N, :],
+            self._tf_dict['actions_ph']: actions,
             self._tf_dict['dones_ph']: np.logical_or(not use_target, dones[:, :self._N]),
             self._tf_dict['rewards_ph']: rewards[:, :self._N],
+            self._tf_dict['logprob_ph']: logprobs[:, :self._N]
         }
         if self._use_target:
-            feed_dict[self._tf_dict['obs_target_ph']] = observations[:, 1:, :]
+            feed_dict[self._tf_dict['obs_target_ph']] = observations
 
         # if step > 1.1e4:
         #     d = {}
@@ -800,11 +895,11 @@ class MACPolicy(TfPolicy, Serializable):
     ### Policy methods ###
     ######################
 
-    def get_action(self, observation):
-        chosen_actions, chosen_values, action_info = self.get_actions([observation])
+    def get_action(self, step, observation, explore):
+        chosen_actions, chosen_values, action_info = self.get_actions([step], [observation], explore=explore)
         return chosen_actions[0], chosen_values[0], action_info
 
-    def get_actions(self, observations):
+    def get_actions(self, steps, observations, explore):
         d = {}
         # keys = [k for k in self._tf_debug.keys()]
         # vs = self._tf_dict['sess'].run([self._tf_debug[k] for k in keys],
@@ -814,13 +909,31 @@ class MACPolicy(TfPolicy, Serializable):
         #
         # import IPython; IPython.embed()
 
-        actions, values = self._tf_dict['sess'].run([self._tf_dict['get_action'], self._tf_dict['get_action_value']],
-                                                    feed_dict={self._tf_dict['obs_ph']: observations})
+        if explore:
+            feed_dict = {
+                self._tf_dict['obs_ph']: observations,
+                self._tf_dict['explore_test_ph']: [self._exploration_strategy.schedule.value(t) for t in steps]
+
+            }
+
+            actions, values, logprobs = self._tf_dict['sess'].run([self._tf_dict['get_action_explore'],
+                                                                  self._tf_dict['get_action_value'],
+                                                                  self._tf_dict['get_action_logprob']],
+                                                                  feed_dict=feed_dict)
+        else:
+            feed_dict = {
+                self._tf_dict['obs_ph']: observations,
+            }
+
+            actions, values = self._tf_dict['sess'].run([self._tf_dict['get_action'],
+                                                         self._tf_dict['get_action_value']],
+                                                        feed_dict=feed_dict)
+            logprobs = [np.nan] * len(steps)
 
         if isinstance(self._env_spec.action_space, Discrete):
             actions = [int(a.argmax()) for a in actions]
 
-        return actions, values, d
+        return actions, values, logprobs, d
 
     def get_values(self, observations, actions):
         get_values = self._tf_dict['sess'].run(self._tf_dict['get_value'],

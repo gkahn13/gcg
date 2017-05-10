@@ -14,10 +14,6 @@ from sandbox.rocky.tf.envs.base import TfEnv
 from rllab.envs.normalized_env import normalize
 from sandbox.gkahn.rnn_critic.envs.atari_wrappers import wrap_deepmind
 from sandbox.gkahn.rnn_critic.envs.pygame_wrappers import wrap_pygame
-### exploration strategies
-from sandbox.gkahn.rnn_critic.exploration_strategies.gaussian_strategy import GaussianStrategy
-from sandbox.gkahn.rnn_critic.exploration_strategies.ou_strategy import OUStrategy
-from sandbox.gkahn.rnn_critic.exploration_strategies.epsilon_greedy_strategy import EpsilonGreedyStrategy
 ### RNN critic
 from sandbox.gkahn.rnn_critic.algos.rnn_critic import RNNCritic
 from sandbox.gkahn.rnn_critic.algos.rnn_critic_offpolicy import RNNCriticOffpolicy
@@ -105,21 +101,10 @@ def run_rnn_critic(params, params_txt):
 
     policy = PolicyClass(
         env_spec=env.spec,
+        exploration_strategy=params['alg'].pop('exploration_strategy'),
         **policy_params,
         **params['policy']
     )
-
-    ###################################
-    ### Create exploration strategy ###
-    ###################################
-
-    if 'exploration_strategy' in params['alg']:
-        es_params = params['alg'].pop('exploration_strategy')
-        es_class = es_params['class']
-        ESClass = eval(es_class)
-        exploration_strategy = ESClass(env_spec=env.spec, **es_params[es_class])
-    else:
-        exploration_strategy = None
 
     ########################
     ### Create algorithm ###
@@ -133,7 +118,6 @@ def run_rnn_critic(params, params_txt):
         env=env,
         env_eval=env_eval,
         policy=policy,
-        exploration_strategy=exploration_strategy,
         max_path_length=max_path_length,
         **params['alg']
     )

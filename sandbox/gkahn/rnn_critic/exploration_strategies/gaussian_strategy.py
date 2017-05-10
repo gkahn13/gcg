@@ -13,11 +13,11 @@ class GaussianStrategy(ExplorationStrategy, Serializable):
         assert isinstance(env_spec.action_space, Box)
         Serializable.quick_init(self, locals())
         self._env_spec = env_spec
-        self._schedule = schedules.PiecewiseSchedule(endpoints=endpoints, outside_value=outside_value)
+        self.schedule = schedules.PiecewiseSchedule(endpoints=endpoints, outside_value=outside_value)
 
     def reset(self):
         pass
 
     def add_exploration(self, t, action):
-        return np.clip(action + np.random.normal(size=len(action)) * self._schedule.value(t),
+        return np.clip(action + np.random.normal(size=len(action)) * self.schedule.value(t),
                        self._env_spec.action_space.low, self._env_spec.action_space.high)

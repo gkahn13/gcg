@@ -1,6 +1,5 @@
 import os
 import joblib
-import pickle
 import numpy as np
 
 from rllab.algos.base import RLAlgorithm
@@ -17,7 +16,6 @@ class RNNCritic(RLAlgorithm):
                  env_eval,
                  policy,
                  max_path_length,
-                 exploration_strategy,
                  total_steps,
                  sample_after_n_steps,
                  learn_after_n_steps,
@@ -64,7 +62,6 @@ class RNNCritic(RLAlgorithm):
 
         self._sampler = RNNCriticSampler(
             policy=policy,
-            exploration_strategy=exploration_strategy,
             env=env,
             n_envs=n_envs,
             replay_pool_size=replay_pool_size,
@@ -76,7 +73,6 @@ class RNNCritic(RLAlgorithm):
         self._eval_sampler = RNNCriticSampler(
             policy=policy,
             env=env_eval,
-            exploration_strategy=None,
             n_envs=1,
             replay_pool_size=int(np.ceil(1.5 * max_path_length) + 1),
             max_path_length=max_path_length,
@@ -128,8 +124,10 @@ class RNNCritic(RLAlgorithm):
             ### sample and add to buffer
             if step > self._sample_after_n_steps:
                 timeit.start('sample')
-                self._sampler.step(step, take_random_actions=(step <= self._learn_after_n_steps or
-                                                              step <= self._onpolicy_after_n_steps))
+                self._sampler.step(step,
+                                   take_random_actions=(step <= self._learn_after_n_steps or
+                                                        step <= self._onpolicy_after_n_steps),
+                                   explore=True)
                 timeit.stop('sample')
 
             ### sample and DON'T add to buffer (for validation)
@@ -139,7 +137,7 @@ class RNNCritic(RLAlgorithm):
                 eval_rollouts_step = []
                 eval_step = step
                 while len(eval_rollouts_step) == 0:
-                    self._eval_sampler.step(eval_step)
+                    self._eval_sampler.step(eval_step, explore=False)
                     eval_rollouts_step = self._eval_sampler.get_recent_paths()
                     eval_step += 1
                 eval_rollouts += eval_rollouts_step

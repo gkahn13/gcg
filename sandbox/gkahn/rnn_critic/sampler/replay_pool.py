@@ -37,6 +37,7 @@ class RNNCriticReplayPool(object):
         self._dones = np.ones((self._size,), dtype=bool) # initialize as all done
         self._est_values = np.nan * np.ones((self._size,), dtype=np.float32)
         self._values = np.nan * np.ones((self._size,), dtype=np.float32)
+        self._logprobs = np.nan * np.ones((self._size,), dtype=np.float32)
         self._index = 0
         self._curr_size = 0
 
@@ -139,11 +140,12 @@ class RNNCriticReplayPool(object):
     def encode_recent_observation(self):
         return self._encode_observation(self._index)
 
-    def store_effect(self, action, reward, done, est_value, flatten_action=True, update_log_stats=True):
+    def store_effect(self, action, reward, done, est_value, logprob, flatten_action=True, update_log_stats=True):
         self._actions[self._index, :] = self._env_spec.action_space.flatten(action) if flatten_action else action
         self._rewards[self._index] = reward
         self._dones[self._index] = done
         self._est_values[self._index] = est_value
+        self._logprobs[self._index] = logprob
         self._index = (self._index + 1) % self._size
         self._curr_size = max(self._curr_size, self._index)
 
@@ -200,7 +202,7 @@ class RNNCriticReplayPool(object):
         if not self.can_sample():
             return None
 
-        observations, actions, rewards, dones = [], [], [], []
+        steps, observations, actions, rewards, dones, logprobs = [], [], [], [], [], []
 
         start_indices = []
         false_indices = self._get_indices(self._index - self._obs_history_len, self._index) + \
@@ -212,10 +214,12 @@ class RNNCriticReplayPool(object):
 
         for start_index in start_indices:
             indices = self._get_indices(start_index, (start_index + self._N + 1) % self._curr_size)
+            steps_i = self._steps[indices]
             observations_i = np.vstack([self._encode_observation(start_index), self._observations[indices[1:]]])
             actions_i = self._actions[indices]
             rewards_i = self._rewards[indices]
             dones_i = self._dones[indices]
+            logprobs_i = self._logprobs[indices]
             if np.any(dones_i[:-1]):
                 # H = 3
                 # observations = [0 1 2 3]
@@ -235,15 +239,19 @@ class RNNCriticReplayPool(object):
                 # rewards = [20 21 0 0]
                 # dones = [False True True True]
 
+            steps.append(np.expand_dims(steps_i, 0))
             observations.append(np.expand_dims(observations_i, 0))
             actions.append(np.expand_dims(actions_i, 0))
             rewards.append(np.expand_dims(rewards_i, 0))
             dones.append(np.expand_dims(dones_i, 0))
+            logprobs.append(np.expand_dims(logprobs_i, 0))
 
+        steps = np.vstack(steps)
         observations = np.vstack(observations)
         actions = np.vstack(actions)
         rewards = np.vstack(rewards)
         dones = np.vstack(dones)
+        logprobs = np.vstack(logprobs)
 
         # timeit.start('replay_pool:isfinite')
         # for k, arr in enumerate((observations, actions, rewards, dones)):
@@ -255,7 +263,7 @@ class RNNCriticReplayPool(object):
         #     assert(arr.shape[1] == self._N + 1)
         # timeit.stop('replay_pool:isfinite')
 
-        return observations, actions, rewards, dones
+        return steps, observations, actions, rewards, dones, logprobs
 
     @staticmethod
     def sample_pools(replay_pools, batch_size):
@@ -263,7 +271,7 @@ class RNNCriticReplayPool(object):
         if not np.any([replay_pool.can_sample() for replay_pool in replay_pools]):
             return None
 
-        observations, actions, rewards, dones = [], [], [], []
+        steps, observations, actions, rewards, dones, logprobs = [], [], [], [], [], []
 
         # calculate ratio of pool sizes
         pool_lens = np.array([replay_pool.can_sample() * len(replay_pool) for replay_pool in replay_pools]).astype(float)
@@ -276,21 +284,25 @@ class RNNCriticReplayPool(object):
             if batch_sizes[i] == 0:
                 continue
 
-            observations_i, actions_i, rewards_i, dones_i = replay_pool.sample(batch_sizes[i])
+            steps_i, observations_i, actions_i, rewards_i, dones_i, logprobs_i = replay_pool.sample(batch_sizes[i])
+            steps.append(steps_i)
             observations.append(observations_i)
             actions.append(actions_i)
             rewards.append(rewards_i)
             dones.append(dones_i)
+            logprobs.append(logprobs_i)
 
+        steps = np.vstack(steps)
         observations = np.vstack(observations)
         actions = np.vstack(actions)
         rewards = np.vstack(rewards)
         dones = np.vstack(dones)
+        logprobs = np.vstack(logprobs)
 
-        for arr in (observations, actions, rewards, dones):
+        for arr in (steps, observations, actions, rewards, dones, logprobs):
             assert(len(arr) == batch_size)
 
-        return observations, actions, rewards, dones
+        return steps, observations, actions, rewards, dones, logprobs
 
     ###############
     ### Logging ###

@@ -12,13 +12,13 @@ class EpsilonGreedyStrategy(Serializable):
         assert isinstance(env_spec.action_space, Discrete)
         Serializable.quick_init(self, locals())
         self._env_spec = env_spec
-        self._schedule = schedules.PiecewiseSchedule(endpoints=endpoints, outside_value=outside_value)
+        self.schedule = schedules.PiecewiseSchedule(endpoints=endpoints, outside_value=outside_value)
 
     def reset(self):
         pass
 
     def add_exploration(self, t, action):
-        if np.random.random() < self._schedule.value(t):
+        if np.random.random() < self.schedule.value(t):
             return self._env_spec.action_space.sample()
         else:
             return action
