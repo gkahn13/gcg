@@ -70,7 +70,7 @@ class MACPolicy(TfPolicy, Serializable):
         self._get_action_test = kwargs.get('get_action_test')
         self._get_action_target = kwargs.get('get_action_target')
         self._retrace_lambda = kwargs.get('retrace_lambda')
-        es_params = kwargs.pop('exploration_strategy')
+        es_params = kwargs.get('exploration_strategy')
         es_class = es_params['class']
         ESClass = eval(es_class)
         self._exploration_strategy = ESClass(env_spec=self._env_spec, **es_params[es_class])
@@ -123,8 +123,8 @@ class MACPolicy(TfPolicy, Serializable):
         if gpu_frac is None:
             gpu_frac = 0.3
 
-        tf_graph = tf.Graph()
         os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_device)
+        tf_graph = tf.Graph()
         if len(str(gpu_device)) > 0:
             gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_frac)
             config = tf.ConfigProto(gpu_options=gpu_options,
@@ -611,7 +611,7 @@ class MACPolicy(TfPolicy, Serializable):
         tf.assert_equal(batch_size, tf.shape(tf_explore_ph)[0])
 
         if isinstance(self._exploration_strategy, EpsilonGreedyStrategy):
-            is_same_actions = tf.cast(tf.argmax(tf_actions, axis=1) == tf.argmax(tf_actions_opt, axis=1), tf.float32)
+            is_same_actions = tf.cast(tf.argmax(tf_actions, 1) == tf.argmax(tf_actions_opt, 1), tf.float32)
             tf_actions_logprob = is_same_actions * tf.log(1 - tf_explore_ph) + \
                                  (1 - is_same_actions) * tf.log(tf_explore_ph / (max(1, action_dim - 1)))
         elif isinstance(self._exploration_strategy, GaussianStrategy):

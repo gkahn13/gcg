@@ -179,6 +179,7 @@ class RNNCriticReplayPool(object):
         self._actions[indices, :] = rollout['actions']
         self._rewards[indices] = rollout['rewards']
         self._dones[indices] = rollout['dones']
+        self._logprobs[indices] = rollout['logprobs']
         # np.copyto(self._steps[indices], list(range(start_step, start_step + r_len)))
         # np.copyto(self._observations[indices, :], rollout['observations'])
         # np.copyto(self._actions[indices, :], rollout['actions'])
@@ -332,7 +333,8 @@ class RNNCriticReplayPool(object):
                 'rewards': self._rewards[indices],
                 'dones': self._dones[indices],
                 'est_values': self._est_values[indices],
-                'values': self._values[indices]
+                'values': self._values[indices],
+                'logprobs': self._logprobs[indices]
             })
 
         self._last_done_index = self._index

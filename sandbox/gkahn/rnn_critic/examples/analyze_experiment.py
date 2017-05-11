@@ -1,4 +1,4 @@
-import argparse, os, sys
+import argparse, os, sys, copy
 import yaml, pickle
 import joblib
 import itertools
@@ -11,6 +11,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib import ticker
 from sklearn.utils.extmath import cartesian
+import tensorflow as tf
 
 from rllab.misc.ext import set_seed
 import rllab.misc.logger as logger
@@ -849,6 +850,8 @@ class AnalyzeRNNCritic(object):
             self._plot_policies_PointEnv()
         elif isinstance(env, PhdEnv):
             self._plot_policies_PhdEnv()
+        elif isinstance(env, GymEnv) and 'pend' in env.env_id.lower():
+            self._plot_policies_Pend()
         else:
             pass
 
@@ -994,6 +997,78 @@ class AnalyzeRNNCritic(object):
         #
         #     itr += 1
         #     policy.terminate()
+
+    def _plot_policies_Pend(self):
+        itr = 11
+        while os.path.exists(self._itr_file(itr)):
+            # set seed
+            if self.params['seed'] is not None:
+                set_seed(self.params['seed'])
+
+            observations = np.vstack([r['observations'] for r in self.train_rollouts_itrs[itr]])
+
+            ###################
+            ### Get weights ###
+            ###################
+
+            sess, graph = MACPolicy.create_session_and_graph(gpu_device=1, gpu_frac=0.4)
+            with graph.as_default(), sess.as_default():
+                policy = self._load_itr_policy(itr)
+                weights = policy.get_param_values()
+            sess.close()
+
+            policy_class = self.params['policy']['class']
+            PolicyClass = eval(policy_class)
+            policy_params = self.params['policy'][policy_class]
+
+            #####################################################
+            ### Evaluate policy for different get action test ###
+            #####################################################
+
+            def eval_policy(weights, get_action_test, observations):
+                self.params['policy']['get_action_test'] = get_action_test
+                sess, graph = MACPolicy.create_session_and_graph(gpu_device=1, gpu_frac=0.4)
+                with graph.as_default(), sess.as_default():
+                    policy = PolicyClass(
+                        env_spec=self.env.spec,
+                        exploration_strategy=self.params['alg'].get('exploration_strategy'),
+                        **policy_params,
+                        **self.params['policy']
+                    )
+                    policy.set_param_values(weights)
+
+                    actions_list, values_list= [], []
+                    for obs in np.array_split(observations, len(observations) // 32):
+                        actions, values, _, _ = policy.get_actions(range(len(obs)), np.expand_dims(obs, 1), explore=False)
+                        actions_list += list(actions)
+                        values_list += list(values)
+
+                sess.close()
+                return np.array(actions_list), np.array(values_list)
+
+            get_action_test = copy.deepcopy(self.params['policy']['get_action_test'])
+            get_action_test['H'] = 10
+            get_action_test['type'] = 'random'
+            get_action_test['random']['K'] = 10000
+            actions_rand, values_rand = eval_policy(weights, get_action_test, observations)
+
+            get_action_test = copy.deepcopy(self.params['policy']['get_action_test'])
+            get_action_test['H'] = 1
+            get_action_test['type'] = 'random'
+            get_action_test['random']['K'] = 1000
+            # get_action_test['H'] = 10
+            # get_action_test['type'] = 'beam'
+            # get_action_test['beam']['K'] = 5000
+            # get_action_test['beam']['M'] = 2
+            actions_beam, values_beam = eval_policy(weights, get_action_test, observations)
+
+            print((values_beam - values_rand).mean())
+            print(abs(actions_beam - actions_rand).mean())
+
+            import IPython; IPython.embed()
+
+            itr += 1
+
 
     def _plot_value_function(self, env_itrs):
         env = env_itrs[0]
@@ -1150,8 +1225,8 @@ class AnalyzeRNNCritic(object):
 
 
 def main(folder, skip_itr, max_itr):
-    # DIR = '/home/gkahn/code/rllab/data/local/rnn-critic/'
-    DIR = '/media/gkahn/ExtraDrive1/rllab/rnn_critic/'
+    DIR = '/home/gkahn/code/rllab/data/local/rnn-critic/'
+    # DIR = '/media/gkahn/ExtraDrive1/rllab/rnn_critic/'
     analyze = AnalyzeRNNCritic(os.path.join(DIR, folder),
                                skip_itr=skip_itr,
                                max_itr=max_itr)

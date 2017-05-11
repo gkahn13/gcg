@@ -24,9 +24,12 @@ def load_experiments(indices):
     return exps
 
 dqn_1 = load_experiments([0, 4, 5])
+dqn_5 = load_experiments([6, 7, 8])
+predictron_5 = load_experiments([9, 10, 11])
 mac_5 = load_experiments([1, 2, 3])
+# mac_10 = load_experiments([12, 13, 14])
 
-comparison_exps = np.array([[dqn_1, mac_5]])
+comparison_exps = np.array([[dqn_1, dqn_5, predictron_5, mac_5]])
 
 ############
 ### Plot ###
@@ -114,19 +117,19 @@ def plot_finalreward(ax, analyze_group, color='k', label=None, window=200):
     ax.xaxis.set_major_formatter(xfmt)
 
 shape = comparison_exps.shape[:2]
-f, axes = plt.subplots(*shape, figsize=(10, 5), sharex=True, sharey=True)
+f, axes = plt.subplots(*shape, figsize=(10, 3), sharex=True, sharey=True)
 axes = axes.reshape(shape)
 for i in range(shape[0]):
     for j in range(shape[1]):
         ax = axes[i, j]
         # plot_cumreward(ax, comparison_exps[i, j, :])
-        plot_finalreward(ax, comparison_exps[i, j, :], window=500)
+        plot_finalreward(ax, comparison_exps[i, j, :], window=500) # 500
 
-for i, name in enumerate(['DQN', 'MAC']):
+for i, name in enumerate(['DQN', 'DQN-5', 'Predictron-5', 'MAC-5']):
     axes[0, i].set_title(name)
 
 # plt.tight_layout()
 f.savefig(os.path.join(SAVE_FOLDER, 'imswingup_comparison.png'), bbox_inches='tight', dpi=200)
 plt.close(f)
 
-import IPython; IPython.embed()
+# import IPython; IPython.embed()

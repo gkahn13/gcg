@@ -74,6 +74,7 @@ def run_rnn_critic(params, params_txt):
     # import matplotlib.pyplot as plt
     # f = plt.figure()
     # done = True
+    # im = None
     # while True:
     #     if done:
     #         o = env.reset()
@@ -82,12 +83,14 @@ def run_rnn_critic(params, params_txt):
     #     else:
     #         o, r, done, _ = env.step(0)
     #
-    #     plt.imshow(o[:,:,0], cmap='Greys_r')
-    #     plt.show(block=False)
-    #     plt.pause(0.05)
+    #     if im is None:
+    #         im = plt.imshow(o[:,:,0], cmap='Greys_r')
+    #         plt.show(block=False)
+    #     else:
+    #         im.set_array(o[:,:,0])
+    #     f.canvas.draw()
+    #     plt.pause(0.01)
     #     input('done: {0}, r: {1}'.format(done, r))
-    #     plt.clf()
-    #     plt.cla()
     #
     # import IPython; IPython.embed()
 

@@ -115,7 +115,7 @@ class RNNCriticSampler(object):
                 r_len = len(rollout['dones'])
                 if step + r_len >= num_offpolicy:
                     diff = num_offpolicy - step
-                    for k in ('observations', 'actions', 'rewards', 'dones'):
+                    for k in ('observations', 'actions', 'rewards', 'dones', 'logprobs'):
                         rollout[k] = rollout[k][:diff]
                     done_adding = True
                     r_len = len(rollout['dones'])
