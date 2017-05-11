@@ -27,9 +27,9 @@ dqn_1 = load_experiments([0, 4, 5])
 dqn_5 = load_experiments([6, 7, 8])
 predictron_5 = load_experiments([9, 10, 11])
 mac_5 = load_experiments([1, 2, 3])
-# mac_10 = load_experiments([12, 13, 14])
+mac_10 = load_experiments([12, 13, 14])
 
-comparison_exps = np.array([[dqn_1, dqn_5, predictron_5, mac_5]])
+comparison_exps = np.array([[dqn_1, dqn_5, predictron_5, mac_5, mac_10]])
 
 ############
 ### Plot ###
@@ -109,7 +109,10 @@ def plot_finalreward(ax, analyze_group, color='k', label=None, window=200):
         # ax.fill_between(steps, values_mean - values_std, values_mean + values_std,
         #                 color=color, alpha=0.4)
 
-        ax.hlines(-np.sqrt(5. * np.pi / 180.), steps[0], steps[-1], color='k', linestyle='--')
+        threshold = -np.sqrt(5. * np.pi / 180.)
+        ax.hlines(threshold, steps[0], steps[-1], color='k', linestyle='--')
+        print(steps[(values > threshold).argmax()])
+    print('')
 
     ax.grid()
     xfmt = ticker.ScalarFormatter()
@@ -123,13 +126,13 @@ for i in range(shape[0]):
     for j in range(shape[1]):
         ax = axes[i, j]
         # plot_cumreward(ax, comparison_exps[i, j, :])
-        plot_finalreward(ax, comparison_exps[i, j, :], window=500) # 500
+        plot_finalreward(ax, comparison_exps[i, j, :], window=100) # 500
 
-for i, name in enumerate(['DQN', 'DQN-5', 'Predictron-5', 'MAC-5']):
+for i, name in enumerate(['DQN', 'DQN-5', 'Predictron-5', 'MAC-5', 'MAC-10']):
     axes[0, i].set_title(name)
 
 # plt.tight_layout()
 f.savefig(os.path.join(SAVE_FOLDER, 'imswingup_comparison.png'), bbox_inches='tight', dpi=200)
 plt.close(f)
 
-# import IPython; IPython.embed()
+import IPython; IPython.embed()

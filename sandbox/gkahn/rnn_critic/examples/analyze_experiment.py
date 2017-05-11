@@ -1037,33 +1037,92 @@ class AnalyzeRNNCritic(object):
                     )
                     policy.set_param_values(weights)
 
-                    actions_list, values_list= [], []
+                    actions_list, values_list, info_list = [], [], []
                     for obs in np.array_split(observations, len(observations) // 32):
-                        actions, values, _, _ = policy.get_actions(range(len(obs)), np.expand_dims(obs, 1), explore=False)
+                        actions, values, _, infos = policy.get_actions(range(len(obs)), np.expand_dims(obs, 1), explore=False)
                         actions_list += list(actions)
                         values_list += list(values)
+                        info_list.append(infos)
 
                 sess.close()
-                return np.array(actions_list), np.array(values_list)
+                return np.array(actions_list), np.array(values_list), info_list
 
             get_action_test = copy.deepcopy(self.params['policy']['get_action_test'])
             get_action_test['H'] = 10
-            get_action_test['type'] = 'random'
-            get_action_test['random']['K'] = 10000
-            actions_rand, values_rand = eval_policy(weights, get_action_test, observations)
+            get_action_test['type'] = 'beam'
+            get_action_test['beam']['K'] = 4
+            get_action_test['beam']['M'] = 1
+            actions_beam0, values_beam0, infos0 = eval_policy(weights, get_action_test, observations)
 
             get_action_test = copy.deepcopy(self.params['policy']['get_action_test'])
-            get_action_test['H'] = 1
-            get_action_test['type'] = 'random'
-            get_action_test['random']['K'] = 1000
-            # get_action_test['H'] = 10
-            # get_action_test['type'] = 'beam'
-            # get_action_test['beam']['K'] = 5000
-            # get_action_test['beam']['M'] = 2
-            actions_beam, values_beam = eval_policy(weights, get_action_test, observations)
+            get_action_test['H'] = 10
+            get_action_test['type'] = 'beam'
+            get_action_test['beam']['K'] = 4
+            get_action_test['beam']['M'] = 2
+            actions_beam1, values_beam1, infos1 = eval_policy(weights, get_action_test, observations)
 
-            print((values_beam - values_rand).mean())
-            print(abs(actions_beam - actions_rand).mean())
+            print((values_beam1 - values_beam0).mean())
+            print(abs(actions_beam1 - actions_beam0).mean())
+
+
+            d = infos1[0]
+            H = get_action_test['H']
+            K = get_action_test['beam']['K']
+            M = get_action_test['beam']['M']
+
+            for h in range(H-1):
+                tf_values = d['tf_values_h{0}'.format(h)]
+                tf_actions = d['tf_actions_h{0}'.format(h)]
+                num_obs = len(tf_values)
+
+                tf_topk_values = np.fliplr(np.sort(tf_values, axis=1)[:, -K:])
+                tf_topk = np.fliplr(np.argsort(tf_values, axis=1)[:, -K:])
+                tf_topk_plus = tf_topk + K * M * np.tile(np.expand_dims(np.arange(num_obs), 1), (1, K))
+                tf_topk_flat = tf_topk_plus.ravel()
+                tf_topk_actions = tf_actions[tf_topk_flat, ...]
+
+                print('topk values are equal: {0}'.format(np.all(tf_topk_values == d['tf_topk_values_h{0}'.format(h)])))
+                print('topk plus are equal: {0}'.format(np.all(tf_topk_plus == d['tf_topk_plus_h{0}'.format(h)])))
+                print('topk flat are equal: {0}'.format(np.all(tf_topk_flat == d['tf_topk_flat_h{0}'.format(h)].ravel())))
+                print((tf_topk_actions == d['tf_topk_actions_h{0}'.format(h)]).min(axis=2).min(axis=1).mean())
+
+            for h in range(H):
+                print(np.all(d['tf_debug_indices_h0'] == d['tf_debug_indices_h{0}'.format(h)]))
+
+            import IPython; IPython.embed()
+
+
+            # d = infos1[0]
+            # h = 2
+            # K = get_action_test['beam']['K']
+            #
+            # topk_values = np.sort(d['tf_values_h{0}'.format(h)], axis=1)[:, -K:]
+            # tf_topk_values = np.sort(d['tf_topk_values_h{0}'.format(h)], axis=1)
+            # print(np.linalg.norm(topk_values - tf_topk_values))
+            #
+            # topk_indices = np.sort(np.argsort(d['tf_values_h{0}'.format(h)], axis=1)[:, -K:], axis=1)
+            # tf_topk_indices = np.sort(d['tf_topk_h{0}'.format(h)], axis=1)
+            # print((topk_indices == tf_topk_indices).mean())
+            #
+            # tf_values = d['tf_values_h{0}'.format(h)]
+            # topk_values = tf_values[np.tile(np.expand_dims(np.arange(len(tf_values)), 0), (K, 1)).T,
+            #                         topk_indices]
+            #                         #d['tf_topk_h{0}'.format(h)]]
+            # print((np.sort(topk_values, axis=1) == np.sort(tf_topk_values, axis=1)).mean())
+            #
+            # # check flat indices
+            # tf_values = d['tf_values_h{0}'.format(h)].reshape((-1, 1))
+            # topk_values = tf_values[d['tf_topk_flat_h{0}'.format(h)].ravel()].reshape((-1,K))
+            # tf_topk_values = d['tf_topk_values_h{0}'.format(h)]
+            # print((np.sort(topk_values, axis=1) == np.sort(tf_topk_values, axis=1)).mean())
+            #
+            # # check action selection
+            # tf_actions = d['tf_actions_h{0}'.format(h)]
+            # tf_topk_flat = d['tf_topk_flat_h{0}'.format(h)]
+            # topk_actions = tf_actions[tf_topk_flat.ravel(), ...]
+            # tf_topk_actions = d['tf_topk_actions_h{0}'.format(h)]
+            # print((topk_actions == tf_topk_actions).min(axis=2).min(axis=1).mean())
+
 
             import IPython; IPython.embed()
 
@@ -1225,8 +1284,8 @@ class AnalyzeRNNCritic(object):
 
 
 def main(folder, skip_itr, max_itr):
-    DIR = '/home/gkahn/code/rllab/data/local/rnn-critic/'
-    # DIR = '/media/gkahn/ExtraDrive1/rllab/rnn_critic/'
+    # DIR = '/home/gkahn/code/rllab/data/local/rnn-critic/'
+    DIR = '/media/gkahn/ExtraDrive1/rllab/rnn_critic/'
     analyze = AnalyzeRNNCritic(os.path.join(DIR, folder),
                                skip_itr=skip_itr,
                                max_itr=max_itr)

@@ -452,7 +452,7 @@ class MACPolicy(TfPolicy, Serializable):
 
             ### get_action based on select (policy)
             K_h = K if h < H - 1 else 1
-            tf_topk_values, tf_topk = tf.nn.top_k(tf_values, K_h, sorted=False) # [num_obs, K]
+            tf_topk_values, tf_topk = tf.nn.top_k(tf_values, K_h, sorted=True) # [num_obs, K]
             tf_topk_plus = tf_topk + K * M * tf.tile(tf.expand_dims(tf.range(num_obs), 1), (1, K_h)) # [num_obs, K]
             tf_utils.assert_shape(tf_topk_plus, [num_obs, K_h])
             tf_topk_flat = tf.reshape(tf_topk_plus, (num_obs * K_h, 1)) # [num_obs * K]
@@ -468,14 +468,14 @@ class MACPolicy(TfPolicy, Serializable):
             tf_nstep_rewards = tf.gather_nd(tf_nstep_rewards, tf_topk_flat)
 
             # if 'tf_values_h{0}'.format(h) not in self._tf_debug:
-            # self._tf_debug['tf_values_softmax_h{0}'.format(h)] = tf.pack(tf_nstep_values_softmax, 1) # MATCH
-            # self._tf_debug['tf_actions_h{0}'.format(h)] = tf_actions # MATCH
-            # self._tf_debug['tf_values_h{0}'.format(h)] = tf_values
-            # self._tf_debug['tf_topk_h{0}'.format(h)] = tf_topk # MATCH
-            # self._tf_debug['tf_topk_plus_h{0}'.format(h)] = tf_topk_plus # MATCH
-            # self._tf_debug['tf_topk_values_h{0}'.format(h)] = tf_topk_values # MATCH
-            # self._tf_debug['tf_topk_flat_h{0}'.format(h)] = tf_topk_flat # MATCH
-            # self._tf_debug['tf_topk_actions_h{0}'.format(h)] = tf_topk_actions # MATCH
+            #     self._tf_debug['tf_actions_h{0}'.format(h)] = tf_actions # MATCH
+            #     self._tf_debug['tf_values_h{0}'.format(h)] = tf_values
+            #     self._tf_debug['tf_topk_h{0}'.format(h)] = tf_topk # MATCH
+            #     self._tf_debug['tf_topk_plus_h{0}'.format(h)] = tf_topk_plus # MATCH
+            #     self._tf_debug['tf_topk_values_h{0}'.format(h)] = tf_topk_values # MATCH
+            #     self._tf_debug['tf_topk_flat_h{0}'.format(h)] = tf_topk_flat # MATCH
+            #     self._tf_debug['tf_topk_actions_h{0}'.format(h)] = tf_topk_actions # MATCH
+            #     self._tf_debug['tf_debug_indices_h{0}'.format(h)] = debug_indices
 
             tf_values = tf.reshape(tf_topk_values, (num_obs * K,))
             tf_actions = tf_topk_actions
@@ -578,7 +578,7 @@ class MACPolicy(TfPolicy, Serializable):
         # self._tf_debug['tf_values_select'] = tf_values_select
         # self._tf_debug['tf_values_argmax_select'] = tf_values_argmax_select
         # self._tf_debug['tf_get_action'] = tf_get_action
-        self._tf_debug['tf_values_eval'] = tf_values_eval
+        # self._tf_debug['tf_values_eval'] = tf_values_eval
         # self._tf_debug['tf_get_action_value'] = tf_get_action_value
 
         return tf_get_action, tf_get_action_value
@@ -724,9 +724,6 @@ class MACPolicy(TfPolicy, Serializable):
                     self._graph_inference(tf_obs_lowd, tf_actions_ph[:, :self._get_action_test['H'], :],
                                           self._values_softmax, tf_preprocess, pad_inputs=False)
                 tf_get_value = tf.reduce_sum(tf_train_values_softmax_test * tf_train_values_test, reduction_indices=1)
-
-                self._tf_debug['tf_train_values'] = tf_train_values
-                self._tf_debug['tf_train_values_softmax'] = tf_train_values_softmax
 
             ### action selection
             tf_get_action, tf_get_action_value = self._graph_get_action(tf_obs_ph, self._get_action_test,
@@ -907,7 +904,7 @@ class MACPolicy(TfPolicy, Serializable):
         #                                 feed_dict={self._tf_dict['obs_ph']: observations})
         # for k, v in zip(keys, vs):
         #     d[k] = v
-        #
+
         # import IPython; IPython.embed()
 
         if explore:
