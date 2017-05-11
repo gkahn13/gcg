@@ -658,7 +658,7 @@ class MACPolicy(TfPolicy, Serializable):
         if self._retrace_lambda is not None:
             relu_min = lambda x: -tf.nn.relu(-x)
             tf_logweights = tf.cumsum(relu_min(tf_logprob_curr - tf_logprob_prior), 1) + \
-                            tf.range(self._N, dtype=tf.float32) * np.log(self._retrace_lambda) # [batch_size, N]
+                            tf.cast(tf.range(self._N), tf.float32) * np.log(self._retrace_lambda) # [batch_size, N]
             # now need to normalize across the columns (aka across the batch for each N-step)
             tf_weights_tilde = tf.exp(tf_logweights - tf.reduce_max(tf_logweights, 0)) # max for numerical stability
             tf_weights = tf_weights_tilde / tf.reduce_sum(tf_weights_tilde, 0)
@@ -761,6 +761,8 @@ class MACPolicy(TfPolicy, Serializable):
                 tf_target_get_action_values = tf.transpose(tf.reshape(tf_target_get_action_values, (self._N + 1, -1)))[:, 1:]
                 tf_logprob_curr = tf.transpose(tf.reshape(tf_target_get_action_logprob, (self._N + 1, -1)))[:, :self._N]
             else:
+                assert(self._retrace_lambda is None)
+                tf_logprob_curr = None
                 tf_target_get_action_values = tf.zeros([tf.shape(tf_train_values)[0], self._N])
 
             ### update target network
