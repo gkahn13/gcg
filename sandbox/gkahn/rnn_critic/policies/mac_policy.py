@@ -597,7 +597,8 @@ class MACPolicy(TfPolicy, Serializable):
             mask = tf.cast(tf.tile(tf.random_uniform([batch_size, 1]) < tf_explore_ph, (1, action_dim)), tf.float32)
             tf_actions_explore = (1 - mask) * tf_actions + mask * self._graph_generate_random_actions(batch_size)
         elif isinstance(self._exploration_strategy, GaussianStrategy):
-            tf_actions_explore = tf.clip_by_value(tf_actions + tf.random_normal(tf.shape(tf_actions)) * tf_explore_ph,
+            tf_actions_explore = tf.clip_by_value(tf_actions + tf.random_normal(tf.shape(tf_actions)) *
+                                                  tf.tile(tf.expand_dims(tf_explore_ph, 1), (1, action_dim)),
                                                   self._env_spec.action_space.low,
                                                   self._env_spec.action_space.high)
         else:
