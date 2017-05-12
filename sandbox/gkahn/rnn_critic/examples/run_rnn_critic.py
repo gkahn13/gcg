@@ -24,11 +24,11 @@ from sandbox.gkahn.rnn_critic.policies.cdqn_policy import CDQNPolicy
 ### RNN analyze
 from sandbox.gkahn.rnn_critic.examples.analyze_experiment import AnalyzeRNNCritic
 
-def run_rnn_critic(params, params_txt):
+def run_rnn_critic(params):
     # copy yaml for posterity
     yaml_path = os.path.join(logger.get_snapshot_dir(), '{0}.yaml'.format(params['exp_name']))
     with open(yaml_path, 'w') as f:
-        f.write(params_txt)
+        f.write(params['txt'])
 
     os.environ["CUDA_VISIBLE_DEVICES"] = str(params['policy']['gpu_device'])  # TODO: hack so don't double GPU
     config.USE_TF = True

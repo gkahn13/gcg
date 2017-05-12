@@ -20,6 +20,7 @@ if __name__ == '__main__':
             params = yaml.load(f)
         with open(yaml_path, 'r') as f:
             params_txt = ''.join(f.readlines())
+        params['txt'] = params_txt
 
         os.environ["CUDA_VISIBLE_DEVICES"] = str(params['policy']['gpu_device'])  # TODO: hack so don't double GPU
         config.USE_TF = True
@@ -33,12 +34,12 @@ if __name__ == '__main__':
 
         try:
             run_experiment_lite(
-                lambda x: run_rnn_critic(params,
-                                         params_txt=params_txt),  # HACK
+                run_rnn_critic,
                 snapshot_mode="all",
                 exp_name=params['exp_name'],
                 exp_prefix=params['exp_prefix'],
                 use_gpu=True,
+                variant=params,
                 **kwargs
             )
         except:

@@ -19,7 +19,7 @@ def load_experiments(indices, plot={}):
     exps = []
     for i in indices:
         try:
-            exps.append(AnalyzeRNNCritic(os.path.join(EXP_FOLDER, 'hc{0:03d}'.format(i)),
+            exps.append(AnalyzeRNNCritic(os.path.join(EXP_FOLDER, 'walker{0:03d}'.format(i)),
                                          plot=plot,
                                          clear_obs=False,
                                          create_new_envs=False))
@@ -27,17 +27,14 @@ def load_experiments(indices, plot={}):
             pass
     return exps
 
-dqn_1 = load_experiments([53, 54, 55], plot={'color': 'k', 'label': 'DQN'})
-dqn_5 = load_experiments([56, 57, 58], plot={'color': 'k', 'label': 'DQN'})
-dqn_10 = load_experiments([59, 60, 61], plot={'color': 'k', 'label': 'DQN'})
+dqn_5 = load_experiments([1, 2], plot={'color': 'k', 'label': 'DQN'})
+dqn_10 = load_experiments([3, 4], plot={'color': 'k', 'label': 'DQN'})
 
-mac_1 = load_experiments([42, 43, 44], plot={'color': 'r', 'label': 'MAC'})
-# mac_5_target_1 = load_experiments([45, 46, 47])
-mac_5 = load_experiments([48, 49], plot={'color': 'r', 'label': 'MAC'})
-mac_10 = load_experiments([50, 51], plot={'color': 'r', 'label': 'MAC'})
+mac_5 = load_experiments([5, 6], plot={'color': 'r', 'label': 'MAC'})
+mac_10 = load_experiments([7, 8], plot={'color': 'r', 'label': 'MAC'})
 
-comparison_exps = np.array([[dqn_1, dqn_5, dqn_10],
-                            [mac_1, mac_5, mac_10]])
+comparison_exps = np.array([[dqn_5, dqn_10],
+                            [mac_5, mac_10]])
 
 ############
 ### Plot ###
@@ -82,10 +79,10 @@ def plot_cumreward(ax, analyze_group, window=100):
 
 K = comparison_exps.shape[1]
 f, axes = plt.subplots(1, K, figsize=(20, 6), sharex=True, sharey=True)
-for j, N in enumerate([1, 5, 10]):
+for j, N in enumerate([5, 10]):
     ax = axes.ravel()[j]
     for i in range(len(comparison_exps)):
-        plot_cumreward(ax, comparison_exps[i, j], window=10)
+        plot_cumreward(ax, comparison_exps[i, j], window=100)
 
     ax.set_title('N = {0}'.format(N))
     ax.legend(loc='upper left')
@@ -95,7 +92,7 @@ for j, N in enumerate([1, 5, 10]):
     ax.xaxis.set_major_formatter(xfmt)
 
 # plt.tight_layout()
-f.savefig(os.path.join(SAVE_FOLDER, 'hc_comparison.png'), bbox_inches='tight', dpi=200)
+f.savefig(os.path.join(SAVE_FOLDER, 'walker_comparison.png'), bbox_inches='tight', dpi=200)
 plt.close(f)
 
 

@@ -36,16 +36,19 @@ def load_experiments(indices):
     return exps
 
 dqn_1_1e5 = load_experiments([112, 113, 114])
+dqn_5_1e5 = load_experiments([131, 132, 133])
+dqn_10_1e5 = load_experiments([134, 135, 136])
 mac_5_1e5 = load_experiments([115, 116, 117])
 mac_10_1e5 = load_experiments([118, 119, 120])
 
 dqn_1_1e6 = load_experiments([121, 123]) # 122
+dqn_5_1e6 = load_experiments([137, 138, 139])
+dqn_10_1e6 = load_experiments([140, 141, 142])
 mac_5_1e6 = load_experiments([124, 125, 126])
 mac_10_1e6 = load_experiments([127, 128, 129])
 
-comparison_exps = np.array([[dqn_1_1e5, dqn_1_1e6],
-                            [mac_5_1e5, mac_5_1e6],
-                            [mac_10_1e5, mac_10_1e6]])
+comparison_exps = np.array([[dqn_1_1e5, dqn_5_1e5, dqn_10_1e5, mac_5_1e5, mac_10_1e5],
+                            [dqn_1_1e6, dqn_5_1e6, dqn_10_1e6, mac_5_1e6, mac_10_1e6]])
 
 ############
 ### Plot ###
@@ -97,10 +100,10 @@ for i in range(shape[0]):
     for j in range(shape[1]):
         plot_cumreward(axes[i, j], comparison_exps[i, j], window=50)
 
-for j, N in enumerate(['1e5', '1e6']):
-    axes[0, j].set_title('num_offpolicy = {0}'.format(N))
-for i, name in enumerate(['DQN', 'MAC-5', 'MAC-10']):
-    axes[i, 0].set_ylabel(name)
+for i, N in enumerate(['1e5', '1e6']):
+    axes[i, 0].set_ylabel('num_offpolicy = {0}'.format(N))
+for j, name in enumerate(['DQN', 'DQN-5', 'DQN-10', 'MAC-5', 'MAC-10']):
+    axes[0, j].set_title(name)
 
 # plt.tight_layout()
 f.savefig(os.path.join(SAVE_FOLDER, 'pong_offpolicy_comparison.png'), bbox_inches='tight', dpi=200)
