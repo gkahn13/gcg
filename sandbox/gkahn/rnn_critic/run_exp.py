@@ -33,6 +33,7 @@ for exp in args.exps:
         kwargs['post_commands'] = [' sleep 1 ']
 
     # try:
+        # run_rnn_critic(params)
     run_experiment_lite(
         run_rnn_critic,
         snapshot_mode="all",
@@ -41,16 +42,17 @@ for exp in args.exps:
         variant=params,
         use_gpu=True,
         use_cloudpickle=True,
-        mode='local',
-        # mode='ec2_mujoco',
-        # sync_s3_pkl=True,
-        # aws_config={
-        #     'image_id': 'ami-f399bf93',
-        #     'security_groups': ['rllab-sg'],
-        #     'key_name': 'id_rsa',
-        #     'instance_type': 'g2.2xlarge'},
+        # mode='local',
+        mode='ec2_mujoco',
+        sync_s3_pkl=True,
+        aws_config={
+            'image_id': 'ami-f399bf93',
+            'security_groups': ['rllab-sg'],
+            'key_name': 'id_rsa',
+            'instance_type': 'g2.2xlarge'},
         # dry=True,
         **kwargs
     )
     # except Exception as e:
-    #     print('Experiment {0} failed: {1}'.format(exp, str(e)))
+    #     if str(e) != 'madeit':
+    #         input('Experiment {0} failed: {1}'.format(exp, str(e)))

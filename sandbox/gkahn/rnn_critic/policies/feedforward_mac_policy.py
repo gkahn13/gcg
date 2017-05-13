@@ -8,12 +8,11 @@ from sandbox.rocky.tf.spaces.box import Box
 from sandbox.gkahn.rnn_critic.policies.mac_policy import MACPolicy
 from sandbox.gkahn.rnn_critic.utils import tf_utils
 
-class CDQNPolicy(MACPolicy, Serializable):
+class FeedforwardMACPolicy(MACPolicy, Serializable):
     def __init__(self, **kwargs):
         Serializable.quick_init(self, locals())
 
         kwargs['action_hidden_layers'] = []
-        kwargs['reward_hidden_layers'] = []
         kwargs['lambda_hidden_layers'] = []
         kwargs['rnn_state_dim'] = kwargs['obs_hidden_layers'].pop()
         kwargs['use_lstm'] = False
@@ -40,27 +39,37 @@ class CDQNPolicy(MACPolicy, Serializable):
         import tensorflow.contrib.layers as layers
 
         H = tf_actions_ph.get_shape()[1].value
-        assert(H == 1)
         N = self._N if pad_inputs else H
         batch_size = tf.shape(tf_obs_lowd)[0]
+        action_dim = self._env_spec.action_space.flat_dim
 
         with tf.name_scope('inference'):
             layer = tf_obs_lowd
+            tf_actions_flat = tf.reshape(tf_actions_ph, (batch_size, action_dim * H))
             if self._use_bilinear:
                 pad_ones = tf.ones((batch_size, 1))
                 layer = tf_utils.batch_outer_product_2d(tf.concat(1, [layer, pad_ones]),
-                                                        tf.concat(1, [tf_actions_ph[:, 0, :], pad_ones]))
+                                                        tf.concat(1, [tf_actions_flat, pad_ones]))
             else:
-                layer = tf.concat(1, [layer, tf_actions_ph[:, 0, :]])
+                layer = tf.concat(1, [layer, tf_actions_flat])
 
-            ### obs_lowd + action --> value
-            for i, num_outputs in enumerate(self._value_hidden_layers + [1]):
+            ### obs_lowd + action --> n-step reward
+            for i, num_outputs in enumerate(self._reward_hidden_layers + [N]):
+                activation = self._activation if i < len(self._reward_hidden_layers) else None
+                layer = layers.fully_connected(layer, num_outputs=num_outputs, activation_fn=activation,
+                                               weights_regularizer=layers.l2_regularizer(1.) if add_reg else None,
+                                               scope='obs_lowd_and_action_to_reward_fc{0}'.format(i))
+            tf_nstep_rewards = tf.split(1, N, layer)
+
+            ### obs_lowd + action --> n-step value
+            for i, num_outputs in enumerate(self._value_hidden_layers + [N]):
                 activation = self._activation if i < len(self._value_hidden_layers) else None
                 layer = layers.fully_connected(layer, num_outputs=num_outputs, activation_fn=activation,
                                                weights_regularizer=layers.l2_regularizer(1.) if add_reg else None,
                                                scope='obs_lowd_and_action_to_value_fc{0}'.format(i))
+            tf_nstep_values = tf.split(1, N, layer)
 
-            tf_values = tf.tile(layer, (1, N))
+            tf_values = tf.concat(1, [self._graph_calculate_value(n, tf_nstep_rewards, tf_nstep_values) for n in range(N)])
 
             if values_softmax['type'] == 'final':
                 tf_values_softmax = tf.one_hot(N - 1, N) * tf.ones(tf.shape(tf_values))

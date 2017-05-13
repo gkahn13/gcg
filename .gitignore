@@ -37,5 +37,5 @@ blackbox
 rllab/config_personal.py
 *.swp
 sandbox/rocky
-sandbox/gkahn/rnn_critic/examples/yamls
+sandbox/gkahn/rnn_critic/yamls
 rllab/bin

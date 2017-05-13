@@ -26,7 +26,7 @@ alg:
   exploration_strategy:
     class: GaussianStrategy
     GaussianStrategy:
-      endpoints: [[0, 1], [4.e+4, 0.1]]
+      endpoints: [[0, 0.5], [4.e+4, 0.1]]
       outside_value: 0.01
     
   batch_size: 32
@@ -40,19 +40,25 @@ alg:
 ##############
 
 policy:
-  N: 1
-  H: 1
+  N: 10
+  H: 10
   gamma: 0.99
   obs_history_len: 1
 
-  values_softmax: mean # mean / final / learned
+  values_softmax:
+    type: mean # mean / final / exponential
+    exponential:
+      lambda: 0.5
   retrace_lambda: 1
   use_target: True
   separate_target_params: True
   
   get_action_test:
-    H: 1
-    values_softmax: mean # mean / final / learned
+    H: 10
+    values_softmax:
+      type: mean # mean / final / exponential
+      exponential:
+        lambda: 0.5
     type: random # random / lattice
     random:
       K: 10000
@@ -62,8 +68,11 @@ policy:
       M: 10
       
   get_action_target:
-    H: 1
-    values_softmax: mean # mean / final / learned
+    H: 10
+    values_softmax:
+      type: mean # mean / final / exponential
+      exponential:
+        lambda: 0.5
     type: random # random / lattice
     random:
       K: 100
@@ -72,9 +81,15 @@ policy:
       K: 10
       M: 10
 
-  class: CDQNPolicy
+  class: MACPolicy
   CDQNPolicy:
     obs_hidden_layers: [128]
+    value_hidden_layers: [128, 16]
+    use_bilinear: True
+    activation: tf.nn.tanh
+  FeedforwardMACPolicy:
+    obs_hidden_layers: [128]
+    reward_hidden_layers: [128, 16]
     value_hidden_layers: [128, 16]
     use_bilinear: True
     activation: tf.nn.tanh
@@ -87,6 +102,7 @@ policy:
     rnn_state_dim: 128
     use_lstm: False
     use_bilinear: True
+    share_weights: True
     activation: tf.nn.tanh
     rnn_activation: tf.nn.relu
 

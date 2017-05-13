@@ -1,3 +1,4 @@
+import numpy as np
 import tensorflow as tf
 
 from rllab.core.serializable import Serializable
@@ -21,6 +22,7 @@ class DQNPolicy(MACPolicy, Serializable):
         kwargs['rnn_state_dim'] = 0
         kwargs['use_lstm'] = False
         kwargs['use_bilinear'] = False
+        kwargs['share_weights'] = False
         kwargs['rnn_activation'] = 'None'
         MACPolicy.__init__(self, **kwargs)
 
@@ -102,10 +104,15 @@ class DQNPolicy(MACPolicy, Serializable):
                                               reduction_indices=1, keep_dims=True),
                                 (1, N))
 
-            if values_softmax == 'final':
+            if values_softmax['type'] == 'final':
                 tf_values_softmax = tf.one_hot(N - 1, N) * tf.ones(tf.shape(tf_values))
-            elif values_softmax == 'mean':
+            elif values_softmax['type'] == 'mean':
                 tf_values_softmax = (1. / float(N)) * tf.ones(tf.shape(tf_values))
+            elif values_softmax['type'] == 'exponential':
+                lam = values_softmax['exponential']['lambda']
+                lams = (1 - lam) * np.power(lam, np.arange(N - 1))
+                lams = np.array(list(lams) + [np.power(lam, N - 1)])
+                tf_values_softmax = lams * tf.ones(tf.shape(tf_values))
             else:
                 raise NotImplementedError
 

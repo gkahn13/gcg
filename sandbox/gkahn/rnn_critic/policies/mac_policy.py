@@ -43,6 +43,7 @@ class MACPolicy(TfPolicy, Serializable):
         self._rnn_state_dim = kwargs.get('rnn_state_dim')
         self._use_lstm = kwargs.get('use_lstm')
         self._use_bilinear = kwargs.get('use_bilinear')
+        self._share_weights = kwargs.get('share_weights')
         self._activation = eval(kwargs.get('activation'))
         self._rnn_activation = eval(kwargs.get('rnn_activation'))
         self._use_conv = ('conv_hidden_layers' in kwargs) and ('conv_kernels' in kwargs) and \
@@ -273,7 +274,8 @@ class MACPolicy(TfPolicy, Serializable):
 
             next_istate, rew, val, vsoftmax = \
                 self._graph_inference_step(h, N, istate, action, values_softmax, add_reg=add_reg)
-            tf.get_variable_scope().reuse_variables()
+            if self._share_weights:
+                tf.get_variable_scope().reuse_variables()
 
             istate = next_istate
             tf_nstep_rewards.append(rew)
@@ -305,41 +307,45 @@ class MACPolicy(TfPolicy, Serializable):
                 else:
                     layer = action
                     for i, num_outputs in enumerate(self._action_hidden_layers + [self._rnn_state_dim]):
+                        scope = 'actions_i{0}'.format(i) if self._share_weights else 'actions_n{0}_i{1}'.format(n, i)
                         layer = layers.fully_connected(layer, num_outputs=num_outputs, activation_fn=self._activation,
                                                        weights_regularizer=layers.l2_regularizer(1.) if add_reg else None,
-                                                       scope='actions_i{0}'.format(i),
-                                                       reuse=tf.get_variable_scope().reuse) # TODO
+                                                       scope=scope,
+                                                       reuse=tf.get_variable_scope().reuse)
                     rnn_input = layer
 
             ### rnn
             with tf.name_scope('rnn'):
-                if self._use_lstm:
-                    if self._use_bilinear:
-                        rnn_cell = BasicMulintLSTMCell(self._rnn_state_dim,
-                                                       state_is_tuple=True,
-                                                       activation=self._rnn_activation)
+                scope = 'rnn' if self._share_weights else 'rnn_n{0}'.format(n)
+                with tf.variable_scope(scope):
+                    if self._use_lstm:
+                        if self._use_bilinear:
+                            rnn_cell = BasicMulintLSTMCell(self._rnn_state_dim,
+                                                           state_is_tuple=True,
+                                                           activation=self._rnn_activation)
+                        else:
+                            rnn_cell = tf.nn.rnn_cell.BasicLSTMCell(self._rnn_state_dim,
+                                                                    state_is_tuple=True,
+                                                                    activation=self._rnn_activation)
                     else:
-                        rnn_cell = tf.nn.rnn_cell.BasicLSTMCell(self._rnn_state_dim,
-                                                                state_is_tuple=True,
-                                                                activation=self._rnn_activation)
-                else:
-                    if self._use_bilinear:
-                        rnn_cell = BasicMulintRNNCell(self._rnn_state_dim, activation=self._rnn_activation)
-                    else:
-                        rnn_cell = tf.nn.rnn_cell.BasicRNNCell(self._rnn_state_dim, activation=self._rnn_activation)
-                tf_output, next_istate = rnn_cell(rnn_input, istate)
+                        if self._use_bilinear:
+                            rnn_cell = BasicMulintRNNCell(self._rnn_state_dim, activation=self._rnn_activation)
+                        else:
+                            rnn_cell = tf.nn.rnn_cell.BasicRNNCell(self._rnn_state_dim, activation=self._rnn_activation)
+                    tf_output, next_istate = rnn_cell(rnn_input, istate)
 
             ### rnn output --> nstep rewards
             with tf.name_scope('nstep_rewards'):
                 layer = tf_output
                 for i, num_outputs in enumerate(self._reward_hidden_layers + [1]):
                     activation = self._activation if i < len(self._reward_hidden_layers) else None
+                    scope = 'rewards_i{0}'.format(i) if self._share_weights else 'rewards_n{0}_i{1}'.format(n, i)
                     layer = layers.fully_connected(layer,
                                                    num_outputs=num_outputs,
                                                    activation_fn=activation,
                                                    weights_regularizer=layers.l2_regularizer(1.) if add_reg else None,
-                                                   scope='rewards_i{0}'.format(i),
-                                                   reuse=tf.get_variable_scope().reuse) # TODO
+                                                   scope=scope,
+                                                   reuse=tf.get_variable_scope().reuse)
                 tf_nstep_reward = layer
 
             ### rnn output --> nstep values
@@ -347,24 +353,31 @@ class MACPolicy(TfPolicy, Serializable):
                 layer = tf_output
                 for i, num_outputs in enumerate(self._value_hidden_layers + [1]):
                     activation = self._activation if i < len(self._value_hidden_layers) else None
+                    scope = 'values_i{0}'.format(i) if self._share_weights else 'values_n{0}_i{1}'.format(n, i)
                     layer = layers.fully_connected(layer,
                                                    num_outputs=num_outputs,
                                                    activation_fn=activation,
                                                    weights_regularizer=layers.l2_regularizer(1.) if add_reg else None,
-                                                   scope='values_i{0}'.format(i),
-                                                   reuse=tf.get_variable_scope().reuse) # TODO
+                                                   scope=scope,
+                                                   reuse=tf.get_variable_scope().reuse)
                 tf_nstep_value = layer
 
             ### nstep lambdas --> values softmax and depth
             with tf.name_scope('nstep_lambdas'):
-                if values_softmax == 'final':
+                if values_softmax['type'] == 'final':
                     if n == N - 1:
                         tf_values_softmax = tf.ones([batch_size])
                     else:
                         tf_values_softmax = tf.zeros([batch_size])
-                elif values_softmax == 'mean':
+                elif values_softmax['type'] == 'mean':
                     tf_values_softmax = (1. / float(N)) * tf.ones([batch_size])
-                elif values_softmax == 'learned':
+                elif values_softmax['type'] == 'exponential':
+                    lam = values_softmax['exponential']['lambda']
+                    if n == N - 1:
+                        tf_values_softmax = np.power(lam, n) * tf.ones([batch_size])
+                    else:
+                        tf_values_softmax = (1 - lam) * np.power(lam, n) * tf.ones([batch_size])
+                else:
                     raise NotImplementedError
 
         return next_istate, tf_nstep_reward, tf_nstep_value, tf_values_softmax
