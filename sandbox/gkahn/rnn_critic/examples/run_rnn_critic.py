@@ -26,9 +26,9 @@ from sandbox.gkahn.rnn_critic.examples.analyze_experiment import AnalyzeRNNCriti
 
 def run_rnn_critic(params):
     # copy yaml for posterity
-    yaml_path = os.path.join(logger.get_snapshot_dir(), '{0}.yaml'.format(params['exp_name']))
-    with open(yaml_path, 'w') as f:
-        f.write(params['txt'])
+    # yaml_path = os.path.join(logger.get_snapshot_dir(), '{0}.yaml'.format(params['exp_name']))
+    # with open(yaml_path, 'w') as f:
+    #     f.write(params['txt'])
 
     os.environ["CUDA_VISIBLE_DEVICES"] = str(params['policy']['gpu_device'])  # TODO: hack so don't double GPU
     config.USE_TF = True
@@ -125,15 +125,3 @@ def run_rnn_critic(params):
         **params['alg']
     )
     algo.train()
-
-    ###############
-    ### Analyze ###
-    ###############
-
-    import traceback
-    logger.log('Analyzing experiment {0}'.format(logger.get_snapshot_dir()))
-    try:
-        analyze = AnalyzeRNNCritic(logger.get_snapshot_dir())
-        analyze.run()
-    except:
-        logger.log(traceback.format_exc())
