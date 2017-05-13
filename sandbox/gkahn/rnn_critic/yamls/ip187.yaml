@@ -1,0 +1,105 @@
+exp_name: ip187
+exp_prefix: rnn_critic
+seed: 1
+
+#################
+### Algorithm ###
+#################
+
+alg:
+  env: GymEnv('InvertedPendulum-v1', record_video=False, force_reset=True)
+  n_envs: 4
+  max_path_length: 250
+
+  total_steps: 1.e+5
+  learn_after_n_steps: 1.e+3
+  train_every_n_steps: 0.5
+  save_every_n_steps: 2.e+4
+  update_target_after_n_steps: 1.e+3
+  update_target_every_n_steps: 1.e+4
+  update_preprocess_every_n_steps: 1.e+8
+  log_every_n_steps: 5.e+3
+
+  exploration_strategy:
+    class: GaussianStrategy
+    GaussianStrategy:
+      endpoints: [[0, 0.5], [1.e+3, 0.5], [5.e+4, 0.1]]
+      outside_value: 0.01
+    EpsilonGreedyStrategy:
+      endpoints: [[0, 0.5], [5.e+4, 0.5], [5.e+5, 0.01], [1.e+6, 0.01]]
+      outside_value: 0.01
+    
+  batch_size: 32
+  replay_pool_size: 1.e+5
+  save_rollouts: True
+  render: False
+
+##############
+### Policy ###
+##############
+
+policy:
+  N: 1
+  H: 1
+  gamma: 0.99
+  obs_history_len: 1
+
+  train_value_horizon: mean # mean / final
+  use_target: True
+  separate_target_params: True
+  
+  get_action_test:
+    H: 1
+    value: mean # mean / final
+    type: random # random / lattice
+    random:
+      K: 10000
+    lattice:
+      
+  get_action_target:
+    H: 1
+    value: mean # mean / final
+    type: random # random / lattice
+    random:
+      K: 1000
+    lattice:
+
+  class: MACPolicy
+  MACPolicy:
+    obs_hidden_layers: [128]
+    action_hidden_layers: []
+    reward_hidden_layers: []
+    rnn_state_dim: 128
+    use_lstm: False
+    use_bilinear: True
+    activation: tf.nn.tanh
+    rnn_activation: tf.nn.tanh
+  MACMuxRNNPolicy:
+    obs_hidden_layers: [512]
+    reward_hidden_layers: [16]
+    rnn_state_dim: 32
+    use_lstm: True
+    activation: tf.nn.relu
+    rnn_activation: tf.nn.relu
+
+  # preprocessing
+  preprocess:
+    observations_mean: False
+    observations_orth: False
+    actions_mean: False
+    actions_orth: False
+    rewards_mean: False
+    rewards_orth: False
+
+  # training
+  weight_decay: 1.e-7
+  lr_schedule:
+    endpoints: [[0, 1.e-4], [1.e+5, 1.e-4]]
+    outside_value: 1.e-4
+  grad_clip_norm: 10
+
+  # device
+  gpu_device: 6
+  gpu_frac: 0.2
+
+

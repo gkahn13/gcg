@@ -754,6 +754,10 @@ def launch_ec2mujoco(params_list, exp_prefix, docker_image, code_full_path,
         """.format(code_full_path=code_full_path, local_code_path=config.DOCKER_CODE_DIR,
                    aws_region=config.AWS_REGION_NAME))
         sio.write("""
+            rm -rf {local_code_path}
+            export PYTHONPATH=/home/ubuntu/code/rllab:$PYTHONPATH
+            export PATH="/home/ubuntu/anaconda2/bin:$PATH"
+            source activate rllab3
             mkdir -p {local_code_path}
         """.format(code_full_path=code_full_path, local_code_path=config.DOCKER_CODE_DIR,
                    aws_region=config.AWS_REGION_NAME))
@@ -826,6 +830,11 @@ def launch_ec2mujoco(params_list, exp_prefix, docker_image, code_full_path,
             {command}
         """.format(command=to_local_command(params, python_command=python_command, script=osp.join(config.DOCKER_CODE_DIR,script),
                                              use_gpu=use_gpu)))
+        # TODO: temp
+        # sio.write("""
+        #     sleep 10000
+        # """)
+
         sio.write("""
             aws s3 cp --recursive {log_dir} {remote_log_dir} --region {aws_region}
         """.format(log_dir=log_dir, remote_log_dir=remote_log_dir, aws_region=config.AWS_REGION_NAME))
@@ -883,8 +892,8 @@ def launch_ec2mujoco(params_list, exp_prefix, docker_image, code_full_path,
         UserData=user_data,
         InstanceType=aws_config["instance_type"],
         # EbsOptimized=True,
-        # SecurityGroups=aws_config["security_groups"],
-        # SecurityGroupIds=aws_config["security_group_ids"],
+        SecurityGroups=aws_config["security_groups"],
+        SecurityGroupIds=aws_config["security_group_ids"],
         NetworkInterfaces=aws_config["network_interfaces"],
         IamInstanceProfile=dict(
             Name=aws_config["iam_instance_profile_name"],

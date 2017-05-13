@@ -1,0 +1,116 @@
+#type_replacements = [
+#    {'V_N': 1, 'V_H': 1, 'V_action': 'lattice', 'V_class': 'DQNPolicy', 'G0': 5, 'G1': 0.3, 'S0': 1}, # DQN
+#    {'V_N': 1, 'V_H': 1, 'V_action': 'lattice', 'V_class': 'DQNPolicy', 'G0': 5, 'G1': 0.3, 'S0': 2}, # DQN
+#    {'V_N': 5, 'V_H': 5, 'V_action': 'lattice', 'V_class': 'MACMuxPolicy', 'G0': 2, 'G1': 0.45, 'S0': 1}, # MAC
+#    {'V_N': 10, 'V_H': 10, 'V_action': 'random', 'V_class': 'MACMuxPolicy', 'G0': 2, 'G1': 0.45, 'S0': 1}, # MAC
+#]
+
+exp_name: pacman000
+exp_prefix: rnn_critic
+seed: S0
+
+#################
+### Algorithm ###
+#################
+
+alg:
+  env: PremadeGymEnv(wrap_deepmind(gym.envs.make('MsPacmanNoFrameskip-v3')), record_video=False, record_log=False)
+  #env: GymEnv('MsPacman-v0')
+  n_envs: 1
+  
+  total_steps: 10.e+6
+  sample_after_n_steps: -1
+  learn_after_n_steps: 5.e+4
+  train_every_n_steps: 4
+  eval_every_n_steps: 1.e+4
+  save_every_n_steps: 5.e+4
+  update_target_after_n_steps: 5.e+4
+  update_target_every_n_steps: 1.e+4
+  update_preprocess_every_n_steps: 1.e+4
+  log_every_n_steps: 1.e+4
+
+  exploration_strategy:
+    class: EpsilonGreedyStrategy
+    EpsilonGreedyStrategy:
+      endpoints: [[0, 1.0], [5.e+4, 1.0], [1.e+6, 0.1], [5.e+6, 0.01]]
+      outside_value: 0.01
+    
+  batch_size: 32
+  replay_pool_size: 1.e+6
+  save_rollouts: True
+  save_rollouts_observations: False
+  render: False
+
+##############
+### Policy ###
+##############
+
+policy:
+  N: V_N
+  H: V_H
+  gamma: 0.99
+  obs_history_len: 4
+
+  values_softmax: mean # mean / final / learned
+  use_target: True
+  separate_target_params: True
+  
+  get_action_test:
+    H: V_H
+    values_softmax: mean # mean / final / learned
+    type: V_action # random / lattice
+    random:
+      K: 10000
+    lattice:
+      
+  get_action_target:
+    H: V_H
+    values_softmax: mean # mean / final / learned
+    type: V_action # random / lattice
+    random:
+      K: 100
+    lattice:
+
+  class: V_class
+  MACMuxPolicy:
+    obs_hidden_layers: [512]
+    reward_hidden_layers: [16]
+    value_hidden_layers: [16]
+    lambda_hidden_layers: [16]
+    rnn_state_dim: 32
+    use_lstm: False
+    activation: tf.nn.relu
+    rnn_activation: tf.nn.relu
+    conv_hidden_layers: [32, 64, 64]
+    conv_kernels: [8, 4, 3]
+    conv_strides: [4, 2, 1]
+    conv_activation: tf.nn.relu
+  DQNPolicy:
+    hidden_layers: [512]
+    activation: tf.nn.relu
+    conv_hidden_layers: [32, 64, 64]
+    conv_kernels: [8, 4, 3]
+    conv_strides: [4, 2, 1]
+    conv_activation: tf.nn.relu
+
+  # preprocessing
+  preprocess:
+    observations_mean: True
+    observations_orth: True
+    actions_mean: False
+    actions_orth: False
+    rewards_mean: False
+    rewards_orth: False
+
+  # training
+  weight_decay: 1.e-8
+  lr_schedule:
+    endpoints: [[0, 1.e-4], [1.e+6, 1.e-4], [5.e+6, 5.e-5]]
+    outside_value: 5.e-5
+  grad_clip_norm: 10
+
+  # device
+  gpu_device: G0
+  gpu_frac: G1
+
+

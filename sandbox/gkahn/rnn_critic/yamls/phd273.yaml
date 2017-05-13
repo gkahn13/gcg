@@ -1,0 +1,128 @@
+#type_replacements = [
+#    {'V_N': 1, 'V_H': 1, 'V_class': 'DQNPolicy',    'V_retrace': '',  'V_use_target': 'True',  'G0': 4, 'G1': 0.1}, # DQN 1 274-276
+#    {'V_N': 4, 'V_H': 1, 'V_class': 'DQNPolicy',    'V_retrace': '',  'V_use_target': 'True',  'G0': 4, 'G1': 0.1}, # DQN 4 277-279
+#    {'V_N': 8, 'V_H': 1, 'V_class': 'DQNPolicy',    'V_retrace': '',  'V_use_target': 'True',  'G0': 4, 'G1': 0.1}, # DQN 8 280-282
+#    {'V_N': 1, 'V_H': 1, 'V_class': 'DQNPolicy',    'V_retrace': '1', 'V_use_target': 'True',  'G0': 4, 'G1': 0.1}, # DQN 1 retrace 283-285
+#    {'V_N': 4, 'V_H': 1, 'V_class': 'DQNPolicy',    'V_retrace': '1', 'V_use_target': 'True',  'G0': 4, 'G1': 0.1}, # DQN 4 retrace 286-288
+#    {'V_N': 8, 'V_H': 1, 'V_class': 'DQNPolicy',    'V_retrace': '1', 'V_use_target': 'True',  'G0': 4, 'G1': 0.1}, # DQN 8 retrace 289-291
+#    {'V_N': 1, 'V_H': 1, 'V_class': 'MACMuxPolicy', 'V_retrace': '',  'V_use_target': 'True',  'G0': 6, 'G1': 0.2}, # predictron 1 292-294
+#    {'V_N': 4, 'V_H': 1, 'V_class': 'MACMuxPolicy', 'V_retrace': '',  'V_use_target': 'True',  'G0': 6, 'G1': 0.2}, # predictron 4 295-297
+#    {'V_N': 8, 'V_H': 1, 'V_class': 'MACMuxPolicy', 'V_retrace': '',  'V_use_target': 'True',  'G0': 6, 'G1': 0.2}, # predictron 8 298-300
+#    {'V_N': 1, 'V_H': 1, 'V_class': 'MACMuxPolicy', 'V_retrace': '',  'V_use_target': 'False', 'G0': 6, 'G1': 0.2}, # model based 1 301-303
+#    {'V_N': 4, 'V_H': 4, 'V_class': 'MACMuxPolicy', 'V_retrace': '',  'V_use_target': 'False', 'G0': 6, 'G1': 0.2}, # model based 4 304-306
+#    {'V_N': 8, 'V_H': 8, 'V_class': 'MACMuxPolicy', 'V_retrace': '',  'V_use_target': 'False', 'G0': 6, 'G1': 0.2}, # model based 8 307-309
+#    {'V_N': 4, 'V_H': 4, 'V_class': 'MACMuxPolicy', 'V_retrace': '',  'V_use_target': 'True',  'G0': 7, 'G1': 0.2}, # MAC 4 310-312
+#    {'V_N': 8, 'V_H': 8, 'V_class': 'MACMuxPolicy', 'V_retrace': '',  'V_use_target': 'True',  'G0': 7, 'G1': 0.2}, # MAC 8 313-315
+#]
+
+
+#seed_replacements = [
+#    {'V_offpolicy': 'phd270', 'S0': 1},
+#    {'V_offpolicy': 'phd271', 'S0': 2},
+#    {'V_offpolicy': 'phd272', 'S0': 3},
+#]
+
+exp_name: phd273
+exp_prefix: rnn_critic
+seed: S0
+
+#################
+### Algorithm ###
+#################
+
+alg:
+  env: PhdEnv(length=8, r_continue=-1, r_escape=0, r_adviser=-15, r_thesis=15)
+  n_envs: 1
+  
+  offpolicy: /home/gkahn/code/rllab/data/local/rnn-critic/V_offpolicy
+  num_offpolicy: 5.e+5
+  
+  total_steps: 5.e+5
+  sample_after_n_steps: 1.e+8
+  learn_after_n_steps: -1
+  train_every_n_steps: 1
+  eval_every_n_steps: 1.e+2
+  save_every_n_steps: 5.e+4
+  update_target_after_n_steps: 1.e+4
+  update_target_every_n_steps: 1.e+4
+  update_preprocess_every_n_steps: 1.e+3
+  log_every_n_steps: 1.e+3
+
+  exploration_strategy:
+    class: EpsilonGreedyStrategy
+    EpsilonGreedyStrategy:
+      endpoints: [[0, 1], [5.e+4, 1]]
+      outside_value: 1
+    
+  batch_size: 32
+  replay_pool_size: 5.e+5
+  save_rollouts: True
+  save_rollouts_observations: True
+  render: False
+
+##############
+### Policy ###
+##############
+
+policy:
+  N: V_N
+  H: V_H
+  gamma: 0.99
+  obs_history_len: 1
+
+  values_softmax: mean # mean / final / learned
+  retrace_lambda: V_retrace
+  use_target: V_use_target
+  separate_target_params: True
+  
+  get_action_test:
+    H: V_H
+    values_softmax: mean # mean / final / learned
+    type: lattice # random / lattice
+    random:
+      K: 1000
+    lattice:
+      
+  get_action_target:
+    H: V_H
+    values_softmax: mean # mean / final / learned
+    type: lattice # random / lattice
+    random:
+      K: 100
+    lattice:
+
+  class: V_class
+  DQNPolicy:
+    hidden_layers: [128, 128]
+    activation: tf.nn.tanh
+  MACMuxPolicy:
+    obs_hidden_layers: [128]
+    reward_hidden_layers: []
+    value_hidden_layers: []
+    lambda_hidden_layers: []
+    rnn_state_dim: 128
+    use_lstm: False
+    activation: tf.nn.tanh
+    rnn_activation: tf.nn.tanh
+
+  # preprocessing
+  preprocess:
+    observations_mean: False
+    observations_orth: False
+    actions_mean: False
+    actions_orth: False
+    rewards_mean: False
+    rewards_orth: False
+
+  # training
+  weight_decay: 1.e-7
+  lr_schedule:
+    endpoints: [[0, 1.e-3], [1.e+6, 1.e-3]]
+    outside_value: 1.e-3
+  grad_clip_norm: 10
+
+  # device
+  gpu_device: G0
+  gpu_frac: G1
+
+

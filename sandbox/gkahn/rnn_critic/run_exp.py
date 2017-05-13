@@ -3,7 +3,7 @@ import argparse
 import yaml
 
 from rllab import config
-from sandbox.gkahn.rnn_critic.examples.run_rnn_critic import run_rnn_critic
+from sandbox.gkahn.rnn_critic.algos.run_rnn_critic import run_rnn_critic
 from rllab.misc.instrument import stub, run_experiment_lite
 
 parser = argparse.ArgumentParser()
@@ -14,7 +14,7 @@ args = parser.parse_args()
 # stub(globals())
 
 for exp in args.exps:
-    yaml_path = os.path.abspath('examples/yamls/{0}.yaml'.format(exp))
+    yaml_path = os.path.abspath('yamls/{0}.yaml'.format(exp))
     assert(os.path.exists(yaml_path))
     with open(yaml_path, 'r') as f:
         params = yaml.load(f)
@@ -40,10 +40,16 @@ for exp in args.exps:
         exp_prefix=params['exp_prefix'],
         variant=params,
         use_gpu=True,
-        mode='local_docker',
         use_cloudpickle=True,
-        docker_image='gkahn13/rllab-gkahn',
-        # aws_config={'instance_type': 'g2.2xlarge'},
+        mode='local',
+        # mode='ec2_mujoco',
+        # sync_s3_pkl=True,
+        # aws_config={
+        #     'image_id': 'ami-f399bf93',
+        #     'security_groups': ['rllab-sg'],
+        #     'key_name': 'id_rsa',
+        #     'instance_type': 'g2.2xlarge'},
+        # dry=True,
         **kwargs
     )
     # except Exception as e:

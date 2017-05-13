@@ -1,0 +1,76 @@
+exp_name: exp188
+exp_prefix: rnn_critic
+seed: 4
+
+#################
+### Algorithm ###
+#################
+
+alg:
+  env: PointEnv()
+  n_envs: 5
+
+  total_steps: 20000 # 2e4
+  learn_after_n_steps: 500
+  train_every_n_steps: 5
+  save_every_n_steps: 2000 # 2e3
+  update_target_after_n_steps: 1000 # 1000
+  update_target_every_n_steps: 500
+  update_preprocess_every_n_steps: 100
+  log_every_n_steps: 50
+
+  exploration_strategy:
+    type: gaussian
+    gaussian:
+      max_sigma: 0.5
+      min_sigma: 0.01
+      decay_period: 10000 # 1e4
+    epsilon_greedy:
+      epsilon: 1
+      decay_func: 'lambda t: int(t < 500)'
+
+  batch_size: 16
+  replay_pool_size: 100000 # 1e5
+  render: False
+
+##############
+### Policy ###
+##############
+
+policy:
+  H: 4
+  gamma: 0.5
+
+  # architecture
+  type: rnn # mlp / rnn
+  mlp:
+    hidden_layers: [20, 20, 20]
+    activation: tf.nn.tanh
+  rnn:
+    obs_hidden_layers: [10]
+    action_hidden_layers: [10]
+    reward_hidden_layers: [10, 5]
+    rnn_state_dim: 10
+    activation: tf.nn.tanh
+
+  # training
+  weight_decay: 0.
+  learning_rate: 0.01
+
+  # device
+  gpu_device: 0
+  gpu_frac: 0.2
+
+########################
+### Action selection ###
+########################
+
+get_action:
+  type: random # random / lattice
+
+  random:
+    type: random
+    N: 1000
+  lattice:
+    type: lattice
+    N: 10

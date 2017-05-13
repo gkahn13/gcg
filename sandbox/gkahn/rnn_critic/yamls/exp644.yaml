@@ -1,0 +1,89 @@
+exp_name: exp644
+exp_prefix: rnn_critic
+seed: 5
+
+#################
+### Algorithm ###
+#################
+
+alg:
+  env: GymEnv('CartPole-v0', record_video=False)
+  n_envs: 5
+
+  total_steps: 100000 # 1e5
+  learn_after_n_steps: 500 # 500 
+  train_every_n_steps: 5
+  save_every_n_steps: 20000 # 2e4
+  update_target_after_n_steps: 1000
+  update_target_every_n_steps: 100
+  update_preprocess_every_n_steps: 100 # 100
+  log_every_n_steps: 500
+
+  exploration_strategy:
+    type: epsilon_greedy
+    gaussian:
+      max_sigma: 0.5
+      min_sigma: 0.01
+      decay_period: 500000 # 5e5
+    epsilon_greedy:
+      epsilon: 1
+      decay_func: 'lambda t: max(0.5*(1-t/1e4), 0.01)'
+
+  batch_size: 32
+  replay_pool_size: 100000 # 1e5
+  save_rollouts: True
+  render: False
+
+##############
+### Policy ###
+##############
+
+policy:
+  N: 6
+  H: 6
+  cost_type: separated # combined / separated
+  gamma: 0.9
+
+  class: MultiactionSeparatedcostMLPPolicy
+  DQNPolicy:
+    hidden_layers: [128, 128]
+    activation: tf.nn.tanh
+  NstepDQNPolicy:
+    hidden_layers: [128, 128]
+    activation: tf.nn.tanh
+  MultiactionCombinedcostMLPPolicy:
+    hidden_layers: [128, 128]
+    activation: tf.nn.tanh
+  MultiactionCombinedcostRNNPolicy:
+    obs_hidden_layers: [128]
+    action_hidden_layers: [128]
+    reward_hidden_layers: [128]
+    rnn_state_dim: 128
+    activation: tf.nn.tanh
+    rnn_activation: tf.nn.relu
+  MultiactionSeparatedcostMLPPolicy:
+    hidden_layers: [128, 128]
+    activation: tf.nn.tanh
+
+  # training
+  weight_decay: 0
+  learning_rate: 0.0001
+  grad_clip_norm: 100000
+
+  # device
+  gpu_device: 1
+  gpu_frac: 0.4
+
+########################
+### Action selection ###
+########################
+
+get_action:
+  type: lattice # random / lattice
+
+  random:
+    type: random
+    K: 1000
+  lattice:
+    type: lattice
+    K: 10

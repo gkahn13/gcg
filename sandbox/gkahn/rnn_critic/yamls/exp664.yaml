@@ -1,0 +1,105 @@
+exp_name: exp664
+exp_prefix: rnn_critic
+seed: 1
+
+#################
+### Algorithm ###
+#################
+
+alg:
+  env: GymEnv('Catcher-v0', record_video=False)
+  n_envs: 5
+
+  total_steps: 2000000 # 2e6
+  learn_after_n_steps: 10000
+  train_every_n_steps: 5
+  save_every_n_steps: 400000 # 4e5
+  update_target_after_n_steps: 1000
+  update_target_every_n_steps: 100
+  update_preprocess_every_n_steps: 10000 # 1e4
+  log_every_n_steps: 2000
+
+  exploration_strategy:
+    class: EpsilonGreedyStrategy
+    GaussianStrategy:
+      max_sigma: 0.5
+      min_sigma: 0.01
+      decay_period: 500000 # 5e5
+    EpsilonGreedyStrategy:
+      endpoints: [[0, 1.0], [1e6, 0.1], [1.5e6 / 2, 0.01]]
+      outside_value: 0.01
+    
+  batch_size: 32
+  replay_pool_size: 1000000 # 1e6
+  save_rollouts: True
+  render: False
+
+##############
+### Policy ###
+##############
+
+policy:
+  N: 1
+  H: 1
+  cost_type: combined # combined / separated
+  gamma: 0.9
+
+  class: DQNPolicy
+  DQNPolicy:
+    hidden_layers: [64, 64]
+    activation: tf.nn.tanh
+    concat_or_bilinear: bilinear
+    conv_hidden_layers: [32, 16, 8, 8]
+    conv_kernels: [4, 4, 3, 3]
+    conv_strides: [2, 2, 2, 2]
+    conv_activation: tf.nn.relu
+  NstepDQNPolicy:
+    hidden_layers: [128, 128]
+    activation: tf.nn.tanh
+    concat_or_bilinear: bilinear
+  MultiactionCombinedcostMLPPolicy:
+    hidden_layers: [128, 128]
+    activation: tf.nn.tanh
+    concat_or_bilinear: bilinear
+  MultiactionCombinedcostRNNPolicy:
+    obs_hidden_layers: [128]
+    action_hidden_layers: [128]
+    reward_hidden_layers: [128]
+    rnn_state_dim: 128
+    activation: tf.nn.tanh
+    rnn_activation: tf.nn.relu
+  MultiactionSeparatedcostMLPPolicy:
+    hidden_layers: [128, 128]
+    activation: tf.nn.tanh
+  MultiactionSeparatedcostRNNPolicy:
+    obs_hidden_layers: [128]
+    action_hidden_layers: [128]
+    reward_hidden_layers: [128]
+    value_hidden_layers: [128]
+    rnn_state_dim: 128
+    activation: tf.nn.tanh
+    rnn_activation: tf.nn.relu
+
+
+  # training
+  weight_decay: 0
+  learning_rate: 0.0001
+  grad_clip_norm: 100000
+
+  # device
+  gpu_device: 0
+  gpu_frac: 0.4
+
+########################
+### Action selection ###
+########################
+
+get_action:
+  type: lattice # random / lattice
+
+  random:
+    type: random
+    K: 1000
+  lattice:
+    type: lattice
+    K: 10

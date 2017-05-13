@@ -47,7 +47,7 @@ AWS_REGION_NAME = "us-east-1"
 
 CODE_SYNC_IGNORES = ["*.git/*", "*data/*", "*.pod/*"]
 
-DOCKER_CODE_DIR = "/root/code/rllab"
+DOCKER_CODE_DIR = "/home/ubuntu/code/rllab" # "/root/code/rllab"
 
 AWS_CODE_SYNC_S3_PATH = "s3://to/be/overriden/in/personal"
 
