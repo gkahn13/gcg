@@ -26,53 +26,53 @@ class MACPolicy(TfPolicy, Serializable):
         Serializable.quick_init(self, locals())
 
         ### environment
-        self._env_spec = kwargs.get('env_spec')
+        self._env_spec = kwargs['env_spec']
 
         ### model horizons
-        self._N = kwargs.get('N') # number of returns to use (N-step)
-        self._H = kwargs.get('H') # action planning horizon for training
-        self._gamma = kwargs.get('gamma') # reward decay
-        self._obs_history_len = kwargs.get('obs_history_len') # how many previous observations to use
+        self._N = kwargs['N'] # number of returns to use (N-step)
+        self._H = kwargs['H'] # action planning horizon for training
+        self._gamma = kwargs['gamma'] # reward decay
+        self._obs_history_len = kwargs['obs_history_len'] # how many previous observations to use
 
         ### model architecture
-        self._obs_hidden_layers = list(kwargs.get('obs_hidden_layers'))
-        self._action_hidden_layers = list(kwargs.get('action_hidden_layers'))
-        self._reward_hidden_layers = list(kwargs.get('reward_hidden_layers'))
-        self._value_hidden_layers = list(kwargs.get('value_hidden_layers'))
-        self._lambda_hidden_layers = list(kwargs.get('lambda_hidden_layers'))
-        self._rnn_state_dim = kwargs.get('rnn_state_dim')
-        self._use_lstm = kwargs.get('use_lstm')
-        self._use_bilinear = kwargs.get('use_bilinear')
-        self._share_weights = kwargs.get('share_weights')
-        self._activation = eval(kwargs.get('activation'))
-        self._rnn_activation = eval(kwargs.get('rnn_activation'))
+        self._obs_hidden_layers = list(kwargs['obs_hidden_layers'])
+        self._action_hidden_layers = list(kwargs['action_hidden_layers'])
+        self._reward_hidden_layers = list(kwargs['reward_hidden_layers'])
+        self._value_hidden_layers = list(kwargs['value_hidden_layers'])
+        self._lambda_hidden_layers = list(kwargs['lambda_hidden_layers'])
+        self._rnn_state_dim = kwargs['rnn_state_dim']
+        self._use_lstm = kwargs['use_lstm']
+        self._use_bilinear = kwargs['use_bilinear']
+        self._share_weights = kwargs['share_weights']
+        self._activation = eval(kwargs['activation'])
+        self._rnn_activation = eval(kwargs['rnn_activation'])
         self._use_conv = ('conv_hidden_layers' in kwargs) and ('conv_kernels' in kwargs) and \
                          ('conv_strides' in kwargs) and ('conv_activation' in kwargs)
         if self._use_conv:
-            self._conv_hidden_layers = list(kwargs.get('conv_hidden_layers'))
-            self._conv_kernels = list(kwargs.get('conv_kernels'))
-            self._conv_strides = list(kwargs.get('conv_strides'))
-            self._conv_activation = eval(kwargs.get('conv_activation'))
+            self._conv_hidden_layers = list(kwargs['conv_hidden_layers'])
+            self._conv_kernels = list(kwargs['conv_kernels'])
+            self._conv_strides = list(kwargs['conv_strides'])
+            self._conv_activation = eval(kwargs['conv_activation'])
 
         ### target network
-        self._values_softmax = kwargs.get('values_softmax') # which value horizons to train over
-        self._use_target = kwargs.get('use_target')
-        self._separate_target_params = kwargs.get('separate_target_params')
-        self._separate_mses = kwargs.get('separate_mses')
+        self._values_softmax = kwargs['values_softmax'] # which value horizons to train over
+        self._use_target = kwargs['use_target']
+        self._separate_target_params = kwargs['separate_target_params']
+        self._separate_mses = kwargs['separate_mses']
 
         ### training
-        self._weight_decay = kwargs.get('weight_decay')
-        self._lr_schedule = schedules.PiecewiseSchedule(**kwargs.get('lr_schedule'))
-        self._grad_clip_norm = kwargs.get('grad_clip_norm')
-        self._preprocess_params = kwargs.get('preprocess')
-        self._gpu_device = kwargs.get('gpu_device', None)
-        self._gpu_frac = kwargs.get('gpu_frac', None)
+        self._weight_decay = kwargs['weight_decay']
+        self._lr_schedule = schedules.PiecewiseSchedule(**kwargs['lr_schedule'])
+        self._grad_clip_norm = kwargs['grad_clip_norm']
+        self._preprocess_params = kwargs['preprocess']
+        self._gpu_device = kwargs['gpu_device']
+        self._gpu_frac = kwargs['gpu_frac']
 
         ### action selection and exploration
-        self._get_action_test = kwargs.get('get_action_test')
-        self._get_action_target = kwargs.get('get_action_target')
-        self._retrace_lambda = kwargs.get('retrace_lambda')
-        es_params = kwargs.get('exploration_strategy')
+        self._get_action_test = kwargs['get_action_test']
+        self._get_action_target = kwargs['get_action_target']
+        self._retrace_lambda = kwargs['retrace_lambda']
+        es_params = kwargs['exploration_strategy']
         es_class = es_params['class']
         ESClass = eval(es_class)
         self._exploration_strategy = ESClass(env_spec=self._env_spec, **es_params[es_class])
