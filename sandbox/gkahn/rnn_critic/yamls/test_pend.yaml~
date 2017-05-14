@@ -40,8 +40,8 @@ alg:
 ##############
 
 policy:
-  N: 10
-  H: 10
+  N: 5
+  H: 1
   gamma: 0.99
   obs_history_len: 1
 
@@ -49,12 +49,13 @@ policy:
     type: mean # mean / final / exponential
     exponential:
       lambda: 0.5
-  retrace_lambda: 1
+  retrace_lambda: 
   use_target: True
   separate_target_params: True
+  separate_mses: False
   
   get_action_test:
-    H: 10
+    H: 1
     values_softmax:
       type: mean # mean / final / exponential
       exponential:
@@ -68,7 +69,7 @@ policy:
       M: 10
       
   get_action_target:
-    H: 10
+    H: 1
     values_softmax:
       type: mean # mean / final / exponential
       exponential:
@@ -81,7 +82,7 @@ policy:
       K: 10
       M: 10
 
-  class: MACPolicy
+  class: CDQNPolicy
   CDQNPolicy:
     obs_hidden_layers: [128]
     value_hidden_layers: [128, 16]
@@ -123,7 +124,7 @@ policy:
   grad_clip_norm: 10
 
   # device
-  gpu_device: 0
-  gpu_frac: 0.9
+  gpu_device: 1
+  gpu_frac: 0.5
 
 

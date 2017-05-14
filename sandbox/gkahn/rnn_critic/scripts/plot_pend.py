@@ -5,7 +5,7 @@ import itertools
 import matplotlib.pyplot as plt
 from matplotlib import ticker
 
-from sandbox.gkahn.rnn_critic.examples.analyze_experiment import AnalyzeRNNCritic
+from analyze_experiment import AnalyzeRNNCritic
 from sandbox.gkahn.rnn_critic.utils.utils import DataAverageInterpolation
 
 EXP_FOLDER = '/media/gkahn/ExtraDrive1/rllab/rnn_critic/'

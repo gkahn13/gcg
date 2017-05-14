@@ -58,6 +58,7 @@ class MACPolicy(TfPolicy, Serializable):
         self._values_softmax = kwargs.get('values_softmax') # which value horizons to train over
         self._use_target = kwargs.get('use_target')
         self._separate_target_params = kwargs.get('separate_target_params')
+        self._separate_mses = kwargs.get('separate_mses')
 
         ### training
         self._weight_decay = kwargs.get('weight_decay')
@@ -656,33 +657,53 @@ class MACPolicy(TfPolicy, Serializable):
         batch_size = tf.shape(tf_dones_ph)[0]
         tf_dones = tf.cast(tf_dones_ph, tf.float32)
 
-        tf_mses = []
-        for n in range(self._N):
-            tf_sum_rewards_n = tf.reduce_sum(np.power(self._gamma * np.ones(n+1), np.arange(n+1)) *
-                                             tf_rewards_ph[:,:n+1],
-                                             reduction_indices=1)
-            tf_target_values_n = (1 - tf_dones[:,n]) * np.power(self._gamma, n+1) * tf_target_get_action_values[:,n]
-            if self._separate_target_params:
-                tf_target_values_n = tf.stop_gradient(tf_target_values_n)
-            tf_train_values_n = tf_train_values[:, n]
-
-            tf_mses.append(tf.square(tf_sum_rewards_n + tf_target_values_n - tf_train_values_n))
-
         if self._retrace_lambda is not None:
             relu_min = lambda x: -tf.nn.relu(-x)
             tf_logweights = tf.cumsum(relu_min(tf_logprob_curr - tf_logprob_prior), 1) + \
-                            tf.cast(tf.range(self._N), tf.float32) * np.log(self._retrace_lambda) # [batch_size, N]
+                            tf.cast(tf.range(self._N), tf.float32) * np.log(self._retrace_lambda)  # [batch_size, N]
             # now need to normalize across the columns (aka across the batch for each N-step)
-            tf_weights_tilde = tf.exp(tf_logweights - tf.reduce_max(tf_logweights, 0)) # max for numerical stability
+            tf_weights_tilde = tf.exp(tf_logweights - tf.reduce_max(tf_logweights, 0))  # max for numerical stability
             tf_weights = tf_weights_tilde / tf.reduce_sum(tf_weights_tilde, 0)
         else:
             tf_weights = (1. / tf.cast(batch_size, tf.float32)) * tf.ones(tf.shape(tf_train_values_softmax))
-
-        # tf_train_values_softmax is across multiple N-step returns (columns)
-        # tf_weights is across the batch (rows)
         tf.assert_equal(tf.reduce_sum(tf_weights, 0), 1.)
         tf.assert_equal(tf.reduce_sum(tf_train_values_softmax, 1), 1.)
-        tf_mse = tf.reduce_sum(tf_weights * tf_train_values_softmax * tf.pack(tf_mses, 1))
+
+        if self._separate_mses:
+            tf_mses = []
+            for n in range(self._N):
+                tf_sum_rewards_n = tf.reduce_sum(np.power(self._gamma * np.ones(n+1), np.arange(n+1)) *
+                                                 tf_rewards_ph[:,:n+1],
+                                                 reduction_indices=1)
+                tf_target_values_n = (1 - tf_dones[:,n]) * np.power(self._gamma, n+1) * tf_target_get_action_values[:,n]
+                if self._separate_target_params:
+                    tf_target_values_n = tf.stop_gradient(tf_target_values_n)
+                tf_train_values_n = tf_train_values[:, n]
+
+                tf_mses.append(tf.square(tf_sum_rewards_n + tf_target_values_n - tf_train_values_n))
+
+            # tf_train_values_softmax is across multiple N-step returns (columns)
+            # tf_weights is across the batch (rows)
+            tf_mse = tf.reduce_sum(tf_weights * tf_train_values_softmax * tf.pack(tf_mses, 1))
+        else:
+            ### calculate all n-step values
+            tf_values_desired = []
+            for n in range(self._N):
+                tf_sum_rewards_n = tf.reduce_sum(np.power(self._gamma * np.ones(n+1), np.arange(n+1)) *
+                                                 tf_rewards_ph[:,:n+1],
+                                                 reduction_indices=1)
+                tf_target_values_n = (1 - tf_dones[:,n]) * np.power(self._gamma, n+1) * tf_target_get_action_values[:,n]
+                if self._separate_target_params:
+                    tf_target_values_n = tf.stop_gradient(tf_target_values_n)
+                tf_values_desired.append(tf_sum_rewards_n + tf_target_values_n)
+            tf_values_desired = tf.pack(tf_values_desired, 1)
+
+            ### form final mse
+            # tf_train_values_softmax is across multiple N-step returns (columns)
+            # tf_weights is across the batch (rows)
+            tf_mse = tf.reduce_sum(tf_weights * tf.square(tf_train_values_softmax *
+                                                         (tf_values_desired - tf_train_values)))
+
 
         ### weight decay
         if len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)) > 0:

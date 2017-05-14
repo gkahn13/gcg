@@ -24,9 +24,12 @@ from sandbox.gkahn.rnn_critic.policies.feedforward_mac_policy import Feedforward
 
 def run_rnn_critic(params):
     # copy yaml for posterity
-    # yaml_path = os.path.join(logger.get_snapshot_dir(), '{0}.yaml'.format(params['exp_name']))
-    # with open(yaml_path, 'w') as f:
-    #     f.write(params['txt'])
+    try:
+        yaml_path = os.path.join(logger.get_snapshot_dir(), '{0}.yaml'.format(params['exp_name']))
+        with open(yaml_path, 'w') as f:
+            f.write(params['txt'])
+    except:
+        pass
 
     os.environ["CUDA_VISIBLE_DEVICES"] = str(params['policy']['gpu_device'])  # TODO: hack so don't double GPU
     config.USE_TF = True
