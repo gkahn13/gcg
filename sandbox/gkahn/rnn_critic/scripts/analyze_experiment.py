@@ -121,7 +121,7 @@ def moving_avg_std(idxs, data, window):
 ################
 
 class AnalyzeRNNCritic(object):
-    def __init__(self, folder, skip_itr=1, max_itr=sys.maxsize, plot=dict(), create_new_envs=True, clear_obs=False):
+    def __init__(self, folder, skip_itr=1, max_itr=sys.maxsize, plot=dict(), create_new_envs=True, clear_obs=False, load_rollouts=True):
         """
         :param kwargs: holds random extra properties
         """
@@ -146,8 +146,12 @@ class AnalyzeRNNCritic(object):
             self.progress = None
         # logger.log('AnalyzeRNNCritic: Loaded csv')
 
-        self.train_rollouts_itrs = self._load_rollouts_itrs()
-        self.eval_rollouts_itrs = self._load_rollouts_itrs(eval=True)
+        if load_rollouts:
+            self.train_rollouts_itrs = self._load_rollouts_itrs()
+            self.eval_rollouts_itrs = self._load_rollouts_itrs(eval=True)
+        else:
+            self.train_rollouts_itrs = None
+            self.eval_rollouts_itrs = None
         # logger.log('AnalyzeRNNCritic: Loaded all itrs')
         if create_new_envs:
             self.env = TfEnv(normalize(eval(self.params['alg']['env'])))

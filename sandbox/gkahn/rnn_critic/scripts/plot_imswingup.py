@@ -5,7 +5,7 @@ import itertools
 import matplotlib.pyplot as plt
 from matplotlib import ticker
 
-from sandbox.gkahn.rnn_critic.examples.analyze_experiment import AnalyzeRNNCritic
+from analyze_experiment import AnalyzeRNNCritic
 from sandbox.gkahn.rnn_critic.utils.utils import DataAverageInterpolation
 
 EXP_FOLDER = '/media/gkahn/ExtraDrive1/rllab/rnn_critic/'
@@ -18,6 +18,7 @@ SAVE_FOLDER = '/media/gkahn/ExtraDrive1/rllab/rnn_critic/final_plots'
 def load_experiments(indices):
     exps = []
     for i in indices:
+        print('Loading {0}'.format(i))
         exps.append(AnalyzeRNNCritic(os.path.join(EXP_FOLDER, 'imswingup{0:03d}'.format(i)),
                                      clear_obs=False,
                                      create_new_envs=False))
@@ -25,12 +26,15 @@ def load_experiments(indices):
 
 dqn_1 = load_experiments([0, 4, 5])
 dqn_5 = load_experiments([6, 7, 8])
+dqn_5_one_mse = load_experiments([21, 22, 23])
 dqn_10 = load_experiments([16, 17, 18])
+dqn_10_one_mse = load_experiments([27, 28, 29])
 predictron_5 = load_experiments([9, 10, 11])
 mac_5 = load_experiments([1, 2, 3])
+mac_5_one_mse = load_experiments([24, 25, 26])
 mac_10 = load_experiments([12, 13, 14])
 
-comparison_exps = np.array([[dqn_1, dqn_5, dqn_10, predictron_5, mac_5, mac_10]])
+comparison_exps = np.array([[dqn_1, dqn_5, dqn_5_one_mse, dqn_10, dqn_10_one_mse, predictron_5, mac_5, mac_5_one_mse, mac_10]])
 
 ############
 ### Plot ###
@@ -79,6 +83,7 @@ def plot_cumreward(ax, analyze_group, color='k', label=None):
     ax.xaxis.set_major_formatter(xfmt)
 
 def plot_finalreward(ax, analyze_group, color='k', label=None, window=200):
+    steps_threshold = []
     for i, analyze in enumerate(analyze_group):
         rollouts = list(itertools.chain(*analyze.eval_rollouts_itrs))
         rollouts = sorted(rollouts, key=lambda r: r['steps'][-1])
@@ -112,28 +117,45 @@ def plot_finalreward(ax, analyze_group, color='k', label=None, window=200):
 
         threshold = -np.sqrt(5. * np.pi / 180.)
         ax.hlines(threshold, steps[0], steps[-1], color='k', linestyle='--')
-        print(steps[(values > threshold).argmax()])
-    print('')
+        if (values > threshold).max() > 0:
+            steps_threshold.append(steps[(values > threshold).argmax()])
+        else:
+            steps_threshold.append(steps[-1])
 
     ax.grid()
     xfmt = ticker.ScalarFormatter()
     xfmt.set_powerlimits((0, 0))
     ax.xaxis.set_major_formatter(xfmt)
 
+    return np.mean(steps_threshold), np.std(steps_threshold)
+
+
+import IPython; IPython.embed()
+
 shape = comparison_exps.shape[:2]
 f, axes = plt.subplots(*shape, figsize=(15, 3), sharex=True, sharey=True)
 axes = axes.reshape(shape)
+step_means, step_stds = [], []
+names = ['DQN', 'DQN-5', 'DQN-5 one mse', 'DQN-10', 'DQN-10 one mse', 'Predictron-5', 'MAC-5', 'MAC-5 one mse', 'MAC-10']
 for i in range(shape[0]):
-    for j in range(shape[1]):
+    for j, name in enumerate(names):
+        print('\n'+name)
         ax = axes[i, j]
-        # plot_cumreward(ax, comparison_exps[i, j, :])
-        plot_finalreward(ax, comparison_exps[i, j, :], window=100) # 500
+        step_mean, step_std = plot_finalreward(ax, comparison_exps[i, j, :], window=500) # 500
+        step_means.append(step_mean)
+        step_stds.append(step_std)
+        print('%.2e +- %.2e' % (step_mean, step_std))
+        ax.set_title(name + '\n' + '%.2e +- %.2e' % (step_mean, step_std), fontdict={'fontsize': 7})
 
-for i, name in enumerate(['DQN', 'DQN-5', 'DQN-10', 'Predictron-5', 'MAC-5', 'MAC-10']):
-    axes[0, i].set_title(name)
-
-# plt.tight_layout()
 f.savefig(os.path.join(SAVE_FOLDER, 'imswingup_comparison.png'), bbox_inches='tight', dpi=200)
 plt.close(f)
 
-import IPython; IPython.embed()
+
+f, ax = plt.subplots(1, 1, figsize=(10, 10))
+ax.bar(np.arange(len(names)), step_means, yerr=step_stds)
+ax.set_xticks(np.arange(len(names)))
+ax.set_xticklabels(names, fontdict={'fontsize': 7})
+plt.tight_layout()
+f.savefig(os.path.join(SAVE_FOLDER, 'imswingup_comparison_bar.png'), bbox_inches='tight', dpi=200)
+plt.close(f)
+

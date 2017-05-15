@@ -17,7 +17,7 @@ import itertools
 import matplotlib.pyplot as plt
 from matplotlib import ticker
 
-from sandbox.gkahn.rnn_critic.examples.analyze_experiment import AnalyzeRNNCritic
+from analyze_experiment import AnalyzeRNNCritic
 from sandbox.gkahn.rnn_critic.utils.utils import DataAverageInterpolation
 
 EXP_FOLDER = '/media/gkahn/ExtraDrive1/rllab/rnn_critic/'
@@ -30,6 +30,7 @@ SAVE_FOLDER = '/media/gkahn/ExtraDrive1/rllab/rnn_critic/final_plots'
 def load_experiments(indices):
     exps = []
     for i in indices:
+        print(i)
         exps.append(AnalyzeRNNCritic(os.path.join(EXP_FOLDER, 'pong{0:03d}'.format(i)),
                                      clear_obs=False,
                                      create_new_envs=False))
@@ -47,8 +48,19 @@ dqn_10_1e6 = load_experiments([140, 141, 142])
 mac_5_1e6 = load_experiments([124, 125, 126])
 mac_10_1e6 = load_experiments([127, 128, 129])
 
-comparison_exps = np.array([[dqn_1_1e5, dqn_5_1e5, dqn_10_1e5, mac_5_1e5, mac_10_1e5],
-                            [dqn_1_1e6, dqn_5_1e6, dqn_10_1e6, mac_5_1e6, mac_10_1e6]])
+
+dqn_5_1e5_one_mse = load_experiments([151])
+mac_5_1e5_one_mse = load_experiments([153])
+dqn_10_1e5_one_mse = load_experiments([155])
+mac_10_1e5_one_mse = load_experiments([157])
+
+dqn_5_1e6_one_mse = load_experiments([152])
+mac_5_1e6_one_mse = load_experiments([154])
+dqn_10_1e6_one_mse = load_experiments([156])
+mac_10_1e6_one_mse = load_experiments([158])
+
+comparison_exps = np.array([[dqn_1_1e5, dqn_5_1e5, dqn_5_1e5_one_mse, dqn_10_1e5, dqn_10_1e5_one_mse, mac_5_1e5, mac_5_1e5_one_mse, mac_10_1e5, mac_10_1e5_one_mse],
+                            [dqn_1_1e6, dqn_5_1e6, dqn_5_1e6_one_mse, dqn_10_1e6, dqn_10_1e6_one_mse, mac_5_1e6, mac_5_1e6_one_mse, mac_10_1e6, mac_10_1e6_one_mse]])
 
 ############
 ### Plot ###
@@ -102,7 +114,7 @@ for i in range(shape[0]):
 
 for i, N in enumerate(['1e5', '1e6']):
     axes[i, 0].set_ylabel('num_offpolicy = {0}'.format(N))
-for j, name in enumerate(['DQN', 'DQN-5', 'DQN-10', 'MAC-5', 'MAC-10']):
+for j, name in enumerate(['DQN', 'DQN-5', 'DQN-5 one mse', 'DQN-10', 'DQN-10 one mse', 'MAC-5', 'MAC-5 one mse', 'MAC-10', 'MAC-10 one mse']):
     axes[0, j].set_title(name)
 
 # plt.tight_layout()

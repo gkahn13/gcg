@@ -52,7 +52,10 @@ def process_experiments(start_index, repeat, window=10):
     data_interp = DataAverageInterpolation()
     min_step = max_step = None
     for index in range(start_index, start_index + repeat):
-        analyze = AnalyzeRNNCritic(os.path.join(EXP_FOLDER, 'pend{0:03d}'.format(index)), clear_obs=False, create_new_envs=False)
+        try:
+            analyze = AnalyzeRNNCritic(os.path.join(EXP_FOLDER, 'pend{0:03d}'.format(index)), clear_obs=False, create_new_envs=False)
+        except:
+            continue
 
         # pend612	V_class: MACPolicy, V_N: 20, V_H: 20, V_test_H: 20, V_target_H: 20, V_softmax: exponential, V_exp_lambda: 0.75, V_retrace_lambda: , V_use_target: True, V_share_weights: True,
         analyze_name = '{0: <25}, N: {1: <2}, H: {2: <2}, use_target: {3: <2}'.format(analyze.params['policy']['class'],
@@ -88,6 +91,9 @@ def process_experiments(start_index, repeat, window=10):
                 stds.append(np.std(data[i - window:i]))
             return avg_idxs, np.asarray(means), np.asarray(stds)
 
+        if len(analyze_names) == 0:
+            raise Exception
+
         steps, values, _ = moving_avg_std(steps, values, window=window)
 
         data_interp.add_data(steps, values)
@@ -112,7 +118,8 @@ def process_experiments(start_index, repeat, window=10):
     return analyze_name, above_threshold_step
 
 names, thresholds = [], []
-for i in list(range(201, 683, 3)) + list(range(685, 828, 3)):
+for i in list(range(201, 683, 3)) + list(range(685, 846, 3)):
+# for i in list(range(685, 846, 3)):
     try:
         name, threshold = process_experiments(i, 3, window=10)
         names.append(name)
@@ -123,9 +130,11 @@ for i in list(range(201, 683, 3)) + list(range(685, 828, 3)):
 s = ''
 for name, threshold in zip(names, thresholds):
     s += '{0:.1f}e3\t{1}\n'.format(threshold/1e3, name)
-print(s)
+# print(s)
 
 with open(os.path.join(SAVE_FOLDER, 'plot_pend0.txt'), 'w') as f:
     f.write(s)
 
 import IPython; IPython.embed()
+
+
