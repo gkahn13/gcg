@@ -826,14 +826,18 @@ def launch_ec2mujoco(params_list, exp_prefix, docker_image, code_full_path,
                         fi
                     done & echo log sync initiated
                 """.format(log_dir=log_dir, remote_log_dir=remote_log_dir, aws_region=config.AWS_REGION_NAME))
+        # TODO: temp
+        # sio.write("""
+        #     sleep 1000
+        # """)
+        sio.write("""
+            export MUJOCO_PY_MJKEY_PATH=$HOME/source/mujoco/key_6061.txt
+            export MUJOCO_PY_MJPRO_PATH=$HOME/source/mjpro131
+        """)
         sio.write("""
             {command}
         """.format(command=to_local_command(params, python_command=python_command, script=osp.join(config.DOCKER_CODE_DIR,script),
                                              use_gpu=use_gpu)))
-        # TODO: temp
-        # sio.write("""
-        #     sleep 10000
-        # """)
 
         sio.write("""
             aws s3 cp --recursive {log_dir} {remote_log_dir} --region {aws_region}

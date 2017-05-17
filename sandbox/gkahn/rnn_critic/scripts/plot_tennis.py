@@ -19,29 +19,29 @@ def load_experiments(indices):
     exps = []
     for i in indices:
         try:
-            exps.append(AnalyzeRNNCritic(os.path.join(EXP_FOLDER, 'pong{0:03d}'.format(i)),
-                                         clear_obs=False,
-                                         create_new_envs=False))
+            analyze = AnalyzeRNNCritic(os.path.join(EXP_FOLDER, 'tennis{0:03d}'.format(i)),
+                                         clear_obs=True,
+                                         create_new_envs=False,
+                                         load_train_rollouts=False)
+            rollouts = list(itertools.chain(*analyze.eval_rollouts_itrs))
+            rollouts = sorted(rollouts, key=lambda r: r['steps'][0])
+            steps = [r['steps'][0] for r in rollouts]
+            values = [np.sum(r['rewards']) for r in rollouts]
+            exps.append((steps, values))
             print(i)
         except:
             pass
 
     return exps
 
-dqn_1 = load_experiments([161, 162, 163])
-dqn_5_sep = load_experiments([164, 165, 166])
-dqn_5 = load_experiments([167, 168, 169])
-mac_5_sep = load_experiments([170, 171])#, 172])
-mac_5 = load_experiments([173, 174])#, 175])
-dqn_10_sep = load_experiments([176, 177, 178])
-dqn_10 = load_experiments([179, 180, 181])
-mac_10_sep = load_experiments([182, 183, 184])
-mac_10 = load_experiments([185, 186, 187])
+dqn_1 = load_experiments([31, 32, 33])
+dqn_5_sep = load_experiments([34, 35, 36])
+dqn_5 = load_experiments([37, 38, 39])
+dqn_10_sep = load_experiments([40, 41, 42])
+dqn_10 = load_experiments([43, 44, 45])
 
 comparison_exps = np.array([[dqn_1, dqn_5, dqn_10],
-                            [[], dqn_5_sep, dqn_10_sep],
-                            [[], mac_5, mac_10],
-                            [[], mac_5_sep, mac_10_sep]])
+                            [[], dqn_5_sep, dqn_10_sep]])
 
 ############
 ### Plot ###
@@ -50,11 +50,7 @@ comparison_exps = np.array([[dqn_1, dqn_5, dqn_10],
 def plot_cumreward(ax, analyze_group, color='k', label=None, window=100):
     data_interp = DataAverageInterpolation()
     min_step = max_step = None
-    for i, analyze in enumerate(analyze_group):
-        rollouts = list(itertools.chain(*analyze.eval_rollouts_itrs))
-        rollouts = sorted(rollouts, key=lambda r: r['steps'][0])
-        steps = [r['steps'][0] for r in rollouts]
-        values = [np.sum(r['rewards']) for r in rollouts]
+    for i, (steps, values) in enumerate(analyze_group):
 
         def moving_avg_std(idxs, data, window):
             avg_idxs, means, stds = [], [], []
@@ -66,7 +62,10 @@ def plot_cumreward(ax, analyze_group, color='k', label=None, window=100):
 
         steps, values, _ = moving_avg_std(steps, values, window=window)
 
-        # ax.plot(steps, values, color='k', alpha=np.linspace(1., 0.4, len(analyze_group))[i])
+        ax.plot(steps, values, color='k', alpha=np.linspace(1., 0.4, len(analyze_group))[i])
+
+        if len(steps) == 0:
+            continue
 
         data_interp.add_data(steps, values)
         if min_step is None:
@@ -76,13 +75,14 @@ def plot_cumreward(ax, analyze_group, color='k', label=None, window=100):
         min_step = max(min_step, steps[0])
         max_step = min(max_step, steps[-1])
 
-    steps = np.r_[min_step:max_step:50.][1:-1]
-    values_mean, values_std = data_interp.eval(steps)
-    # steps -= min_step
+    if len(analyze_group) > 1:
+        steps = np.r_[min_step:max_step:50.][1:-1]
+        values_mean, values_std = data_interp.eval(steps)
+        # steps -= min_step
 
-    ax.plot(steps, values_mean, color='r', label=label)
-    ax.fill_between(steps, values_mean - values_std, values_mean + values_std,
-                    color='r', alpha=0.4)
+        ax.plot(steps, values_mean, color='r', label=label)
+        ax.fill_between(steps, values_mean - values_std, values_mean + values_std,
+                        color='r', alpha=0.4)
 
     ax.grid()
     xfmt = ticker.ScalarFormatter()
@@ -95,18 +95,19 @@ shape = comparison_exps.shape[:2]
 f, axes = plt.subplots(*shape, figsize=(15, 5), sharex=True, sharey=True)
 for i in range(shape[0]):
     for j in range(shape[1]):
+        print(i, j)
         ax = axes[i, j]
         exp = comparison_exps[i, j]
         if len(exp) > 0:
-            plot_cumreward(ax, exp, window=50)
+            plot_cumreward(ax, exp, window=30)
 
-for i, name in enumerate(['DQN', 'DQN sep', 'MAC', 'MAC sep']):
+for i, name in enumerate(['DQN', 'DQN sep']):
     axes[i, 0].set_ylabel(name)
 for j, N in enumerate([1, 5, 10]):
     axes[0, j].set_title(str(N))
 
 # plt.tight_layout()
-f.savefig(os.path.join(SAVE_FOLDER, 'pong0_comparison.png'), bbox_inches='tight', dpi=200)
+f.savefig(os.path.join(SAVE_FOLDER, 'tennis_comparison.png'), bbox_inches='tight', dpi=200)
 plt.close(f)
 
 import IPython; IPython.embed()

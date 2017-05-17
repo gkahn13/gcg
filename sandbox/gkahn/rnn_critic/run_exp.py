@@ -43,7 +43,7 @@ for exp in args.exps:
                 mode=args.mode,
                 sync_s3_pkl=True,
                 aws_config={
-                    'image_id': 'ami-f399bf93',
+                    'image_id': 'ami-8a2b0aea',
                     'security_groups': ['rllab-sg'],
                     'key_name': 'id_rsa',
                     'instance_type': 'g2.2xlarge'},

@@ -121,7 +121,7 @@ def moving_avg_std(idxs, data, window):
 ################
 
 class AnalyzeRNNCritic(object):
-    def __init__(self, folder, skip_itr=1, max_itr=sys.maxsize, plot=dict(), create_new_envs=True, clear_obs=False, load_rollouts=True):
+    def __init__(self, folder, skip_itr=1, max_itr=sys.maxsize, plot=dict(), create_new_envs=True, clear_obs=False, load_eval_rollouts=True, load_train_rollouts=True):
         """
         :param kwargs: holds random extra properties
         """
@@ -146,12 +146,9 @@ class AnalyzeRNNCritic(object):
             self.progress = None
         # logger.log('AnalyzeRNNCritic: Loaded csv')
 
-        if load_rollouts:
-            self.train_rollouts_itrs = self._load_rollouts_itrs()
-            self.eval_rollouts_itrs = self._load_rollouts_itrs(eval=True)
-        else:
-            self.train_rollouts_itrs = None
-            self.eval_rollouts_itrs = None
+        self.train_rollouts_itrs = self._load_rollouts_itrs() if load_train_rollouts else None
+        self.eval_rollouts_itrs = self._load_rollouts_itrs(eval=True) if load_eval_rollouts else None
+
         # logger.log('AnalyzeRNNCritic: Loaded all itrs')
         if create_new_envs:
             self.env = TfEnv(normalize(eval(self.params['alg']['env'])))
@@ -184,7 +181,7 @@ class AnalyzeRNNCritic(object):
 
     @property
     def _params_file(self):
-        yamls = [fname for fname in os.listdir(self._folder) if os.path.splitext(fname)[-1] == '.yaml']
+        yamls = [fname for fname in os.listdir(self._folder) if os.path.splitext(fname)[-1] == '.yaml' and os.path.basename(self._folder) in fname]
         assert(len(yamls) == 1)
         return os.path.join(self._folder, yamls[0])
 
