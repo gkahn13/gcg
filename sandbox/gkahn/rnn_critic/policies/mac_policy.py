@@ -669,40 +669,83 @@ class MACPolicy(TfPolicy, Serializable):
         tf.assert_equal(tf.reduce_sum(tf_weights, 0), 1.)
         tf.assert_equal(tf.reduce_sum(tf_train_values_softmax, 1), 1.)
 
+        ############################################
+        ############### DEBUG ######################
+        ############################################
+
+        ### separate mses
+        # tf_mses = []
+        # for n in range(self._N):
+        #     tf_sum_rewards_n = tf.reduce_sum(np.power(self._gamma * np.ones(n + 1), np.arange(n + 1)) *
+        #                                      tf_rewards_ph[:, :n + 1],
+        #                                      reduction_indices=1)
+        #     tf_target_values_n = (1 - tf_dones[:, n]) * np.power(self._gamma, n + 1) * tf_target_get_action_values[:, n]
+        #     if self._separate_target_params:
+        #         tf_target_values_n = tf.stop_gradient(tf_target_values_n)
+        #     tf_train_values_n = tf_train_values[:, n]
+        #
+        #     tf_mses.append(tf.square(tf_sum_rewards_n + tf_target_values_n - tf_train_values_n))
+        #
+        # tf_mse_separate = tf.reduce_sum(tf_weights * tf_train_values_softmax * tf.pack(tf_mses, 1))
+
+        ### one mse
+        tf_values_desired = []
+        for n in range(self._N):
+            tf_sum_rewards_n = tf.reduce_sum(np.power(self._gamma * np.ones(n + 1), np.arange(n + 1)) *
+                                             tf_rewards_ph[:, :n + 1],
+                                             reduction_indices=1)
+            tf_target_values_n = (1 - tf_dones[:, n]) * np.power(self._gamma, n + 1) * tf_target_get_action_values[:, n]
+            if self._separate_target_params:
+                tf_target_values_n = tf.stop_gradient(tf_target_values_n)
+            tf_values_desired.append(tf_sum_rewards_n + tf_target_values_n)
+        tf_values_desired = tf.pack(tf_values_desired, 1)
+
+        tf_mse_separate = tf.reduce_sum(tf_weights * tf_train_values_softmax *
+                                        tf.square(tf_train_values - tf_values_desired))
+
+        tf_mse_one = tf.reduce_sum(tf_weights[:, 0] *
+                                   tf.reduce_mean(
+                                       tf.square(tf_train_values -
+                                                 tf.tile(
+                                                     tf.reduce_sum(tf_train_values_softmax * tf_values_desired, axis=1, keep_dims=True),
+                                                 (1, self._N))),
+                                       1))
+
+
+        self._tf_debug['tf_mse_separate'] = tf_mse_separate
+        self._tf_debug['tf_mse_one'] = tf_mse_one
+        self._tf_debug['tf_weights'] = tf_weights
+        self._tf_debug['tf_softmax'] = tf_train_values_softmax
+        self._tf_debug['tf_train_values'] = tf_train_values
+
+        import IPython; IPython.embed()
+
+
+        ############################################
+        ############### END DEBUG ##################
+        ############################################
+
+        tf_values_desired = []
+        for n in range(self._N):
+            tf_sum_rewards_n = tf.reduce_sum(np.power(self._gamma * np.ones(n + 1), np.arange(n + 1)) *
+                                             tf_rewards_ph[:, :n + 1],
+                                             reduction_indices=1)
+            tf_target_values_n = (1 - tf_dones[:, n]) * np.power(self._gamma, n + 1) * tf_target_get_action_values[:, n]
+            if self._separate_target_params:
+                tf_target_values_n = tf.stop_gradient(tf_target_values_n)
+            tf_values_desired.append(tf_sum_rewards_n + tf_target_values_n)
+        tf_values_desired = tf.pack(tf_values_desired, 1)
+
         if self._separate_mses:
-            tf_mses = []
-            for n in range(self._N):
-                tf_sum_rewards_n = tf.reduce_sum(np.power(self._gamma * np.ones(n+1), np.arange(n+1)) *
-                                                 tf_rewards_ph[:,:n+1],
-                                                 reduction_indices=1)
-                tf_target_values_n = (1 - tf_dones[:,n]) * np.power(self._gamma, n+1) * tf_target_get_action_values[:,n]
-                if self._separate_target_params:
-                    tf_target_values_n = tf.stop_gradient(tf_target_values_n)
-                tf_train_values_n = tf_train_values[:, n]
-
-                tf_mses.append(tf.square(tf_sum_rewards_n + tf_target_values_n - tf_train_values_n))
-
-            # tf_train_values_softmax is across multiple N-step returns (columns)
-            # tf_weights is across the batch (rows)
-            tf_mse = tf.reduce_sum(tf_weights * tf_train_values_softmax * tf.pack(tf_mses, 1))
+            tf_mse = tf.reduce_sum(tf_weights * tf_train_values_softmax * tf.square(tf_train_values - tf_values_desired))
         else:
-            ### calculate all n-step values
-            tf_values_desired = []
-            for n in range(self._N):
-                tf_sum_rewards_n = tf.reduce_sum(np.power(self._gamma * np.ones(n+1), np.arange(n+1)) *
-                                                 tf_rewards_ph[:,:n+1],
-                                                 reduction_indices=1)
-                tf_target_values_n = (1 - tf_dones[:,n]) * np.power(self._gamma, n+1) * tf_target_get_action_values[:,n]
-                if self._separate_target_params:
-                    tf_target_values_n = tf.stop_gradient(tf_target_values_n)
-                tf_values_desired.append(tf_sum_rewards_n + tf_target_values_n)
-            tf_values_desired = tf.pack(tf_values_desired, 1)
-
-            ### form final mse
-            # tf_train_values_softmax is across multiple N-step returns (columns)
-            # tf_weights is across the batch (rows)
-            tf_mse = tf.reduce_sum(tf_weights * tf.square(tf_train_values_softmax *
-                                                         (tf_values_desired - tf_train_values)))
+            tf_mse = tf.reduce_sum(tf_weights[:, 0] *
+                                   tf.reduce_mean(
+                                       tf.square(tf_train_values -
+                                                 tf.tile(
+                                                     tf.reduce_sum(tf_train_values_softmax * tf_values_desired, axis=1, keep_dims=True),
+                                                     (1, self._N))),
+                                       1))
 
 
         ### weight decay
@@ -817,6 +860,18 @@ class MACPolicy(TfPolicy, Serializable):
                                                tf_target_get_action_values, tf_logprob_curr, tf_logprob_prior_ph)
             tf_opt, tf_lr_ph = self._graph_optimize(tf_cost, tf_trainable_policy_vars)
 
+
+            ##############################
+            ########## DEBUG #############
+            ##############################
+
+            self._tf_debug['tf_grad_separate'] = tf.gradients(self._tf_debug['tf_mse_separate'], tf_policy_vars[2])
+            self._tf_debug['tf_grad_one'] = tf.gradients(self._tf_debug['tf_mse_one'], tf_policy_vars[2])
+
+            ##############################
+            ########## END DEBUG #########
+            ##############################
+
             ### initialize
             self._graph_init_vars(tf_sess)
 
@@ -907,14 +962,18 @@ class MACPolicy(TfPolicy, Serializable):
         if self._use_target:
             feed_dict[self._tf_dict['obs_target_ph']] = observations
 
-        # if step > 1.1e4:
-        #     d = {}
-        #     keys = [k for k in self._tf_debug.keys()]
-        #     vs = self._tf_dict['sess'].run([self._tf_debug[k] for k in keys], feed_dict=feed_dict)
-        #     for k, v in zip(keys, vs):
-        #         d[k] = v
-        #
-        #     import IPython; IPython.embed()
+        if True: #step > 1.1e4:
+            d = {}
+            keys = [k for k in self._tf_debug.keys()]
+            vs = self._tf_dict['sess'].run([self._tf_debug[k] for k in keys], feed_dict=feed_dict)
+            for k, v in zip(keys, vs):
+                d[k] = v
+
+            gs = d['tf_grad_separate'][0]
+            go = d['tf_grad_one'][0]
+            print('{0}, {1}'.format(np.nanmean(gs / go), np.nanstd(gs / go)))
+
+            import IPython; IPython.embed()
 
         cost, mse, _ = self._tf_dict['sess'].run([self._tf_dict['cost'],
                                                   self._tf_dict['mse'],

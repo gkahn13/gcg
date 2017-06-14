@@ -27,14 +27,10 @@ def load_experiments(indices):
     return exps
 
 dqn_1 = load_experiments([0, 4, 5])
-dqn_5_et = load_experiments([21, 22, 23])
-dqn_5_wb = load_experiments([6, 7, 8])
-dqn_10_et = load_experiments([27, 28, 29])
-dqn_10_wb = load_experiments([16, 17, 18])
-# rnn_5_wb = load_experiments([9, 10, 11])
-mac_5_et = load_experiments([24, 25, 26])
-mac_5_wb = load_experiments([1, 2, 3])
-mac_10_wb = load_experiments([12, 13, 14])
+dqn_5 = load_experiments([6, 7, 8])
+dqn_10 = load_experiments([16, 17, 18])
+mac_5 = load_experiments([1, 2, 3])
+mac_10 = load_experiments([12, 13, 14])
 
 ############
 ### Plot ###
@@ -79,13 +75,12 @@ def get_threshold(analyze_group, window=200):
 
 import IPython; IPython.embed()
 
-comparison_exps = [dqn_1, dqn_5_et, dqn_5_wb, mac_5_et, mac_5_wb]
-width = 0.4
+comparison_exps = [dqn_1, dqn_5, mac_5, dqn_10, mac_10]
+width = 0.3
 xs = [0,
-      1-1.05*width/2., 1+1.05*width/2.,
-      2-1.05*width/2., 2+1.05*width/2.]
-colors = ['k', 'g', 'g', 'b', 'b']
-patterns = [None, '/', '+', '/', '+']
+      1-0.5*width, 1+0.5*width,
+      2-0.5*width, 2+0.5*width]
+colors = ['k', 'g', 'b', 'g', 'b']
 
 thresh_means, thresh_stds = [], []
 for ag in comparison_exps:
@@ -96,26 +91,28 @@ for ag in comparison_exps:
 plt.rc('text', usetex=True)
 plt.rc('font', family='serif', size=15)
 
-f, ax = plt.subplots(1, 1, figsize=(7, 3))
+f, ax = plt.subplots(1, 1, figsize=(8, 3))
 bars = ax.bar(xs, thresh_means, width=width, yerr=thresh_stds, color=colors,
-              error_kw=dict(ecolor='gray', lw=1, capsize=2, capthick=1))
+              error_kw=dict(ecolor='m', lw=1.5, capsize=4, capthick=1.5))
 
 ax.set_xticks(np.arange(3))
-ax.set_xticklabels([r'Standard Critic', r'MRC', r'MAC (ours)', ''])
+ax.set_xticklabels([r'$N=1$', r'$N=5$', r'$N=10$'])
 ax.set_ylabel('Steps until solved')
 yfmt = ticker.ScalarFormatter()
 yfmt.set_powerlimits((0, 0))
 ax.yaxis.set_major_formatter(yfmt)
 
-for bar, pattern in zip(bars, patterns):
-    bar.set_hatch(pattern)
-
-et_patch = mpatches.Patch(color='k', alpha=0.4, label='ET', hatch='///')
-wb_patch = mpatches.Patch(color='k', alpha=0.4, label='CMR (ours)', hatch='+++')
-ax.legend(handles=(et_patch, wb_patch))
-
 for l in ax.get_xticklabels():
     l.set_multialignment('center')
 
-f.savefig(os.path.join(SAVE_FOLDER, 'imswingup0_comparison.png'), bbox_inches='tight', dpi=200)
+handles = [
+    mpatches.Patch(color='k', label='Double Q-learning'),
+    mpatches.Patch(color='g', label='Multistep Double Q-learning'),
+    mpatches.Patch(color='b', label='MAQL (ours)'),
+]
+
+# ax.legend(handles=handles, loc='upper center', bbox_to_anchor=(1.3, 0.8), ncol=1)
+ax.legend(handles=handles, loc='upper center', bbox_to_anchor=(0.5, 1.45), ncol=2)
+
+f.savefig(os.path.join(SAVE_FOLDER, 'imswingup1_comparison.png'), bbox_inches='tight', dpi=200)
 plt.close(f)
