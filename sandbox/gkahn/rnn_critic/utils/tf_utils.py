@@ -65,6 +65,20 @@ def batch_outer_product_2d(X, Y):
     Y_repeat = repeat_2d(Y, U, 1)
     return tf.mul(X_tile, Y_repeat)
 
+def gather_2d(x, idxs):
+    """
+    :param x: 2d tensor
+    :param idxs: 1d tensor indexing the columns of x to gather
+    :return: 1d tensor
+    """
+    assert(len(x.get_shape()) == 2)
+    tf.assert_equal(tf.shape(x)[0], tf.shape(idxs)[0])
+
+    idxs = tf.transpose(tf.pack([tf.range(tf.shape(idxs)[0]), idxs]))
+    x_gather = tf.gather_nd(x, idxs)
+
+    return x_gather
+
 def block_diagonal(matrices, dtype=tf.float32):
     """Constructs block-diagonal matrices from a list of batched 2D tensors.
 
