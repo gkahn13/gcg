@@ -104,7 +104,7 @@ def process_experiments(start_index, repeat, window=10):
 
 names, thresholds = [], []
 edict = {}
-for i in [201, 694, 627, 573, 712, 651, 579, 730, 675, 612, 321, 327, 348, 489, 495, 531]:
+for i in [201, 694, 627, 573, 712, 651, 579, 730, 675, 612, 321, 327, 348, 489, 495, 531, 848, 851, 854]:
     try:
         name, threshold, threshold_std = process_experiments(i, 3, window=10)
         names.append('pend{0:03g} '.format(i) + name)
@@ -126,30 +126,33 @@ Q_5_N_thresh = edict[694]
 Q_5_rnn_thresh = edict[627]
 Q_5_ff_mac_thresh = edict[321]
 Q_5_nws_mac_thresh = edict[489]
+Q_5_mac_random_thresh = edict[848]
 Q_5_mac_thresh = edict[573]
 
 Q_10_N_thresh = edict[712]
 Q_10_rnn_thresh = edict[651]
 Q_10_ff_mac_thresh = edict[327]
 Q_10_nws_mac_thresh = edict[495]
+Q_10_mac_random_thresh = edict[851]
 Q_10_mac_thresh = edict[579]
 
 Q_20_N_thresh = edict[730]
 Q_20_rnn_thresh = edict[675]
 Q_20_ff_mac_thresh = edict[348]
 Q_20_nws_mac_thresh = edict[531]
+Q_20_mac_random_thresh = edict[854]
 Q_20_mac_thresh = edict[612]
 
-width = 0.15
+width = 0.12
 xs = [0,
-      1-2.*width, 1-1.*width, 1, 1+1.*width, 1+2.*width,
-      2-2.*width, 2-1.*width, 2, 2+1.*width, 2+2.*width,
-      3-2.*width, 3-1.*width, 3, 3+1.*width, 3+2.*width]
+      1-2.5*width, 1-1.5*width, 1-0.5*width, 1+0.5*width, 1+1.5*width, 1+2.5*width,
+      2-2.5*width, 2-1.5*width, 2-0.5*width, 2+0.5*width, 2+1.5*width, 2+2.5*width,
+      3-2.5*width, 3-1.5*width, 3-0.5*width, 3+0.5*width, 3+1.5*width, 3+2.5*width]
 thresh_means, thresh_stds = zip(*(Q_thresh,
-                                  Q_5_N_thresh, Q_5_rnn_thresh, Q_5_ff_mac_thresh, Q_5_nws_mac_thresh, Q_5_mac_thresh,
-                                  Q_10_N_thresh, Q_10_rnn_thresh, Q_10_ff_mac_thresh, Q_10_nws_mac_thresh, Q_10_mac_thresh,
-                                  Q_20_N_thresh, Q_20_rnn_thresh, Q_20_ff_mac_thresh, Q_20_nws_mac_thresh, Q_20_mac_thresh))
-colors = ['k'] + ['g', 'c', 'b', 'b', 'b'] * 3
+                                  Q_5_N_thresh, Q_5_rnn_thresh, Q_5_ff_mac_thresh, Q_5_nws_mac_thresh, Q_5_mac_random_thresh, Q_5_mac_thresh,
+                                  Q_10_N_thresh, Q_10_rnn_thresh, Q_10_ff_mac_thresh, Q_10_nws_mac_thresh, Q_10_mac_random_thresh, Q_10_mac_thresh,
+                                  Q_20_N_thresh, Q_20_rnn_thresh, Q_20_ff_mac_thresh, Q_20_nws_mac_thresh, Q_20_mac_random_thresh, Q_20_mac_thresh))
+colors = ['k'] + ['g', 'c', 'b', 'b', 'b', 'b'] * 3
 
 plt.rc('text', usetex=True)
 plt.rc('font', family='serif', size=15)
@@ -166,9 +169,10 @@ yfmt = ticker.ScalarFormatter()
 yfmt.set_powerlimits((0, 0))
 ax.yaxis.set_major_formatter(yfmt)
 
-for i in (1, 6, 11):
+for i in (1, 7, 13):
     bars[i + 2].set_hatch('//')
     bars[i + 3].set_hatch('o')
+    bars[i + 4].set_hatch('*')
 
 handles = [
     mpatches.Patch(color='k', label='Double Q-learning'),
@@ -176,11 +180,12 @@ handles = [
     mpatches.Patch(color='c', label='Multistep RNN Double Q-learning'),
     mpatches.Patch(color='b', label='MAQL feedforward', hatch='//', edgecolor='white'),
     mpatches.Patch(color='b', label='MAQL no weight sharing', hatch='oo', edgecolor='white'),
+    mpatches.Patch(color='b', label='MAQL random', hatch='**', edgecolor='white'),
     mpatches.Patch(color='b', label='MAQL (ours)'),
 ]
 
 # ax.legend(handles=handles, loc='upper center', bbox_to_anchor=(1.25, 0.8), ncol=1)
-ax.legend(handles=handles, loc='upper center', bbox_to_anchor=(0.52, 1.75), ncol=2)
+ax.legend(handles=handles, loc='upper center', bbox_to_anchor=(0.52, 1.9), ncol=2)
 
 f.savefig(os.path.join(SAVE_FOLDER, 'pend3_comparison.png'), bbox_inches='tight', dpi=200)
 plt.close(f)

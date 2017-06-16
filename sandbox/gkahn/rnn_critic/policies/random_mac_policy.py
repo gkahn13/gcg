@@ -228,7 +228,9 @@ class RandomMACPolicy(MACPolicy, Serializable):
             self._tf_dict['logprob_ph']: logprobs[:, :self._N]
         }
         if self._use_target:
-            feed_dict[self._tf_dict['obs_target_ph']] = [observations[i, l - self._obs_history_len + 1:l + 1, :]
+            # feed_dict[self._tf_dict['obs_target_ph']] = [observations[i, l - self._obs_history_len + 1:l + 1, :]
+            #                                              for i, l in enumerate(target_lens)]
+            feed_dict[self._tf_dict['obs_target_ph']] = [observations[i, l:l + self._obs_history_len, :]
                                                          for i, l in enumerate(target_lens)]
             feed_dict[self._tf_dict['target_len_ph']] = target_lens
 

@@ -22,6 +22,7 @@ from sandbox.gkahn.rnn_critic.policies.dqn_policy import DQNPolicy
 from sandbox.gkahn.rnn_critic.policies.cdqn_policy import CDQNPolicy
 from sandbox.gkahn.rnn_critic.policies.feedforward_mac_policy import FeedforwardMACPolicy
 from sandbox.gkahn.rnn_critic.policies.random_mac_policy import RandomMACPolicy
+from sandbox.gkahn.rnn_critic.policies.random_mac_mux_policy import RandomMACMuxPolicy
 
 def run_rnn_critic(params):
     # copy yaml for posterity
