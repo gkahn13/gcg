@@ -118,7 +118,7 @@ class DQNPolicy(MACPolicy, Serializable):
 
         assert(tf_values.get_shape()[1].value == N)
 
-        return tf_values, tf_values_softmax
+        return tf_values, tf_values_softmax, None, None
 
     @overrides
     def _graph_inference_step(self, n, N, istate, action, values_softmax, add_reg=True):

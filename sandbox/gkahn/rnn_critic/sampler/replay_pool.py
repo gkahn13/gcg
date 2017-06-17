@@ -196,18 +196,20 @@ class RNNCriticReplayPool(object):
     def can_sample(self):
         return len(self) > self._obs_history_len and len(self) > self._N
 
-    def sample(self, batch_size):
+    def sample(self, batch_size, only_completed_episodes=False):
         """
         :return observations, actions, and rewards of horizon H+1
         """
         if not self.can_sample():
             return None
 
-        steps, observations, actions, rewards, dones, logprobs = [], [], [], [], [], []
+        steps, observations, actions, rewards, values, dones, logprobs = [], [], [], [], [], [], []
 
         start_indices = []
         false_indices = self._get_indices(self._index - self._obs_history_len, self._index) + \
                         self._get_indices(self._index, self._index + self._N)
+        if only_completed_episodes and self._last_done_index != self._index:
+            false_indices += self._get_indices(self._last_done_index, self._index)
         while len(start_indices) < batch_size:
             start_index = np.random.randint(low=0, high=len(self)-self._N)
             if start_index not in false_indices:
@@ -219,6 +221,7 @@ class RNNCriticReplayPool(object):
             observations_i = np.vstack([self._encode_observation(start_index), self._observations[indices[1:]]])
             actions_i = self._actions[indices]
             rewards_i = self._rewards[indices]
+            values_i = self._values[indices]
             dones_i = self._dones[indices]
             logprobs_i = self._logprobs[indices]
             if np.any(dones_i[:-1]):
@@ -233,6 +236,7 @@ class RNNCriticReplayPool(object):
                     # observations_i[j+self._obs_history_len-1, :] = 0.
                     actions_i[j, :] = self._env_spec.action_space.flatten(self._env_spec.action_space.sample())
                     rewards_i[j] = 0.
+                    values_i[j] = 0.
                     dones_i[j] = True
 
                 # observations = [0 1 2 3]
@@ -244,6 +248,7 @@ class RNNCriticReplayPool(object):
             observations.append(np.expand_dims(observations_i, 0))
             actions.append(np.expand_dims(actions_i, 0))
             rewards.append(np.expand_dims(rewards_i, 0))
+            values.append(np.expand_dims(values_i, 0))
             dones.append(np.expand_dims(dones_i, 0))
             logprobs.append(np.expand_dims(logprobs_i, 0))
 
@@ -251,6 +256,7 @@ class RNNCriticReplayPool(object):
         observations = np.vstack(observations)
         actions = np.vstack(actions)
         rewards = np.vstack(rewards)
+        values = np.vstack(values)
         dones = np.vstack(dones)
         logprobs = np.vstack(logprobs)
 
@@ -264,15 +270,15 @@ class RNNCriticReplayPool(object):
         #     assert(arr.shape[1] == self._N + 1)
         # timeit.stop('replay_pool:isfinite')
 
-        return steps, observations, actions, rewards, dones, logprobs
+        return steps, observations, actions, rewards, values, dones, logprobs
 
     @staticmethod
-    def sample_pools(replay_pools, batch_size):
+    def sample_pools(replay_pools, batch_size, only_completed_episodes=False):
         """ Sample from replay pools (treating them as one big replay pool) """
         if not np.any([replay_pool.can_sample() for replay_pool in replay_pools]):
             return None
 
-        steps, observations, actions, rewards, dones, logprobs = [], [], [], [], [], []
+        steps, observations, actions, rewards, values, dones, logprobs = [], [], [], [], [], [], []
 
         # calculate ratio of pool sizes
         pool_lens = np.array([replay_pool.can_sample() * len(replay_pool) for replay_pool in replay_pools]).astype(float)
@@ -285,11 +291,13 @@ class RNNCriticReplayPool(object):
             if batch_sizes[i] == 0:
                 continue
 
-            steps_i, observations_i, actions_i, rewards_i, dones_i, logprobs_i = replay_pool.sample(batch_sizes[i])
+            steps_i, observations_i, actions_i, rewards_i, values_i, dones_i, logprobs_i = \
+                replay_pool.sample(batch_sizes[i], only_completed_episodes=only_completed_episodes)
             steps.append(steps_i)
             observations.append(observations_i)
             actions.append(actions_i)
             rewards.append(rewards_i)
+            values.append(values_i)
             dones.append(dones_i)
             logprobs.append(logprobs_i)
 
@@ -297,13 +305,14 @@ class RNNCriticReplayPool(object):
         observations = np.vstack(observations)
         actions = np.vstack(actions)
         rewards = np.vstack(rewards)
+        values = np.vstack(values)
         dones = np.vstack(dones)
         logprobs = np.vstack(logprobs)
 
-        for arr in (steps, observations, actions, rewards, dones, logprobs):
+        for arr in (steps, observations, actions, rewards, values, dones, logprobs):
             assert(len(arr) == batch_size)
 
-        return steps, observations, actions, rewards, dones, logprobs
+        return steps, observations, actions, rewards, values, dones, logprobs
 
     ###############
     ### Logging ###

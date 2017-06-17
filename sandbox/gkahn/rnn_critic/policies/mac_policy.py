@@ -61,6 +61,7 @@ class MACPolicy(TfPolicy, Serializable):
         self._separate_mses = kwargs['separate_mses']
 
         ### training
+        self._only_completed_episodes = kwargs['only_completed_episodes']
         self._weight_decay = kwargs['weight_decay']
         self._lr_schedule = schedules.PiecewiseSchedule(**kwargs['lr_schedule'])
         self._grad_clip_norm = kwargs['grad_clip_norm']
@@ -113,6 +114,10 @@ class MACPolicy(TfPolicy, Serializable):
     @property
     def obs_history_len(self):
         return self._obs_history_len
+
+    @property
+    def only_completed_episodes(self):
+        return self._only_completed_episodes
 
     ###########################
     ### TF graph operations ###
@@ -288,7 +293,7 @@ class MACPolicy(TfPolicy, Serializable):
 
         assert(tf_values.get_shape()[1].value == N)
 
-        return tf_values, tf_values_softmax
+        return tf_values, tf_values_softmax, tf_nstep_rewards, tf_nstep_values
 
     def _graph_inference_step(self, n, N, istate, action, values_softmax, add_reg=True):
         """
@@ -451,11 +456,11 @@ class MACPolicy(TfPolicy, Serializable):
         tf_obs_lowd_repeat_eval = tf_utils.repeat_2d(tf_obs_lowd_eval, K, 0)
         ### inference to get values
         with tf.variable_scope(scope_select, reuse=reuse_select):
-            tf_values_all_select, tf_values_softmax_all_select = \
+            tf_values_all_select, tf_values_softmax_all_select, _, _ = \
                 self._graph_inference(tf_obs_lowd_repeat_select, tf_actions, get_action_params['values_softmax'],
                                       tf_preprocess_select, add_reg=False, pad_inputs=False)  # [num_obs*k, H]
         with tf.variable_scope(scope_eval, reuse=reuse_eval):
-            tf_values_all_eval, tf_values_softmax_all_eval = \
+            tf_values_all_eval, tf_values_softmax_all_eval, _, _ = \
                 self._graph_inference(tf_obs_lowd_repeat_eval, tf_actions, get_action_params['values_softmax'],
                                       tf_preprocess_eval, add_reg=False, pad_inputs=False)  # [num_obs*k, H]
         ### get_action based on select (policy)
@@ -628,12 +633,12 @@ class MACPolicy(TfPolicy, Serializable):
                 ### process obs to lowd
                 tf_obs_lowd = self._graph_obs_to_lowd(tf_obs_ph, tf_preprocess)
                 ### create training policy
-                tf_train_values, tf_train_values_softmax = \
+                tf_train_values, tf_train_values_softmax, _, _ = \
                     self._graph_inference(tf_obs_lowd, tf_actions_ph[:, :self._H, :],
                                           self._values_softmax, tf_preprocess)
 
             with tf.variable_scope(policy_scope, reuse=True):
-                tf_train_values_test, tf_train_values_softmax_test = \
+                tf_train_values_test, tf_train_values_softmax_test, _, _ = \
                     self._graph_inference(tf_obs_lowd, tf_actions_ph[:, :self._get_action_test['H'], :],
                                           self._values_softmax, tf_preprocess, pad_inputs=False)
                 tf_get_value = tf.reduce_sum(tf_train_values_softmax_test * tf_train_values_test, reduction_indices=1)
@@ -760,10 +765,10 @@ class MACPolicy(TfPolicy, Serializable):
                           })
 
     def update_target(self):
-        if self._use_target and self._separate_target_params:
+        if self._use_target and self._separate_target_params and self._tf_dict['update_target_fn']:
             self._tf_dict['sess'].run(self._tf_dict['update_target_fn'])
 
-    def train_step(self, step, steps, observations, actions, rewards, dones, logprobs, use_target):
+    def train_step(self, step, steps, observations, actions, rewards, values, dones, logprobs, use_target):
         """
         :param steps: [batch_size, N+1]
         :param observations: [batch_size, N+1 + obs_history_len-1, obs_dim]

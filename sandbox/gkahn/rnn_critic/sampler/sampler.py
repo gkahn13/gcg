@@ -137,7 +137,8 @@ class RNNCriticSampler(object):
         return np.any([replay_pool.can_sample() for replay_pool in self._replay_pools])
 
     def sample(self, batch_size):
-        return RNNCriticReplayPool.sample_pools(self._replay_pools, batch_size)
+        return RNNCriticReplayPool.sample_pools(self._replay_pools, batch_size,
+                                                only_completed_episodes=self._policy.only_completed_episodes)
 
     ###############
     ### Logging ###

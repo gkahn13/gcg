@@ -7,13 +7,16 @@ from rllab.misc import ext
 
 from sandbox.gkahn.rnn_critic.policies.mac_policy import MACPolicy
 from sandbox.gkahn.tf.core import xplatform
-from sandbox.gkahn.rnn_critic.utils import tf_utils
 
-class RandomMACPolicy(MACPolicy, Serializable):
+class NotargetMACPolicy(MACPolicy, Serializable):
     def __init__(self, **kwargs):
         Serializable.quick_init(self, locals())
 
+        self._cost_weighting = kwargs['cost_weighting']
+
         MACPolicy.__init__(self, **kwargs)
+
+        assert(self.only_completed_episodes)
 
     ###########################
     ### TF graph operations ###
@@ -33,49 +36,66 @@ class RandomMACPolicy(MACPolicy, Serializable):
             tf_dones_ph = tf.placeholder(tf.bool, [None, self._N], name='tf_dones_ph')
             ### policy outputs
             tf_rewards_ph = tf.placeholder(tf.float32, [None, self._N], name='tf_rewards_ph')
-            ### target inputs
-            tf_obs_target_ph = tf.placeholder(obs_dtype, [None, self._obs_history_len, obs_dim], name='tf_obs_target_ph')
-            tf_target_len_ph = tf.placeholder(tf.int32, [None], name='tf_target_len_ph')
+            tf_values_ph = tf.placeholder(tf.float32, [None, self._N], name='tf_values_ph')
             ### policy exploration
             tf_explore_train_ph = tf.placeholder(tf.float32, [None, self._N + 1], name='tf_explore_train')
             tf_explore_test_ph = tf.placeholder(tf.float32, [None], name='tf_explore_test')
             ### importance sampling
             tf_logprob_prior_ph = tf.placeholder(tf.float32, [None, self._N], name='tf_logprob_prior_ph')
 
-        return tf_obs_ph, tf_actions_ph, tf_dones_ph, tf_rewards_ph, tf_obs_target_ph, tf_target_len_ph, \
+        return tf_obs_ph, tf_actions_ph, tf_dones_ph, tf_rewards_ph, tf_values_ph, \
                tf_explore_train_ph, tf_explore_test_ph, tf_logprob_prior_ph
 
     @overrides
-    def _graph_cost(self, tf_train_values, tf_train_values_softmax, tf_rewards_ph, tf_dones_ph,
-                    tf_target_get_action_values, tf_target_len_ph, tf_logprob_curr, tf_logprob_prior):
+    def _graph_cost(self, tf_train_nstep_rewards, tf_train_nstep_values, tf_train_values_softmax, tf_rewards_ph, tf_values_ph, tf_dones_ph):
         """
-        :param tf_train_values: [None, self._N]
+        :param tf_train_nstep_rewards: list of [None] of length self._N
+        :param tf_train_nstep_values: list of [None] of length self._N
         :param tf_train_values_softmax: [None, self._N]
         :param tf_rewards_ph: [None, self._N]
+        :param tf_values_ph: [None, self._N]
         :param tf_dones_ph: [None, self._N]
-        :param tf_target_get_action_values: [None]
-        :param tf_target_len_ph: [None]
-        :param tf_logprob_curr: [None, self._N]
-        :param tf_logprob_prior: [None, self._N]
         :return: tf_cost, tf_mse
         """
+        batch_size = tf.shape(tf_dones_ph)[0]
+        tf_rewards = tf.split(1, self._N, tf_rewards_ph)
+        tf_values = tf.split(1, self._N, tf_values_ph)
         tf_dones = tf.cast(tf_dones_ph, tf.float32)
 
-        if self._retrace_lambda is not None:
-            raise NotImplementedError
+        assert(self._retrace_lambda is None)
+        tf.assert_equal(tf.reduce_sum(tf_train_values_softmax, 1), 1.)
 
-        tf_sum_rewards_all = tf.transpose(tf.pack([tf.reduce_sum(np.power(self._gamma * np.ones(n + 1), np.arange(n + 1)) *
-                                                                 tf_rewards_ph[:, :n + 1],
-                                                                 reduction_indices=1) for n in range(self._N)]))
-        tf_sum_reward = tf_utils.gather_2d(tf_sum_rewards_all, tf_target_len_ph - 1)
-        tf_done = tf_utils.gather_2d(tf_dones, tf_target_len_ph - 1)
-        tf_value_desired = tf_sum_reward + \
-                           (1 - tf_done) * tf.pow(self._gamma * tf.ones(tf.shape(tf_target_get_action_values)),
-                                                  tf.cast(tf_target_len_ph, tf.float32)) * tf_target_get_action_values
+        tf_mses = []
+        for n in range(self._N):
+            tf_sum_rewards_n = np.sum([np.power(self._gamma, i) * r for i, r in enumerate(tf_train_nstep_rewards[:n])])
+            sum_rewards_n = np.sum([np.power(self._gamma, i) * r for i, r in enumerate(tf_rewards[:n])])
 
-        tf_train_value = tf_utils.gather_2d(tf_train_values, tf_target_len_ph - 1)
+            tf_values_n = tf_train_nstep_values[n]
+            values_n = tf_values[n]
 
-        tf_mse = tf.reduce_mean(tf.square(tf_train_value - tf_value_desired))
+            tf_dones_n = tf.expand_dims(tf_dones[:, n], 1)
+
+            if n > 0:
+                if self._cost_weighting == 'gamma':
+                    ratio = (1 - tf_dones_n) * np.sum(np.power(self._gamma, np.arange(n))) / (1. / (1. - self._gamma)) + \
+                            tf_dones_n * tf.ones((batch_size, 1), dtype=tf.float32)
+                elif self._cost_weighting == 'equal':
+                    ratio = (1 - tf_dones_n) * 0.5 + \
+                            tf_dones_n * tf.ones((batch_size, 1), dtype=tf.float32)
+                else:
+                    raise NotImplementedError
+                tf.assert_greater_equal(ratio, 0.)
+                tf.assert_less_equal(ratio, 1.)
+
+                tf_mse_n = ratio * tf.square(tf_sum_rewards_n - sum_rewards_n) + \
+                           (1 - ratio) * tf.square(tf_values_n - values_n)
+            else:
+                tf_mse_n = tf.square(tf_values_n - values_n)
+
+            tf_mses.append(tf_mse_n)
+
+        assert(self._separate_mses)
+        tf_mse = tf.reduce_mean(tf.reduce_sum(tf_train_values_softmax * tf.concat(1, tf_mses), 1))
 
         ### weight decay
         if len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)) > 0:
@@ -99,8 +119,8 @@ class RandomMACPolicy(MACPolicy, Serializable):
                 ext.set_seed(ext.get_seed())
 
             ### create input output placeholders
-            tf_obs_ph, tf_actions_ph, tf_dones_ph, tf_rewards_ph, tf_obs_target_ph, tf_target_len_ph, \
-                tf_explore_train_ph, tf_explore_test_ph, tf_logprob_prior_ph = self._graph_input_output_placeholders()
+            tf_obs_ph, tf_actions_ph, tf_dones_ph, tf_rewards_ph, tf_values_ph, \
+            tf_explore_train_ph, tf_explore_test_ph, tf_logprob_prior_ph = self._graph_input_output_placeholders()
 
             ### policy
             policy_scope = 'policy'
@@ -110,12 +130,12 @@ class RandomMACPolicy(MACPolicy, Serializable):
                 ### process obs to lowd
                 tf_obs_lowd = self._graph_obs_to_lowd(tf_obs_ph, tf_preprocess)
                 ### create training policy
-                tf_train_values, tf_train_values_softmax = \
+                _, tf_train_values_softmax, tf_train_nstep_rewards, tf_train_nstep_values = \
                     self._graph_inference(tf_obs_lowd, tf_actions_ph[:, :self._H, :],
                                           self._values_softmax, tf_preprocess)
 
             with tf.variable_scope(policy_scope, reuse=True):
-                tf_train_values_test, tf_train_values_softmax_test = \
+                tf_train_values_test, tf_train_values_softmax_test, _, _ = \
                     self._graph_inference(tf_obs_lowd, tf_actions_ph[:, :self._get_action_test['H'], :],
                                           self._values_softmax, tf_preprocess, pad_inputs=False)
                 tf_get_value = tf.reduce_sum(tf_train_values_softmax_test * tf_train_values_test, reduction_indices=1)
@@ -128,47 +148,17 @@ class RandomMACPolicy(MACPolicy, Serializable):
             tf_get_action_logprob = self._graph_get_action_logprob(tf_get_action_explore, tf_get_action, tf_explore_test_ph)
 
             ### get policy variables
-            tf_policy_vars = sorted(tf.get_collection(xplatform.global_variables_collection_name(),
-                                                      scope=policy_scope), key=lambda v: v.name)
             tf_trainable_policy_vars = sorted(tf.get_collection(xplatform.trainable_variables_collection_name(),
                                                                 scope=policy_scope), key=lambda v: v.name)
 
-            ### create target network
-            if self._use_target:
-                target_scope = 'target' if self._separate_target_params else 'policy'
-                ### action selection (only one target)
-                tf_target_get_action, tf_target_get_action_values = self._graph_get_action(tf_obs_target_ph,
-                                                                                           self._get_action_target,
-                                                                                           scope_select=policy_scope,
-                                                                                           reuse_select=True,
-                                                                                           scope_eval=target_scope,
-                                                                                           reuse_eval=(target_scope == policy_scope))
-
-                ### logprob
-                tf_target_get_action_values = tf_target_get_action_values
-                tf_logprob_curr = None # TODO: b/c not implementing importance sampling for now
-            else:
-                assert(self._retrace_lambda is None)
-                tf_logprob_curr = None
-                tf_target_get_action_values = tf.zeros([tf.shape(tf_train_values)[0], self._N])
+            assert (self._retrace_lambda is None)
 
             ### update target network
-            if self._use_target and self._separate_target_params:
-                tf_target_vars = sorted(tf.get_collection(xplatform.global_variables_collection_name(),
-                                                          scope=target_scope), key=lambda v: v.name)
-                assert(len(tf_policy_vars) == len(tf_target_vars))
-                tf_update_target_fn = []
-                for var, var_target in zip(tf_policy_vars, tf_target_vars):
-                    assert(var.name.replace(policy_scope, '') == var_target.name.replace(target_scope, ''))
-                    tf_update_target_fn.append(var_target.assign(var))
-                tf_update_target_fn = tf.group(*tf_update_target_fn)
-            else:
-                tf_update_target_fn = None
+            tf_update_target_fn = None
 
             ### optimization
-            tf_cost, tf_mse = self._graph_cost(tf_train_values, tf_train_values_softmax, tf_rewards_ph, tf_dones_ph,
-                                               tf_target_get_action_values, tf_target_len_ph,
-                                               tf_logprob_curr, tf_logprob_prior_ph)
+            tf_cost, tf_mse = self._graph_cost(tf_train_nstep_rewards, tf_train_nstep_values,
+                                               tf_train_values_softmax, tf_rewards_ph, tf_values_ph, tf_dones_ph)
             tf_opt, tf_lr_ph = self._graph_optimize(tf_cost, tf_trainable_policy_vars)
 
             ### initialize
@@ -182,8 +172,7 @@ class RandomMACPolicy(MACPolicy, Serializable):
             'actions_ph': tf_actions_ph,
             'dones_ph': tf_dones_ph,
             'rewards_ph': tf_rewards_ph,
-            'obs_target_ph': tf_obs_target_ph,
-            'target_len_ph': tf_target_len_ph,
+            'values_ph': tf_values_ph,
             'explore_train_ph': tf_explore_train_ph,
             'explore_test_ph': tf_explore_test_ph,
             'logprob_ph': tf_logprob_prior_ph,
@@ -212,9 +201,6 @@ class RandomMACPolicy(MACPolicy, Serializable):
         :param rewards: [batch_size, N+1]
         :param dones: [batch_size, N+1]
         """
-        batch_size = len(steps)
-        target_lens = np.random.randint(low=1, high=self._N + 1, size=batch_size)
-
         feed_dict = {
             ### parameters
             self._tf_dict['lr_ph']: self._lr_schedule.value(step),
@@ -225,14 +211,8 @@ class RandomMACPolicy(MACPolicy, Serializable):
             self._tf_dict['actions_ph']: actions,
             self._tf_dict['dones_ph']: np.logical_or(not use_target, dones[:, :self._N]),
             self._tf_dict['rewards_ph']: rewards[:, :self._N],
-            self._tf_dict['logprob_ph']: logprobs[:, :self._N]
+            self._tf_dict['values_ph']: values[:, :self._N]
         }
-        if self._use_target:
-            # feed_dict[self._tf_dict['obs_target_ph']] = [observations[i, l - self._obs_history_len + 1:l + 1, :]
-            #                                              for i, l in enumerate(target_lens)]
-            feed_dict[self._tf_dict['obs_target_ph']] = [observations[i, l:l + self._obs_history_len, :]
-                                                         for i, l in enumerate(target_lens)]
-            feed_dict[self._tf_dict['target_len_ph']] = target_lens
 
         cost, mse, _ = self._tf_dict['sess'].run([self._tf_dict['cost'],
                                                   self._tf_dict['mse'],
