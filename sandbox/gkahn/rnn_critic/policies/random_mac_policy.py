@@ -110,12 +110,12 @@ class RandomMACPolicy(MACPolicy, Serializable):
                 ### process obs to lowd
                 tf_obs_lowd = self._graph_obs_to_lowd(tf_obs_ph, tf_preprocess)
                 ### create training policy
-                tf_train_values, tf_train_values_softmax = \
+                tf_train_values, tf_train_values_softmax, _, _ = \
                     self._graph_inference(tf_obs_lowd, tf_actions_ph[:, :self._H, :],
                                           self._values_softmax, tf_preprocess)
 
             with tf.variable_scope(policy_scope, reuse=True):
-                tf_train_values_test, tf_train_values_softmax_test = \
+                tf_train_values_test, tf_train_values_softmax_test, _, _ = \
                     self._graph_inference(tf_obs_lowd, tf_actions_ph[:, :self._get_action_test['H'], :],
                                           self._values_softmax, tf_preprocess, pad_inputs=False)
                 tf_get_value = tf.reduce_sum(tf_train_values_softmax_test * tf_train_values_test, reduction_indices=1)

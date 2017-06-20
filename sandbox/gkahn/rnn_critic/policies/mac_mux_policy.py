@@ -84,6 +84,7 @@ class MACMuxPolicy(MACPolicy, Serializable):
                 tf_nstep_value = layer
 
             ### nstep lambdas --> values softmax and depth
+            batch_size = tf.shape(tf_nstep_value)[0]
             with tf.name_scope('nstep_lambdas'):
                 if values_softmax['type'] == 'final':
                     if n == N - 1:

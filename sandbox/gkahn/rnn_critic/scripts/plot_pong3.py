@@ -8,7 +8,7 @@ from matplotlib import ticker
 from analyze_experiment import AnalyzeRNNCritic
 from sandbox.gkahn.rnn_critic.utils.utils import DataAverageInterpolation
 
-EXP_FOLDER = '/media/gkahn/ExtraDrive1/rllab/rnn_critic/'
+EXP_FOLDER = '/media/gkahn/ExtraDrive1/rllab/s3/rnn-critic/'
 SAVE_FOLDER = '/media/gkahn/ExtraDrive1/rllab/rnn_critic/final_plots'
 
 ########################
@@ -19,17 +19,18 @@ def load_experiments(indices):
     exps = []
     for i in indices:
         try:
-            exps.append(AnalyzeRNNCritic(os.path.join(EXP_FOLDER, 'pend{0:03d}'.format(i)),
+            exps.append(AnalyzeRNNCritic(os.path.join(EXP_FOLDER, 'pong{0:03d}'.format(i)),
                                          clear_obs=False,
                                          create_new_envs=False,
-                                         load_train_rollouts=False))
+                                         load_train_rollouts=False,
+                                         load_eval_rollouts=False))
             print(i)
         except:
             pass
 
     return exps
 
-exps_list = [load_experiments(range(i, i+3)) for i in list(range(858, 893, 3)) + list(range(895, 933, 3))]
+all_exps = [load_experiments(range(i, i+3)) for i in range(214, 573, 3)]
 
 import IPython; IPython.embed()
 
@@ -41,10 +42,8 @@ def plot_cumreward(ax, analyze_group, color='k', label=None, window=20):
     data_interp = DataAverageInterpolation()
     min_step = max_step = None
     for i, analyze in enumerate(analyze_group):
-        rollouts = list(itertools.chain(*analyze.eval_rollouts_itrs))
-        rollouts = sorted(rollouts, key=lambda r: r['steps'][0])
-        steps = [r['steps'][0] for r in rollouts]
-        values = [np.sum(r['rewards']) for r in rollouts]
+        steps = np.array(analyze.progress['Step'])
+        values = np.array(analyze.progress['EvalCumRewardMean'])
 
         def moving_avg_std(idxs, data, window):
             avg_idxs, means, stds = [], [], []
@@ -56,9 +55,12 @@ def plot_cumreward(ax, analyze_group, color='k', label=None, window=20):
 
         steps, values, _ = moving_avg_std(steps, values, window=window)
 
-        # ax.plot(steps, values, color='k', alpha=np.linspace(1., 0.4, len(analyze_group))[i])
+        ax.plot(steps, values, color='r', alpha=np.linspace(1., 0.4, len(analyze_group))[i])
 
-        data_interp.add_data(steps, values)
+        try:
+            data_interp.add_data(steps, values)
+        except:
+            continue
         if min_step is None:
             min_step = steps[0]
         if max_step is None:
@@ -79,20 +81,32 @@ def plot_cumreward(ax, analyze_group, color='k', label=None, window=20):
     xfmt.set_powerlimits((0, 0))
     ax.xaxis.set_major_formatter(xfmt)
 
-nrows = ncols = int(np.ceil(np.sqrt(len(exps_list))))
+for i, exps in enumerate(list(np.array_split(all_exps[:-(len(all_exps) % 25)], len(all_exps) // 25)) + [all_exps[-(len(all_exps) % 25):]]):
+    f, axes = plt.subplots(5, 5, figsize=(15, 15), sharey=True, sharex=True)
 
-f, axes = plt.subplots(nrows, ncols, figsize=(15, 15), sharex=True, sharey=True)
+    if not hasattr(axes, 'ravel'):
+        axes = np.array([axes])
 
-for ax, exps in zip(axes.ravel(), exps_list):
-    if len(exps) > 0:
-        plot_cumreward(ax, exps)
-        params = exps[0].params
-        ax.set_title('H: {0}, gamma: {1}, {2}'.format(params['policy']['H'],
-                                                      params['policy']['gamma'],
-                                                      params['policy']['NotargetMACPolicy']['cost_weighting']))
+    for ax, exp in zip(axes.ravel(), exps):
+        if not hasattr(exp, '__len__'):
+            exp = [exp]
 
-# plt.tight_layout()
-f.savefig(os.path.join(SAVE_FOLDER, 'pend4_comparison.png'), bbox_inches='tight', dpi=300)
-plt.close(f)
+        if len(exp) > 0:
+            plot_cumreward(ax, exp)
+            params = exp[0].params
+            # class, N, H, update target, K target, lstm, lr
+            ax.set_title('{0}, N: {1}, H: {2}, target update: {3},\nK target: {4}, lstm: {5}, lr: {6}'.format(
+                params['policy']['class'],
+                params['policy']['N'],
+                params['policy']['H'],
+                params['alg']['update_target_every_n_steps'],
+                params['policy']['get_action_target']['random']['K'],
+                params['policy']['MACMuxPolicy']['use_lstm'],
+                params['policy']['lr_schedule']['outside_value']
+            ), fontdict={'fontsize': 5})
 
+        ax.set_ylim((-22, 22))
+        ax.set_xlim((0, 1e6))
 
+    f.savefig(os.path.join(SAVE_FOLDER, 'pong3_{0:02d}_comparison.png'.format(i)), bbox_inches='tight', dpi=300)
+    plt.close(f)

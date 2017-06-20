@@ -700,6 +700,7 @@ def launch_ec2mujoco(params_list, exp_prefix, docker_image, code_full_path,
     default_config = dict(
         image_id=config.AWS_IMAGE_ID,
         instance_type=config.AWS_INSTANCE_TYPE,
+        region_name=config.AWS_REGION_NAME,
         key_name=config.AWS_KEY_NAME,
         spot=config.AWS_SPOT,
         spot_price=config.AWS_SPOT_PRICE,
@@ -734,14 +735,14 @@ def launch_ec2mujoco(params_list, exp_prefix, docker_image, code_full_path,
     """)
     sio.write("""
         aws ec2 create-tags --resources $EC2_INSTANCE_ID --tags Key=Name,Value={exp_name} --region {aws_region}
-    """.format(exp_name=params_list[0].get("exp_name"), aws_region=config.AWS_REGION_NAME))
+    """.format(exp_name=params_list[0].get("exp_name"), aws_region=aws_config['region_name']))
     if config.LABEL:
         sio.write("""
             aws ec2 create-tags --resources $EC2_INSTANCE_ID --tags Key=owner,Value={label} --region {aws_region}
-        """.format(label=config.LABEL, aws_region=config.AWS_REGION_NAME))
+        """.format(label=config.LABEL, aws_region=aws_config['region_name']))
     sio.write("""
         aws ec2 create-tags --resources $EC2_INSTANCE_ID --tags Key=exp_prefix,Value={exp_prefix} --region {aws_region}
-    """.format(exp_prefix=exp_prefix, aws_region=config.AWS_REGION_NAME))
+    """.format(exp_prefix=exp_prefix, aws_region=aws_config['region_name']))
     # sio.write("""
     #     service docker start
     # """)
@@ -752,7 +753,7 @@ def launch_ec2mujoco(params_list, exp_prefix, docker_image, code_full_path,
         sio.write("""
             aws s3 cp {code_full_path} /tmp/rllab_code.tar.gz --region {aws_region}
         """.format(code_full_path=code_full_path, local_code_path=config.DOCKER_CODE_DIR,
-                   aws_region=config.AWS_REGION_NAME))
+                   aws_region=aws_config['region_name']))
         sio.write("""
             rm -rf {local_code_path}
             export PYTHONPATH=/home/ubuntu/code/rllab:$PYTHONPATH
@@ -760,20 +761,20 @@ def launch_ec2mujoco(params_list, exp_prefix, docker_image, code_full_path,
             source activate rllab3
             mkdir -p {local_code_path}
         """.format(code_full_path=code_full_path, local_code_path=config.DOCKER_CODE_DIR,
-                   aws_region=config.AWS_REGION_NAME))
+                   aws_region=aws_config['region_name']))
         sio.write("""
             tar -zxvf /tmp/rllab_code.tar.gz -C {local_code_path}
         """.format(code_full_path=code_full_path, local_code_path=config.DOCKER_CODE_DIR,
-                   aws_region=config.AWS_REGION_NAME))
+                   aws_region=aws_config['region_name']))
     else:
         sio.write("""
             aws s3 cp --recursive {code_full_path} {local_code_path} --region {aws_region}
         """.format(code_full_path=code_full_path, local_code_path=config.DOCKER_CODE_DIR,
-                   aws_region=config.AWS_REGION_NAME))
+                   aws_region=aws_config['region_name']))
     s3_mujoco_key_path = config.AWS_CODE_SYNC_S3_PATH + '/.mujoco/'
     sio.write("""
         aws s3 cp --recursive {} /home/ubuntu/.mujoco --region {}
-    """.format(s3_mujoco_key_path, config.AWS_REGION_NAME))
+    """.format(s3_mujoco_key_path, aws_config['region_name']))
     sio.write("""
         cd {local_code_path}
     """.format(local_code_path=config.DOCKER_CODE_DIR))
@@ -790,7 +791,7 @@ def launch_ec2mujoco(params_list, exp_prefix, docker_image, code_full_path,
 
         sio.write("""
             aws ec2 create-tags --resources $EC2_INSTANCE_ID --tags Key=Name,Value={exp_name} --region {aws_region}
-        """.format(exp_name=params.get("exp_name"), aws_region=config.AWS_REGION_NAME))
+        """.format(exp_name=params.get("exp_name"), aws_region=aws_config['region_name']))
         sio.write("""
             mkdir -p {log_dir}
         """.format(log_dir=log_dir))
@@ -801,7 +802,7 @@ def launch_ec2mujoco(params_list, exp_prefix, docker_image, code_full_path,
                         aws s3 sync --exclude '*' --include '*.csv' --include '*.json' --include '*.mp4' --include '*.pkl' {log_dir} {remote_log_dir} --region {aws_region}
                         sleep {periodic_sync_interval}
                     done & echo sync initiated""".format(log_dir=log_dir, remote_log_dir=remote_log_dir,
-                                                         aws_region=config.AWS_REGION_NAME,
+                                                         aws_region=aws_config['region_name'],
                                                          periodic_sync_interval=periodic_sync_interval))
             else:
                 sio.write("""
@@ -809,7 +810,7 @@ def launch_ec2mujoco(params_list, exp_prefix, docker_image, code_full_path,
                         aws s3 sync --exclude '*' --include '*.csv' --include '*.json' --include '*.mp4' {log_dir} {remote_log_dir} --region {aws_region}
                         sleep {periodic_sync_interval}
                     done & echo sync initiated""".format(log_dir=log_dir, remote_log_dir=remote_log_dir,
-                                                         aws_region=config.AWS_REGION_NAME,
+                                                         aws_region=aws_config['region_name'],
                                                          periodic_sync_interval=periodic_sync_interval))
             if sync_log_on_termination:
                 sio.write("""
@@ -825,15 +826,15 @@ def launch_ec2mujoco(params_list, exp_prefix, docker_image, code_full_path,
                             sleep 5
                         fi
                     done & echo log sync initiated
-                """.format(log_dir=log_dir, remote_log_dir=remote_log_dir, aws_region=config.AWS_REGION_NAME))
-        # TODO: temp
-        # sio.write("""
-        #     sleep 1000
-        # """)
+                """.format(log_dir=log_dir, remote_log_dir=remote_log_dir, aws_region=aws_config['region_name']))
         sio.write("""
             export MUJOCO_PY_MJKEY_PATH=$HOME/source/mujoco/key_6061.txt
             export MUJOCO_PY_MJPRO_PATH=$HOME/source/mjpro131
         """)
+        # TODO: temp
+        # sio.write("""
+        #     sleep 10000
+        # """)
         sio.write("""
             {command}
         """.format(command=to_local_command(params, python_command=python_command, script=osp.join(config.DOCKER_CODE_DIR,script),
@@ -841,16 +842,16 @@ def launch_ec2mujoco(params_list, exp_prefix, docker_image, code_full_path,
 
         sio.write("""
             aws s3 cp --recursive {log_dir} {remote_log_dir} --region {aws_region}
-        """.format(log_dir=log_dir, remote_log_dir=remote_log_dir, aws_region=config.AWS_REGION_NAME))
+        """.format(log_dir=log_dir, remote_log_dir=remote_log_dir, aws_region=aws_config['region_name']))
         sio.write("""
             aws s3 cp /home/ubuntu/user_data.log {remote_log_dir}/stdout.log --region {aws_region}
-        """.format(remote_log_dir=remote_log_dir, aws_region=config.AWS_REGION_NAME))
+        """.format(remote_log_dir=remote_log_dir, aws_region=aws_config['region_name']))
 
     if terminate_machine:
         sio.write("""
             EC2_INSTANCE_ID="`wget -q -O - http://169.254.169.254/latest/meta-data/instance-id || die \"wget instance-id has failed: $?\"`"
             aws ec2 terminate-instances --instance-ids $EC2_INSTANCE_ID --region {aws_region}
-        """.format(aws_region=config.AWS_REGION_NAME))
+        """.format(aws_region=aws_config['region_name']))
     sio.write("} >> /home/ubuntu/user_data.log 2>&1\n")
 
     full_script = dedent(sio.getvalue())
@@ -863,14 +864,14 @@ def launch_ec2mujoco(params_list, exp_prefix, docker_image, code_full_path,
     if aws_config["spot"]:
         ec2 = boto3.client(
             "ec2",
-            region_name=config.AWS_REGION_NAME,
+            region_name=aws_config['region_name'],
             aws_access_key_id=config.AWS_ACCESS_KEY,
             aws_secret_access_key=config.AWS_ACCESS_SECRET,
         )
     else:
         ec2 = boto3.resource(
             "ec2",
-            region_name=config.AWS_REGION_NAME,
+            region_name=aws_config['region_name'],
             aws_access_key_id=config.AWS_ACCESS_KEY,
             aws_secret_access_key=config.AWS_ACCESS_SECRET,
         )
@@ -885,7 +886,7 @@ def launch_ec2mujoco(params_list, exp_prefix, docker_image, code_full_path,
         aws s3 cp {s3_path} /home/ubuntu/remote_script.sh --region {aws_region} && \\
         chmod +x /home/ubuntu/remote_script.sh && \\
         su ubuntu -c /home/ubuntu/remote_script.sh
-        """.format(s3_path=s3_path, aws_region=config.AWS_REGION_NAME))
+        """.format(s3_path=s3_path, aws_region=aws_config['region_name']))
         user_data = dedent(sio.getvalue())
     else:
         user_data = full_script

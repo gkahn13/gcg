@@ -13,9 +13,38 @@ parser.add_argument('--exps', nargs='+')
 parser.add_argument('-mode', type=str, default='local')
 parser.add_argument('--confirm_remote', action='store_false')
 parser.add_argument('--dry', action='store_true')
+parser.add_argument('-region', type=str, choices=('us-west-1', 'us-west-2', 'us-east-1'), default='us-west-1')
 args = parser.parse_args()
 
 # stub(globals())
+
+aws_config = {
+    'security_groups': ['rllab-sg'],
+    'key_name': 'id_rsa',
+    'instance_type': 'g2.2xlarge',
+    'spot_price': '2.0',
+}
+if args.region == 'us-west-1':
+    aws_config.update({
+        'image_id': 'ami-8a2b0aea',
+        'region_name': 'us-west-1',
+        'security_group_ids': ['sg-88f4d7ef']
+    })
+elif args.region == 'us-west-2':
+    aws_config.update({
+        'image_id': 'ami-f4101a8d',
+        'region_name': 'us-west-2',
+        'security_group_ids': ['sg-1dd6bc66']
+    })
+elif args.region == 'us-east-1':
+    aws_config.update({
+        'key_name': 'rllab-us-east-1',
+        'image_id': 'ami-90b59886',
+        'region_name': 'us-east-1',
+        'security_group_ids': ['sg-9e9e00e0']
+    })
+else:
+    raise NotImplementedError
 
 for exp in args.exps:
     yaml_path = os.path.abspath('yamls/{0}.yaml'.format(exp))
@@ -42,14 +71,11 @@ for exp in args.exps:
                 use_cloudpickle=True,
                 mode=args.mode,
                 sync_s3_pkl=True,
-                aws_config={
-                    'image_id': 'ami-8a2b0aea',
-                    'security_groups': ['rllab-sg'],
-                    'key_name': 'id_rsa',
-                    'instance_type': 'g2.2xlarge'},
+                aws_config=aws_config,
                 confirm_remote=args.confirm_remote,
                 dry=args.dry
             )
+            time.sleep(1)
             break
         except ClientError as e:
             print('ClientError: {0}\nSleep for a bit and try again'.format(e))

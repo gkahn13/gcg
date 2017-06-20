@@ -230,7 +230,8 @@ def setup_s3():
 
 
 def setup_ec2():
-    for region in ["us-east-1", "us-west-1", "us-west-2"]:
+    # for region in ["us-east-1", "us-west-1", "us-west-2"]:
+    for region in ["us-east-1"]:
         print("Setting up region %s" % region)
 
         ec2 = boto3.resource(
@@ -317,10 +318,10 @@ def write_config():
 
 
 def setup():
-    setup_s3()
-    setup_iam()
+    # setup_s3()
+    # setup_iam()
     setup_ec2()
-    write_config()
+    # write_config()
 
 
 def query_yes_no(question, default="yes"):
