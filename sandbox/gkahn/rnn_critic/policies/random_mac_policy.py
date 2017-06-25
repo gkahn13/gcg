@@ -117,7 +117,7 @@ class RandomMACPolicy(MACPolicy, Serializable):
             with tf.variable_scope(policy_scope, reuse=True):
                 tf_train_values_test, tf_train_values_softmax_test, _, _ = \
                     self._graph_inference(tf_obs_lowd, tf_actions_ph[:, :self._get_action_test['H'], :],
-                                          self._values_softmax, tf_preprocess, pad_inputs=False)
+                                          self._values_softmax, tf_preprocess)
                 tf_get_value = tf.reduce_sum(tf_train_values_softmax_test * tf_train_values_test, reduction_indices=1)
 
             ### action selection

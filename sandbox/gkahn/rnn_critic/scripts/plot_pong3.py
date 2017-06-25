@@ -30,7 +30,10 @@ def load_experiments(indices):
 
     return exps
 
-all_exps = [load_experiments(range(i, i+3)) for i in range(214, 573, 3)]
+all_exps = [load_experiments(range(i, i+3)) for i in list(range(214, 573, 3)) + \
+                                                     [718, 721] + \
+                                                     list(range(725, 796, 3)) + \
+                                                     list(range(798, 821, 3))]
 
 import IPython; IPython.embed()
 
@@ -92,18 +95,23 @@ for i, exps in enumerate(list(np.array_split(all_exps[:-(len(all_exps) % 25)], l
             exp = [exp]
 
         if len(exp) > 0:
-            plot_cumreward(ax, exp)
-            params = exp[0].params
-            # class, N, H, update target, K target, lstm, lr
-            ax.set_title('{0}, N: {1}, H: {2}, target update: {3},\nK target: {4}, lstm: {5}, lr: {6}'.format(
-                params['policy']['class'],
-                params['policy']['N'],
-                params['policy']['H'],
-                params['alg']['update_target_every_n_steps'],
-                params['policy']['get_action_target']['random']['K'],
-                params['policy']['MACMuxPolicy']['use_lstm'],
-                params['policy']['lr_schedule']['outside_value']
-            ), fontdict={'fontsize': 5})
+            try:
+                plot_cumreward(ax, exp)
+                params = exp[0].params
+                policy = params['policy'][params['policy']['class']]
+                # class, N, H, update target, K target, lstm, lr
+                ax.set_title('{7}, {0}, N: {1}, H: {2}, target update: {3},\nK target: {4}, lstm: {5}, lr: {6}'.format(
+                    params['policy']['class'],
+                    params['policy']['N'],
+                    params['policy']['H'],
+                    params['alg']['update_target_every_n_steps'],
+                    params['policy']['get_action_target']['random']['K'],
+                    policy['use_lstm'] if 'use_lstm' in policy else False,
+                    params['policy']['lr_schedule']['outside_value'],
+                    params['exp_name']
+                ), fontdict={'fontsize': 5})
+            except:
+                print('Could not plot exp')
 
         ax.set_ylim((-22, 22))
         ax.set_xlim((0, 1e6))

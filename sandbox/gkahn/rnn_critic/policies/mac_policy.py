@@ -33,6 +33,7 @@ class MACPolicy(TfPolicy, Serializable):
         self._H = kwargs['H'] # action planning horizon for training
         self._gamma = kwargs['gamma'] # reward decay
         self._obs_history_len = kwargs['obs_history_len'] # how many previous observations to use
+        self._pad_inputs = kwargs['pad_inputs']
 
         ### model architecture
         self._obs_hidden_layers = list(kwargs['obs_hidden_layers'])
@@ -253,15 +254,16 @@ class MACPolicy(TfPolicy, Serializable):
 
         return tf_obs_lowd
 
-    def _graph_inference(self, tf_obs_lowd, tf_actions_ph, values_softmax, tf_preprocess, add_reg=True, pad_inputs=True):
+    def _graph_inference(self, tf_obs_lowd, tf_actions_ph, values_softmax, tf_preprocess, add_reg=True):
         """
         :param tf_obs_lowd: [batch_size, self._rnn_state_dim]
         :param tf_actions_ph: [batch_size, H, action_dim]
         :param values_softmax: string
         :param tf_preprocess:
-        :param pad_inputs: if True, will be N inputs, otherwise will be H inputs
         :return: tf_values: [batch_size, H]
         """
+        pad_inputs = self._pad_inputs
+        batch_size = tf.shape(tf_obs_lowd)[0]
         H = tf_actions_ph.get_shape()[1].value
         N = self._N if pad_inputs else H
         assert(tf_obs_lowd.get_shape()[1].value == (2 * self._rnn_state_dim if self._use_lstm else self._rnn_state_dim))
@@ -279,7 +281,7 @@ class MACPolicy(TfPolicy, Serializable):
             action = tf_actions_ph[:, h, :] if h < H else None
 
             next_istate, rew, val, vsoftmax = \
-                self._graph_inference_step(h, N, istate, action, values_softmax, add_reg=add_reg)
+                self._graph_inference_step(h, N, batch_size, istate, action, values_softmax, add_reg=add_reg)
             if self._share_weights:
                 tf.get_variable_scope().reuse_variables()
 
@@ -295,7 +297,7 @@ class MACPolicy(TfPolicy, Serializable):
 
         return tf_values, tf_values_softmax, tf_nstep_rewards, tf_nstep_values
 
-    def _graph_inference_step(self, n, N, istate, action, values_softmax, add_reg=True):
+    def _graph_inference_step(self, n, N, batch_size, istate, action, values_softmax, add_reg=True):
         """
         :param n: current step
         :param N: max step
@@ -303,7 +305,6 @@ class MACPolicy(TfPolicy, Serializable):
         :param action: if action is None, input zeros
         """
         import tensorflow.contrib.layers as layers
-        batch_size = tf.shape(istate)[0]
 
         with tf.name_scope('inference_step'):
             ### action
@@ -458,11 +459,11 @@ class MACPolicy(TfPolicy, Serializable):
         with tf.variable_scope(scope_select, reuse=reuse_select):
             tf_values_all_select, tf_values_softmax_all_select, _, _ = \
                 self._graph_inference(tf_obs_lowd_repeat_select, tf_actions, get_action_params['values_softmax'],
-                                      tf_preprocess_select, add_reg=False, pad_inputs=False)  # [num_obs*k, H]
+                                      tf_preprocess_select, add_reg=False)  # [num_obs*k, H]
         with tf.variable_scope(scope_eval, reuse=reuse_eval):
             tf_values_all_eval, tf_values_softmax_all_eval, _, _ = \
                 self._graph_inference(tf_obs_lowd_repeat_eval, tf_actions, get_action_params['values_softmax'],
-                                      tf_preprocess_eval, add_reg=False, pad_inputs=False)  # [num_obs*k, H]
+                                      tf_preprocess_eval, add_reg=False)  # [num_obs*k, H]
         ### get_action based on select (policy)
         tf_values_select = tf.reduce_sum(tf_values_all_select * tf_values_softmax_all_select, reduction_indices=1)  # [num_obs*K]
         tf_values_select = tf.reshape(tf_values_select, (num_obs, K))  # [num_obs, K]
@@ -640,7 +641,7 @@ class MACPolicy(TfPolicy, Serializable):
             with tf.variable_scope(policy_scope, reuse=True):
                 tf_train_values_test, tf_train_values_softmax_test, _, _ = \
                     self._graph_inference(tf_obs_lowd, tf_actions_ph[:, :self._get_action_test['H'], :],
-                                          self._values_softmax, tf_preprocess, pad_inputs=False)
+                                          self._values_softmax, tf_preprocess)
                 tf_get_value = tf.reduce_sum(tf_train_values_softmax_test * tf_train_values_test, reduction_indices=1)
 
             ### action selection
