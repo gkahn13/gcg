@@ -33,7 +33,8 @@ def load_experiments(indices):
 all_exps = [load_experiments(range(i, i+3)) for i in list(range(214, 573, 3)) + \
                                                      [718, 721] + \
                                                      list(range(725, 796, 3)) + \
-                                                     list(range(798, 821, 3))]
+                                                     list(range(798, 821, 3)) + \
+                                                     list(range(823, 870, 3))]
 
 import IPython; IPython.embed()
 

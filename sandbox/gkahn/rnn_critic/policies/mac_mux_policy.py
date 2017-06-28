@@ -23,7 +23,7 @@ class MACMuxPolicy(MACPolicy, Serializable):
     ###########################
 
     @overrides
-    def _graph_inference_step(self, n, N, istate, action, values_softmax, add_reg=True):
+    def _graph_inference_step(self, n, N, batch_size, istate, action, values_softmax, add_reg=True):
         """
         :param n: current step
         :param N: max step
@@ -31,7 +31,6 @@ class MACMuxPolicy(MACPolicy, Serializable):
         :param action: if action is None, input zeros
         """
         import tensorflow.contrib.layers as layers
-        batch_size = tf.shape(istate)[0]
         action_dim = self._env_spec.action_space.flat_dim
 
         with tf.name_scope('inference_step'):
@@ -84,7 +83,6 @@ class MACMuxPolicy(MACPolicy, Serializable):
                 tf_nstep_value = layer
 
             ### nstep lambdas --> values softmax and depth
-            batch_size = tf.shape(tf_nstep_value)[0]
             with tf.name_scope('nstep_lambdas'):
                 if values_softmax['type'] == 'final':
                     if n == N - 1:

@@ -33,7 +33,6 @@ class MACPolicy(TfPolicy, Serializable):
         self._H = kwargs['H'] # action planning horizon for training
         self._gamma = kwargs['gamma'] # reward decay
         self._obs_history_len = kwargs['obs_history_len'] # how many previous observations to use
-        self._pad_inputs = kwargs['pad_inputs']
 
         ### model architecture
         self._obs_hidden_layers = list(kwargs['obs_hidden_layers'])
@@ -262,10 +261,9 @@ class MACPolicy(TfPolicy, Serializable):
         :param tf_preprocess:
         :return: tf_values: [batch_size, H]
         """
-        pad_inputs = self._pad_inputs
         batch_size = tf.shape(tf_obs_lowd)[0]
         H = tf_actions_ph.get_shape()[1].value
-        N = self._N if pad_inputs else H
+        N = H
         assert(tf_obs_lowd.get_shape()[1].value == (2 * self._rnn_state_dim if self._use_lstm else self._rnn_state_dim))
         tf.assert_equal(tf.shape(tf_obs_lowd)[0], tf.shape(tf_actions_ph)[0])
 
@@ -278,7 +276,7 @@ class MACPolicy(TfPolicy, Serializable):
         tf_nstep_values = []
         tf_nstep_values_softmax = []
         for h in range(N):
-            action = tf_actions_ph[:, h, :] if h < H else None
+            action = tf_actions_ph[:, h, :]
 
             next_istate, rew, val, vsoftmax = \
                 self._graph_inference_step(h, N, batch_size, istate, action, values_softmax, add_reg=add_reg)

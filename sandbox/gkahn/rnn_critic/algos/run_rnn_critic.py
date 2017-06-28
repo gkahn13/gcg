@@ -25,6 +25,8 @@ from sandbox.gkahn.rnn_critic.policies.random_mac_policy import RandomMACPolicy
 from sandbox.gkahn.rnn_critic.policies.random_mac_mux_policy import RandomMACMuxPolicy
 from sandbox.gkahn.rnn_critic.policies.notarget_mac_policy import NotargetMACPolicy
 from sandbox.gkahn.rnn_critic.policies.final_mac_policy import FinalMACPolicy
+from sandbox.gkahn.rnn_critic.policies.nstep_mac_policy import NstepMACPolicy
+from sandbox.gkahn.rnn_critic.policies.nstep_mac_mux_policy import NstepMACMuxPolicy
 
 def run_rnn_critic(params):
     # copy yaml for posterity
