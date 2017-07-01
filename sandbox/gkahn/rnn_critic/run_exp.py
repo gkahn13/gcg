@@ -13,7 +13,7 @@ parser.add_argument('--exps', nargs='+')
 parser.add_argument('-mode', type=str, default='local')
 parser.add_argument('--confirm_remote', action='store_false')
 parser.add_argument('--dry', action='store_true')
-parser.add_argument('-region', type=str, choices=('us-west-1', 'us-west-2', 'us-east-1'), default='us-west-1')
+parser.add_argument('-region', type=str, choices=('us-west-1', 'us-west-2', 'us-east-1', 'us-east-2'), default='us-west-1')
 args = parser.parse_args()
 
 # stub(globals())
@@ -21,8 +21,8 @@ args = parser.parse_args()
 aws_config = {
     'security_groups': ['rllab-sg'],
     'key_name': 'id_rsa',
-    'instance_type': 'g2.2xlarge',
-    'spot_price': '2.0',
+    'instance_type': 'p2.xlarge',
+    'spot_price': '1.0',
 }
 if args.region == 'us-west-1':
     aws_config.update({
@@ -41,7 +41,14 @@ elif args.region == 'us-east-1':
         'key_name': 'rllab-us-east-1',
         'image_id': 'ami-90b59886',
         'region_name': 'us-east-1',
+        'subnet_id': 'subnet-a97bba85', # TODO
         'security_group_ids': ['sg-9e9e00e0']
+    })
+elif args.region == 'us-east-2':
+    aws_config.update({
+        'image_id': 'ami-0f2f0e6a',
+        'region_name': 'us-east-2',
+        'security_group_ids': ['sg-ee707e87']
     })
 else:
     raise NotImplementedError

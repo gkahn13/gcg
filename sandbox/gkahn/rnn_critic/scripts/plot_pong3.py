@@ -34,7 +34,10 @@ all_exps = [load_experiments(range(i, i+3)) for i in list(range(214, 573, 3)) + 
                                                      [718, 721] + \
                                                      list(range(725, 796, 3)) + \
                                                      list(range(798, 821, 3)) + \
-                                                     list(range(823, 870, 3))]
+                                                     list(range(823, 870, 3)) + \
+                                                     list(range(872, 919,3)) + \
+                                                     list(range(921, 992, 3)) + \
+                                                     list(range(994, 1029, 3))]
 
 import IPython; IPython.embed()
 
@@ -85,37 +88,77 @@ def plot_cumreward(ax, analyze_group, color='k', label=None, window=20):
     xfmt.set_powerlimits((0, 0))
     ax.xaxis.set_major_formatter(xfmt)
 
+def plot_value(ax, analyze_group, window=20):
+    # EstValuesMaxDiffMean, EstValuesMaxDiffStd
+    # EstValuesAvgDiffMean, EstValuesAvgDiffStd
+    # EstValuesMinDiffMean, EstValuesMinDiffStd
+
+    for i, analyze in enumerate(analyze_group):
+        steps = np.array(analyze.progress['Step'])
+        max_values = np.array(analyze.progress['EstValuesMaxDiffMean'])
+        avg_values = np.array(analyze.progress['EstValuesAvgDiffMean'])
+        min_values = np.array(analyze.progress['EstValuesMinDiffMean'])
+
+        def moving_avg_std(idxs, data, window):
+            avg_idxs, means, stds = [], [], []
+            for i in range(window, len(data)):
+                avg_idxs.append(np.mean(idxs[i - window:i]))
+                means.append(np.mean(data[i - window:i]))
+                stds.append(np.std(data[i - window:i]))
+            return avg_idxs, np.asarray(means), np.asarray(stds)
+
+        steps, max_values, _ = moving_avg_std(steps, max_values, window=window)
+        steps, avg_values, _ = moving_avg_std(steps, avg_values, window=window)
+        steps, min_values, _ = moving_avg_std(steps, min_values, window=window)
+
+        ax.plot(steps, max_values, color='r', alpha=np.linspace(1., 0.4, len(analyze_group))[i])
+        ax.plot(steps, avg_values, color='k', alpha=np.linspace(1., 0.4, len(analyze_group))[i])
+        ax.plot(steps, min_values, color='b', alpha=np.linspace(1., 0.4, len(analyze_group))[i])
+
+    ax.grid()
+    xfmt = ticker.ScalarFormatter()
+    xfmt.set_powerlimits((0, 0))
+    ax.xaxis.set_major_formatter(xfmt)
+
+
 for i, exps in enumerate(list(np.array_split(all_exps[:-(len(all_exps) % 25)], len(all_exps) // 25)) + [all_exps[-(len(all_exps) % 25):]]):
-    f, axes = plt.subplots(5, 5, figsize=(15, 15), sharey=True, sharex=True)
+    f_cumreward, axes_cumreward = plt.subplots(5, 5, figsize=(15, 15), sharey=True, sharex=True)
+    f_value, axes_value = plt.subplots(5, 5, figsize=(15, 15), sharey=True, sharex=True)
 
     if not hasattr(axes, 'ravel'):
         axes = np.array([axes])
 
-    for ax, exp in zip(axes.ravel(), exps):
+    for ax_cumreward, ax_value, exp in zip(axes_cumreward.ravel(), axes_value.ravel(), exps):
         if not hasattr(exp, '__len__'):
             exp = [exp]
 
         if len(exp) > 0:
             try:
-                plot_cumreward(ax, exp)
+                plot_cumreward(ax_cumreward, exp)
+                plot_value(ax_value, exp)
                 params = exp[0].params
                 policy = params['policy'][params['policy']['class']]
                 # class, N, H, update target, K target, lstm, lr
-                ax.set_title('{7}, {0}, N: {1}, H: {2}, target update: {3},\nK target: {4}, lstm: {5}, lr: {6}'.format(
-                    params['policy']['class'],
-                    params['policy']['N'],
-                    params['policy']['H'],
-                    params['alg']['update_target_every_n_steps'],
-                    params['policy']['get_action_target']['random']['K'],
-                    policy['use_lstm'] if 'use_lstm' in policy else False,
-                    params['policy']['lr_schedule']['outside_value'],
-                    params['exp_name']
-                ), fontdict={'fontsize': 5})
+                for ax in (ax_cumreward, ax_value):
+                    ax.set_title('{7}, {0}, N: {1}, H: {2}, target update: {3},\nK target: {4}, lstm: {5}, lr: {6}'.format(
+                        params['policy']['class'],
+                        params['policy']['N'],
+                        params['policy']['H'],
+                        params['alg']['update_target_every_n_steps'],
+                        params['policy']['get_action_target']['random']['K'],
+                        policy['use_lstm'] if 'use_lstm' in policy else False,
+                        params['policy']['lr_schedule']['outside_value'],
+                        params['exp_name']
+                    ), fontdict={'fontsize': 5})
             except:
                 print('Could not plot exp')
 
-        ax.set_ylim((-22, 22))
-        ax.set_xlim((0, 1e6))
+        ax_cumreward.set_ylim((-22, 22))
+        ax_cumreward.set_xlim((0, 1e6))
+        ax_value.set_ylim((-4, 4))
+        ax_value.set_xlim((0, 1e6))
 
-    f.savefig(os.path.join(SAVE_FOLDER, 'pong3_{0:02d}_comparison.png'.format(i)), bbox_inches='tight', dpi=300)
-    plt.close(f)
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, 'pong3_{0:02d}_comparison.png'.format(i)), bbox_inches='tight', dpi=150)
+    f_value.savefig(os.path.join(SAVE_FOLDER, 'pong3_value_{0:02d}_comparison.png'.format(i)), bbox_inches='tight', dpi=150)
+    plt.close(f_cumreward)
+    plt.close(f_value)

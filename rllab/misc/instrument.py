@@ -708,6 +708,7 @@ def launch_ec2mujoco(params_list, exp_prefix, docker_image, code_full_path,
         security_groups=config.AWS_SECURITY_GROUPS,
         security_group_ids=config.AWS_SECURITY_GROUP_IDS,
         network_interfaces=config.AWS_NETWORK_INTERFACES,
+        subnet_id=config.AWS_SUBNET_ID
     )
 
     if aws_config is None:
@@ -903,6 +904,10 @@ def launch_ec2mujoco(params_list, exp_prefix, docker_image, code_full_path,
         IamInstanceProfile=dict(
             Name=aws_config["iam_instance_profile_name"],
         ),
+        # Placement=dict(
+        #     AvailabilityZone=('us-east-1f')
+        # )
+        SubnetId=aws_config["subnet_id"] # 'subnet-a97bba85'
     )
     if aws_config.get("placement", None) is not None:
         instance_args["Placement"] = aws_config["placement"]
@@ -923,6 +928,7 @@ def launch_ec2mujoco(params_list, exp_prefix, docker_image, code_full_path,
         )
         import pprint
         pprint.pprint(spot_args)
+        # import IPython; IPython.embed()
         if not dry:
             response = ec2.request_spot_instances(**spot_args)
             print(response)

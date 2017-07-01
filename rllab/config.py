@@ -45,6 +45,8 @@ AWS_EXTRA_CONFIGS = dict()
 
 AWS_REGION_NAME = "us-east-1"
 
+AWS_SUBNET_ID = ""
+
 CODE_SYNC_IGNORES = ["*.git/*", "*data/*", "*.pod/*"]
 
 DOCKER_CODE_DIR = "/home/ubuntu/code/rllab" # "/root/code/rllab"

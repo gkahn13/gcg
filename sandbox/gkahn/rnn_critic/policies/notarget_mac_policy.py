@@ -12,7 +12,7 @@ class NotargetMACPolicy(MACPolicy, Serializable):
     def __init__(self, **kwargs):
         Serializable.quick_init(self, locals())
 
-        self._cost_weighting = kwargs['cost_weighting']
+        self._consistency_weight = kwargs['consistency_weight']
 
         MACPolicy.__init__(self, **kwargs)
 
@@ -57,52 +57,43 @@ class NotargetMACPolicy(MACPolicy, Serializable):
         :param tf_dones_ph: [None, self._N]
         :return: tf_cost, tf_mse
         """
-        batch_size = tf.shape(tf_dones_ph)[0]
-        tf_rewards = tf.split(1, self._N, tf_rewards_ph)
-        tf_values = tf.split(1, self._N, tf_values_ph)
-        tf_dones = tf.cast(tf_dones_ph, tf.float32)
+        tf_rewards_ph = tf.split(1, self._N, tf_rewards_ph)
+        tf_values_ph = tf.split(1, self._N, tf_values_ph)
+        tf_dones_ph = tf.cast(tf_dones_ph, tf.float32)
 
         assert(self._retrace_lambda is None)
         tf.assert_equal(tf.reduce_sum(tf_train_values_softmax, 1), 1.)
 
-        tf_mses = []
+        tf_values = []
+        values = []
         for n in range(self._N):
             tf_sum_rewards_n = np.sum([np.power(self._gamma, i) * r for i, r in enumerate(tf_train_nstep_rewards[:n])])
-            sum_rewards_n = np.sum([np.power(self._gamma, i) * r for i, r in enumerate(tf_rewards[:n])])
+            sum_rewards_n = np.sum([np.power(self._gamma, i) * r for i, r in enumerate(tf_rewards_ph[:n])])
 
-            tf_values_n = tf_train_nstep_values[n]
-            values_n = tf_values[n]
+            tf_values_n = np.power(self._gamma, n) * tf_train_nstep_values[n]
+            values_n = np.power(self._gamma, n) * tf_values_ph[n]
 
-            tf_dones_n = tf.expand_dims(tf_dones[:, n], 1)
+            dones_n = tf.expand_dims(tf_dones_ph[:, n], 1)
 
-            if n > 0:
-                if self._cost_weighting == 'gamma':
-                    ratio = (1 - tf_dones_n) * np.sum(np.power(self._gamma, np.arange(n))) / (1. / (1. - self._gamma)) + \
-                            tf_dones_n * tf.ones((batch_size, 1), dtype=tf.float32)
-                elif self._cost_weighting == 'equal':
-                    ratio = (1 - tf_dones_n) * 0.5 + \
-                            tf_dones_n * tf.ones((batch_size, 1), dtype=tf.float32)
-                else:
-                    raise NotImplementedError
-                tf.assert_greater_equal(ratio, 0.)
-                tf.assert_less_equal(ratio, 1.)
-
-                tf_mse_n = ratio * tf.square(tf_sum_rewards_n - sum_rewards_n) + \
-                           (1 - ratio) * tf.square(tf_values_n - values_n)
+            if n == 0:
+                tf_values.append(tf_values_n)
+                values.append((1 - dones_n) * values_n)
             else:
-                tf_mse_n = tf.square(tf_values_n - values_n)
-
-            tf_mses.append(tf_mse_n)
+                tf_values.append(tf_sum_rewards_n + tf_values_n)
+                values.append(sum_rewards_n + (1 - dones_n) * values_n)
 
         assert(self._separate_mses)
-        tf_mse = tf.reduce_mean(tf.reduce_sum(tf_train_values_softmax * tf.concat(1, tf_mses), 1))
+        tf_mse = tf.reduce_mean(tf.reduce_sum(tf_train_values_softmax * tf.square(tf.concat(1, tf_values) - tf.concat(1, values)), 1))
+        tf_consistency = self._consistency_weight * \
+                         tf.reduce_mean((1. / float(self._N)) * np.sum(
+                             [tf.square(tf_values[i+1] - tf_values[i]) for i in range(self._N - 1)]))
 
         ### weight decay
         if len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)) > 0:
             tf_weight_decay = self._weight_decay * tf.add_n(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
         else:
             tf_weight_decay = 0
-        tf_cost = tf_mse + tf_weight_decay
+        tf_cost = tf_mse + tf_consistency + tf_weight_decay
 
         return tf_cost, tf_mse
 
@@ -137,7 +128,7 @@ class NotargetMACPolicy(MACPolicy, Serializable):
             with tf.variable_scope(policy_scope, reuse=True):
                 tf_train_values_test, tf_train_values_softmax_test, _, _ = \
                     self._graph_inference(tf_obs_lowd, tf_actions_ph[:, :self._get_action_test['H'], :],
-                                          self._values_softmax, tf_preprocess, pad_inputs=False)
+                                          self._values_softmax, tf_preprocess)
                 tf_get_value = tf.reduce_sum(tf_train_values_softmax_test * tf_train_values_test, reduction_indices=1)
 
             ### action selection
