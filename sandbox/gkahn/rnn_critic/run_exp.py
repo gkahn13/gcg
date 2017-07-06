@@ -38,16 +38,20 @@ elif args.region == 'us-west-2':
     })
 elif args.region == 'us-east-1':
     aws_config.update({
+        'security_groups': [],
         'key_name': 'rllab-us-east-1',
         'image_id': 'ami-90b59886',
         'region_name': 'us-east-1',
-        'subnet_id': 'subnet-a97bba85', # TODO
+        'subnet_id': 'subnet-ed9e60b7', # TODO
         'security_group_ids': ['sg-9e9e00e0']
     })
 elif args.region == 'us-east-2':
     aws_config.update({
+        'security_groups': [],
+        # 'key_name': 'rllab-us-east-2',
         'image_id': 'ami-0f2f0e6a',
         'region_name': 'us-east-2',
+        'subnet_id': 'subnet-2e14ef63',  # TODO
         'security_group_ids': ['sg-ee707e87']
     })
 else:

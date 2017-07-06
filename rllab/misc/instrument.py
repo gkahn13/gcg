@@ -907,7 +907,7 @@ def launch_ec2mujoco(params_list, exp_prefix, docker_image, code_full_path,
         # Placement=dict(
         #     AvailabilityZone=('us-east-1f')
         # )
-        SubnetId=aws_config["subnet_id"] # 'subnet-a97bba85'
+        SubnetId=aws_config["subnet_id"]
     )
     if aws_config.get("placement", None) is not None:
         instance_args["Placement"] = aws_config["placement"]

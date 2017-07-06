@@ -50,6 +50,7 @@ def run_rnn_critic(params):
         try:
             from sandbox.gkahn.rnn_critic.envs.car.collision_car_racing_env import CollisionCarRacingSteeringEnv, \
                 CollisionCarRacingDiscreteEnv
+            from sandbox.gkahn.rnn_critic.envs.sim_rccar.square_env import SquareEnv
         except:
             pass
         from rllab.envs.mujoco.swimmer_env import SwimmerEnv
@@ -58,6 +59,7 @@ def run_rnn_critic(params):
         from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
         from sandbox.gkahn.rnn_critic.envs.phd_env import PhdEnv
         from sandbox.gkahn.rnn_critic.envs.cartpole_swingup_env import CartPoleSwingupEnv, CartPoleSwingupImageEnv
+        from sandbox.gkahn.rnn_critic.envs.pendulum import PendulumContinuousDense, PendulumContinuousSparse, PendulumDiscreteDense, PendulumDiscreteSparse
 
         inner_env = eval(env_str)
         env = TfEnv(normalize(inner_env))
