@@ -1,5 +1,4 @@
 from rllab.core.serializable import Serializable
-from sandbox.rocky.tf.spaces.discrete import Discrete
 from sandbox.gkahn.rnn_critic.utils import schedules
 
 import numpy as np
@@ -9,7 +8,6 @@ class EpsilonGreedyStrategy(Serializable):
     Takes random action with probability epsilon
     """
     def __init__(self, env_spec, endpoints, outside_value):
-        assert isinstance(env_spec.action_space, Discrete)
         Serializable.quick_init(self, locals())
         self._env_spec = env_spec
         self.schedule = schedules.PiecewiseSchedule(endpoints=endpoints, outside_value=outside_value)

@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 import numpy as np
 import tensorflow as tf
 
@@ -38,13 +40,13 @@ class NotargetMACPolicy(MACPolicy, Serializable):
             tf_rewards_ph = tf.placeholder(tf.float32, [None, self._N], name='tf_rewards_ph')
             tf_values_ph = tf.placeholder(tf.float32, [None, self._N], name='tf_values_ph')
             ### policy exploration
-            tf_explore_train_ph = tf.placeholder(tf.float32, [None, self._N + 1], name='tf_explore_train')
-            tf_explore_test_ph = tf.placeholder(tf.float32, [None], name='tf_explore_test')
-            ### importance sampling
-            tf_logprob_prior_ph = tf.placeholder(tf.float32, [None, self._N], name='tf_logprob_prior_ph')
+            tf_test_es_ph_dict = defaultdict(None)
+            if self._gaussian_es:
+                tf_test_es_ph_dict['gaussian'] = tf.placeholder(tf.float32, [None], name='tf_test_gaussian_es')
+            if self._epsilon_greedy_es:
+                tf_test_es_ph_dict['epsilon_greedy'] = tf.placeholder(tf.float32, [None], name='tf_test_epsilon_greedy_es')
 
-        return tf_obs_ph, tf_actions_ph, tf_dones_ph, tf_rewards_ph, tf_values_ph, \
-               tf_explore_train_ph, tf_explore_test_ph, tf_logprob_prior_ph
+        return tf_obs_ph, tf_actions_ph, tf_dones_ph, tf_rewards_ph, tf_values_ph, tf_test_es_ph_dict
 
     @overrides
     def _graph_cost(self, tf_train_nstep_rewards, tf_train_nstep_values, tf_train_values_softmax, tf_rewards_ph, tf_values_ph, tf_dones_ph):
@@ -61,7 +63,6 @@ class NotargetMACPolicy(MACPolicy, Serializable):
         tf_values_ph = tf.split(1, self._N, tf_values_ph)
         tf_dones_ph = tf.cast(tf_dones_ph, tf.float32)
 
-        assert(self._retrace_lambda is None)
         tf.assert_equal(tf.reduce_sum(tf_train_values_softmax, 1), 1.)
 
         tf_values = []
@@ -110,8 +111,7 @@ class NotargetMACPolicy(MACPolicy, Serializable):
                 ext.set_seed(ext.get_seed())
 
             ### create input output placeholders
-            tf_obs_ph, tf_actions_ph, tf_dones_ph, tf_rewards_ph, tf_values_ph, \
-            tf_explore_train_ph, tf_explore_test_ph, tf_logprob_prior_ph = self._graph_input_output_placeholders()
+            tf_obs_ph, tf_actions_ph, tf_dones_ph, tf_rewards_ph, tf_values_ph, tf_test_es_ph_dict = self._graph_input_output_placeholders()
 
             ### policy
             policy_scope = 'policy'
@@ -135,8 +135,7 @@ class NotargetMACPolicy(MACPolicy, Serializable):
             tf_get_action, tf_get_action_value = self._graph_get_action(tf_obs_ph, self._get_action_test,
                                                                         policy_scope, True, policy_scope, True)
             ### exploration strategy and logprob
-            tf_get_action_explore = self._graph_get_action_explore(tf_get_action, tf_explore_test_ph)
-            tf_get_action_logprob = self._graph_get_action_logprob(tf_get_action_explore, tf_get_action, tf_explore_test_ph)
+            tf_get_action_explore = self._graph_get_action_explore(tf_get_action, tf_test_es_ph_dict)
 
             ### get policy variables
             tf_trainable_policy_vars = sorted(tf.get_collection(xplatform.trainable_variables_collection_name(),
@@ -164,15 +163,12 @@ class NotargetMACPolicy(MACPolicy, Serializable):
             'dones_ph': tf_dones_ph,
             'rewards_ph': tf_rewards_ph,
             'values_ph': tf_values_ph,
-            'explore_train_ph': tf_explore_train_ph,
-            'explore_test_ph': tf_explore_test_ph,
-            'logprob_ph': tf_logprob_prior_ph,
+            'test_es_ph_dict': tf_test_es_ph_dict,
             'preprocess': tf_preprocess,
             'get_value': tf_get_value,
             'get_action': tf_get_action,
             'get_action_explore': tf_get_action_explore,
             'get_action_value': tf_get_action_value,
-            'get_action_logprob': tf_get_action_logprob,
             'update_target_fn': tf_update_target_fn,
             'cost': tf_cost,
             'mse': tf_mse,
@@ -195,8 +191,6 @@ class NotargetMACPolicy(MACPolicy, Serializable):
         feed_dict = {
             ### parameters
             self._tf_dict['lr_ph']: self._lr_schedule.value(step),
-            self._tf_dict['explore_train_ph']: np.reshape([self._exploration_strategy.schedule.value(s)
-                                                           for s in steps.ravel()], steps.shape),
             ### policy
             self._tf_dict['obs_ph']: observations[:, :self._obs_history_len, :],
             self._tf_dict['actions_ph']: actions,

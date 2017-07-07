@@ -50,14 +50,11 @@ class FinalMACPolicy(RandomMACPolicy, Serializable):
         feed_dict = {
             ### parameters
             self._tf_dict['lr_ph']: self._lr_schedule.value(step),
-            self._tf_dict['explore_train_ph']: np.reshape([self._exploration_strategy.schedule.value(s)
-                                                           for s in steps.ravel()], steps.shape),
             ### policy
             self._tf_dict['obs_ph']: observations[:, :self._obs_history_len, :],
             self._tf_dict['actions_ph']: actions,
             self._tf_dict['dones_ph']: np.logical_or(not use_target, dones[:, :self._N]),
             self._tf_dict['rewards_ph']: rewards[:, :self._N],
-            self._tf_dict['logprob_ph']: logprobs[:, :self._N]
         }
         if self._use_target:
             # feed_dict[self._tf_dict['obs_target_ph']] = [observations[i, l - self._obs_history_len + 1:l + 1, :]
