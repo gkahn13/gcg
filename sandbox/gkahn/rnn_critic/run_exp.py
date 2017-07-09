@@ -42,7 +42,7 @@ elif args.region == 'us-east-1':
         'key_name': 'rllab-us-east-1',
         'image_id': 'ami-90b59886',
         'region_name': 'us-east-1',
-        'subnet_id': 'subnet-ed9e60b7', # TODO
+        'subnet_id': 'subnet-ef4c648a', # TODO
         'security_group_ids': ['sg-9e9e00e0']
     })
 elif args.region == 'us-east-2':

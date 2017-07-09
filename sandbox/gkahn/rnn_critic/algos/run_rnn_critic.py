@@ -21,12 +21,14 @@ from sandbox.gkahn.rnn_critic.policies.mac_mux_policy import MACMuxPolicy
 from sandbox.gkahn.rnn_critic.policies.dqn_policy import DQNPolicy
 from sandbox.gkahn.rnn_critic.policies.cdqn_policy import CDQNPolicy
 from sandbox.gkahn.rnn_critic.policies.feedforward_mac_policy import FeedforwardMACPolicy
-from sandbox.gkahn.rnn_critic.policies.random_mac_policy import RandomMACPolicy, RandomDiscreteMACPolicy
+from sandbox.gkahn.rnn_critic.policies.random_mac_policy import RandomMACPolicy
 from sandbox.gkahn.rnn_critic.policies.random_mac_mux_policy import RandomMACMuxPolicy
 from sandbox.gkahn.rnn_critic.policies.notarget_mac_policy import NotargetMACPolicy
 from sandbox.gkahn.rnn_critic.policies.final_mac_policy import FinalMACPolicy
 from sandbox.gkahn.rnn_critic.policies.nstep_mac_policy import NstepMACPolicy
 from sandbox.gkahn.rnn_critic.policies.nstep_mac_mux_policy import NstepMACMuxPolicy
+from sandbox.gkahn.rnn_critic.policies.discrete_mac_policy import DiscreteMACPolicy
+from sandbox.gkahn.rnn_critic.policies.random_discrete_mac_policy import RandomDiscreteMACPolicy
 
 def run_rnn_critic(params):
     # copy yaml for posterity
