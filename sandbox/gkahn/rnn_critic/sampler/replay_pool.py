@@ -9,13 +9,14 @@ from sandbox.gkahn.rnn_critic.utils.utils import timeit
 
 class RNNCriticReplayPool(object):
 
-    def __init__(self, env_spec, N, gamma, size, obs_history_len, save_rollouts=False, save_rollouts_observations=True):
+    def __init__(self, env_spec, N, gamma, size, obs_history_len, sampling_method, save_rollouts=False, save_rollouts_observations=True):
         """
         :param env_spec: for observation/action dimensions
         :param N: horizon length
         :param gamma: discount factor
         :param size: size of pool
         :param obs_history_len: how many previous obs to include when sampling? (= 1 is only current observation)
+        :param sampling_method: how to sample the replay pool
         :param save_rollouts: for debugging
         """
         self._env_spec = env_spec
@@ -23,6 +24,7 @@ class RNNCriticReplayPool(object):
         self._gamma = gamma
         self._size = int(size)
         self._obs_history_len = obs_history_len
+        self._sampling_method = sampling_method
         self._save_rollouts = save_rollouts
         self._save_rollouts_observations = save_rollouts_observations
 
@@ -38,6 +40,7 @@ class RNNCriticReplayPool(object):
         self._est_values = np.nan * np.ones((self._size,), dtype=np.float32)
         self._values = np.nan * np.ones((self._size,), dtype=np.float32)
         self._logprobs = np.nan * np.ones((self._size,), dtype=np.float32)
+        self._sampling_indices = np.zeros((self._size,), dtype=bool)
         self._index = 0
         self._curr_size = 0
 
@@ -63,6 +66,26 @@ class RNNCriticReplayPool(object):
             return list(range(start, len(self))) + list(range(end))
         else:
             raise Exception
+
+    def _get_prev_indices(self, end, length):
+        if end - (length - 1) >= 0:
+            preclipped_indices = list(range(end - length + 1, end + 1))
+        else:
+            if len(self) == self._size:
+                preclipped_indices = list(range(len(self) - (length - 1 - end), len(self))) + list(range(0, end+1))
+            else:
+                preclipped_indices = list(range(0, end+1))
+
+        if len(preclipped_indices) == 0:
+            import IPython; IPython.embed()
+        indices = [preclipped_indices[-1]]
+        for index in preclipped_indices[-2::-1]:
+            if self._dones[index]:
+                break
+            indices.insert(0, index)
+        if np.any(np.array(indices) > len(self)):
+            import IPython; IPython.embed()
+        return indices
 
     @property
     def obs_is_im(self):
@@ -146,6 +169,19 @@ class RNNCriticReplayPool(object):
         self._dones[self._index] = done
         self._est_values[self._index] = est_value
         self._logprobs[self._index] = logprob
+        if self._sampling_method == 'uniform':
+            pass
+        elif self._sampling_method == 'nonzero':
+            curr_start_indices = self._get_prev_indices(self._index, self._N)
+            if reward != 0:
+                self._sampling_indices[curr_start_indices] = True
+            elif len(self) > self._N:
+                prev_start_indices = self._get_prev_indices(self._index - 1, self._N)
+                if len(prev_start_indices) > 0 and \
+                   np.all(self._rewards[prev_start_indices] == 0):
+                    self._sampling_indices[prev_start_indices[0]] = False
+        else:
+            raise NotImplementedError
         self._index = (self._index + 1) % self._size
         self._curr_size = max(self._curr_size, self._index)
 
@@ -196,6 +232,36 @@ class RNNCriticReplayPool(object):
     def can_sample(self):
         return len(self) > self._obs_history_len and len(self) > self._N
 
+    def _sample_start_indices(self, batch_size, only_completed_episodes):
+        start_indices = []
+        false_indices = self._get_indices(self._index - self._obs_history_len, self._index) + \
+                        self._get_indices(self._index, self._index + self._N)
+        if only_completed_episodes and self._last_done_index != self._index:
+            false_indices += self._get_indices(self._last_done_index, self._index)
+
+        if self._sampling_method == 'uniform':
+            while len(start_indices) < batch_size:
+                start_index = np.random.randint(low=0, high=len(self) - self._N)
+                if start_index not in false_indices:
+                    start_indices.append(start_index)
+        elif self._sampling_method == 'nonzero':
+            nonzero_indices = np.nonzero(self._sampling_indices[:len(self) - self._N])[0]
+            zero_indices = np.nonzero(self._sampling_indices[:len(self) - self._N] == 0)[0]
+
+            while len(start_indices) < batch_size:
+                if len(nonzero_indices) == 0 or len(zero_indices) == 0:
+                    start_index = np.random.randint(low=0, high=len(self) - self._N)
+                else:
+                    if len(start_indices) < batch_size // 2:
+                        start_index = np.random.choice(nonzero_indices)
+                    else:
+                        start_index = np.random.choice(zero_indices)
+
+                if start_index not in false_indices:
+                    start_indices.append(start_index)
+
+        return start_indices
+
     def sample(self, batch_size, only_completed_episodes=False):
         """
         :return observations, actions, and rewards of horizon H+1
@@ -205,15 +271,7 @@ class RNNCriticReplayPool(object):
 
         steps, observations, actions, rewards, values, dones, logprobs = [], [], [], [], [], [], []
 
-        start_indices = []
-        false_indices = self._get_indices(self._index - self._obs_history_len, self._index) + \
-                        self._get_indices(self._index, self._index + self._N)
-        if only_completed_episodes and self._last_done_index != self._index:
-            false_indices += self._get_indices(self._last_done_index, self._index)
-        while len(start_indices) < batch_size:
-            start_index = np.random.randint(low=0, high=len(self)-self._N)
-            if start_index not in false_indices:
-                start_indices.append(start_index)
+        start_indices = self._sample_start_indices(batch_size, only_completed_episodes)
 
         for start_index in start_indices:
             indices = self._get_indices(start_index, (start_index + self._N + 1) % self._curr_size)

@@ -17,7 +17,7 @@ from sandbox.rocky.tf.spaces.discrete import Discrete
 from sandbox.rocky.tf.spaces.box import Box
 
 class RNNCriticSampler(object):
-    def __init__(self, policy, env, n_envs, replay_pool_size, max_path_length,
+    def __init__(self, policy, env, n_envs, replay_pool_size, max_path_length, sampling_method,
                  save_rollouts=False, save_rollouts_observations=True):
         self._policy = policy
         self._n_envs = n_envs
@@ -27,6 +27,7 @@ class RNNCriticSampler(object):
                                                   policy.gamma,
                                                   replay_pool_size // n_envs,
                                                   obs_history_len=policy.obs_history_len,
+                                                  sampling_method=sampling_method,
                                                   save_rollouts=save_rollouts,
                                                   save_rollouts_observations=save_rollouts_observations)
                               for _ in range(n_envs)]

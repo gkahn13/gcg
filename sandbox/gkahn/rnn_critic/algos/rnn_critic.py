@@ -30,6 +30,7 @@ class RNNCritic(RLAlgorithm):
                  onpolicy_after_n_steps=-1,
                  n_envs=1,
                  replay_pool_size=int(1e6),
+                 replay_pool_sampling='uniform',
                  save_rollouts=False,
                  save_rollouts_observations=True,
                  save_eval_rollouts_observations=False,
@@ -66,6 +67,7 @@ class RNNCritic(RLAlgorithm):
             n_envs=n_envs,
             replay_pool_size=replay_pool_size,
             max_path_length=max_path_length,
+            sampling_method=replay_pool_sampling,
             save_rollouts=save_rollouts,
             save_rollouts_observations=save_rollouts_observations
         )
@@ -76,6 +78,7 @@ class RNNCritic(RLAlgorithm):
             n_envs=1,
             replay_pool_size=int(np.ceil(1.5 * max_path_length) + 1),
             max_path_length=max_path_length,
+            sampling_method=replay_pool_sampling,
             save_rollouts=True,
             save_rollouts_observations=save_eval_rollouts_observations
         )
