@@ -13,12 +13,13 @@ from sandbox.rocky.tf.envs.vec_env_executor import VecEnvExecutor
 
 from sandbox.gkahn.rnn_critic.sampler.replay_pool import RNNCriticReplayPool
 from sandbox.gkahn.rnn_critic.utils import utils
+from sandbox.gkahn.rnn_critic.envs.env_utils import create_env
 from sandbox.rocky.tf.spaces.discrete import Discrete
 from sandbox.rocky.tf.spaces.box import Box
 
 class RNNCriticSampler(object):
     def __init__(self, policy, env, n_envs, replay_pool_size, max_path_length, sampling_method,
-                 save_rollouts=False, save_rollouts_observations=True):
+                 save_rollouts=False, save_rollouts_observations=True, env_str=None):
         self._policy = policy
         self._n_envs = n_envs
 
@@ -32,7 +33,10 @@ class RNNCriticSampler(object):
                                                   save_rollouts_observations=save_rollouts_observations)
                               for _ in range(n_envs)]
 
-        envs = [pickle.loads(pickle.dumps(env)) for _ in range(self._n_envs)] if self._n_envs > 1 else [env]
+        try:
+            envs = [pickle.loads(pickle.dumps(env)) for _ in range(self._n_envs)] if self._n_envs > 1 else [env]
+        except:
+            envs = [create_env(env_str) for _ in range(self._n_envs)] if self._n_envs > 1 else [env]
         ### need to seed each environment if it is GymEnv
         seed = get_seed()
         if seed is not None and isinstance(utils.inner_env(env), GymEnv):

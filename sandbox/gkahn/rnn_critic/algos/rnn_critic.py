@@ -36,7 +36,8 @@ class RNNCritic(RLAlgorithm):
                  save_eval_rollouts_observations=False,
                  offpolicy=None,
                  num_offpolicy=np.inf,
-                 render=False):
+                 render=False,
+                 env_str=None):
         assert(learn_after_n_steps % n_envs == 0)
         if train_every_n_steps >= 1:
             assert(int(train_every_n_steps) % n_envs == 0)
@@ -69,7 +70,8 @@ class RNNCritic(RLAlgorithm):
             max_path_length=max_path_length,
             sampling_method=replay_pool_sampling,
             save_rollouts=save_rollouts,
-            save_rollouts_observations=save_rollouts_observations
+            save_rollouts_observations=save_rollouts_observations,
+            env_str=env_str
         )
 
         self._eval_sampler = RNNCriticSampler(
