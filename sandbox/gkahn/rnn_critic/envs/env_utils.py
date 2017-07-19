@@ -16,7 +16,7 @@ def create_env(env_str, seed=None):
     try:
         from sandbox.gkahn.rnn_critic.envs.car.collision_car_racing_env import CollisionCarRacingSteeringEnv, \
             CollisionCarRacingDiscreteEnv
-        from sandbox.gkahn.rnn_critic.envs.sim_rccar.square_env import SquareEnv
+        from sandbox.gkahn.rnn_critic.envs.rccar.square_env import SquareEnv
     except:
         pass
     from rllab.envs.mujoco.swimmer_env import SwimmerEnv

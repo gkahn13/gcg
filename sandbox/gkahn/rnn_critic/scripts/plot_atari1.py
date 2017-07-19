@@ -30,9 +30,8 @@ def load_experiments(indices):
 
     return exps
 
-all_exps = [load_experiments(range(i, i+3)) for i in list(range(1, 81, 3))]
+all_exps = [load_experiments(range(i, i+3)) for i in list(range(175, 201, 3))]
 
-import IPython; IPython.embed()
 
 ############
 ### Plot ###
@@ -83,25 +82,24 @@ def plot_cumreward(ax, analyze_group, color='k', label=None, window=20):
     xfmt.set_powerlimits((0, 0))
     ax.xaxis.set_major_formatter(xfmt)
 
-for i, exps in enumerate(np.array_split(all_exps, 9)):
-    f_cumreward, axes_cumreward = plt.subplots(1, 3, figsize=(9, 3), sharey=True, sharex=True)
+f_cumreward, axes_cumreward = plt.subplots(3, 3, figsize=(9, 9), sharey=False, sharex=True)
 
-    for ax_cumreward, exp in zip(axes_cumreward.ravel(), exps):
-        if not hasattr(exp, '__len__'):
-            exp = [exp]
-
-        if len(exp) > 0:
-            # try:
-            plot_cumreward(ax_cumreward, exp, window=4)
-            params = exp[0].params
-            policy = params['policy'][params['policy']['class']]
-            ax_cumreward.set_title('{0}\nN: {1}, H: {2}'.format(
-                params['alg']['env'].split("('")[-1].split("')")[0],
+for ax_cumreward, exp in zip(axes_cumreward.ravel(), all_exps):
+    if not hasattr(exp, '__len__'):
+        exp = [exp]
+        
+    if len(exp) > 0:
+        # try:
+        plot_cumreward(ax_cumreward, exp, window=4)
+        params = exp[0].params
+        policy = params['policy'][params['policy']['class']]
+        ax_cumreward.set_title('{0}\nN: {1}, H: {2}'.format(
+            params['alg']['env'].split("('")[-1].split("')")[0],
                 params['policy']['N'],
                 params['policy']['H'],
             ), fontdict={'fontsize': 6})
             # except:
             #     print('Could not plot exp')
 
-    f_cumreward.savefig(os.path.join(SAVE_FOLDER, 'atari0_{0:02d}_comparison.png'.format(i)), bbox_inches='tight', dpi=150)
-    plt.close(f_cumreward)
+f_cumreward.savefig(os.path.join(SAVE_FOLDER, 'atari1_comparison.png'), bbox_inches='tight', dpi=150)
+plt.close(f_cumreward)

@@ -9,7 +9,7 @@ class Panda3dCameraSensor(object):
         if size is None:
             size = (640, 480)
         if near_far is None:
-            near_far = (0.01, 10000.0)
+            near_far = (1.0, 1000.0)
         if hfov is None:
             hfov = 60
         winprops = WindowProperties.size(*size)
@@ -29,7 +29,7 @@ class Panda3dCameraSensor(object):
             flags = flags | GraphicsPipe.BFRefuseWindow
 
         self.buffer = self.graphics_engine.makeOutput(
-            base.pipe, "camera sensor buffer", -100,
+            base.pipe, "camera sensor buffer", 0,
             fbprops, winprops, flags)
 
         if not color and not depth:
@@ -65,7 +65,7 @@ class Panda3dCameraSensor(object):
             if sys.version_info < (3, 0):
                 data = data.get_data()
             image = np.frombuffer(data, np.uint8)
-            image.shape = (self.color_tex.getYSize(), self.color_tex.getXSize(), self.color_tex.getNumComponents())
+            image = image.reshape((self.color_tex.getYSize(), self.color_tex.getXSize(), self.color_tex.getNumComponents()))
             image = np.flipud(image)
             image = image[..., :-1]  # remove alpha channel; if alpha values are needed, set alpha bits to 8
             images.append(image)
@@ -74,20 +74,10 @@ class Panda3dCameraSensor(object):
             depth_data = self.depth_tex.getRamImage()
             if sys.version_info < (3, 0):
                 depth_data = depth_data.get_data()
-            depth_image_size = self.depth_tex.getYSize() * self.depth_tex.getXSize() * self.depth_tex.getNumComponents()
-            if len(depth_data) == 2 * depth_image_size:
-                dtype = np.float16
-            elif len(depth_data) == 3 * depth_image_size:
-                dtype = np.float24
-            elif len(depth_data) == 4 * depth_image_size:
-                dtype = np.float32
-            else:
-                raise ValueError("Depth data has %d bytes but the size of the depth image is %d" % (len(depth_data), depth_image_size))
-            depth_image = np.frombuffer(depth_data, dtype)
-            depth_image.shape = (self.depth_tex.getYSize(), self.depth_tex.getXSize(), self.depth_tex.getNumComponents())
+            depth_image = np.frombuffer(depth_data, np.float32)
+            depth_image = depth_image.reshape((self.depth_tex.getYSize(), self.depth_tex.getXSize(), self.depth_tex.getNumComponents()))
             depth_image = np.flipud(depth_image)
-            depth_image = depth_image.astype(np.float32, copy=False)  # copy only if necessary
+            depth_image = (255 ** depth_image).astype(np.uint8)
             images.append(depth_image)
-
         return tuple(images)
 
