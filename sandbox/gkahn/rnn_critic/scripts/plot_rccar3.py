@@ -30,7 +30,7 @@ def load_experiments(indices):
 
     return exps
 
-all_exps = [load_experiments(range(i, i+3)) for i in [0, 6, 3]]
+all_exps = [load_experiments(range(i, i+2)) for i in [23, 31]]
 
 
 ############
@@ -82,24 +82,25 @@ def plot_cumreward(ax, analyze_group, color='k', label=None, window=20):
     xfmt.set_powerlimits((0, 0))
     ax.xaxis.set_major_formatter(xfmt)
 
-f_cumreward, axes_cumreward = plt.subplots(1, 3, figsize=(9, 3), sharey=True, sharex=True)
+f_cumreward, axes_cumreward = plt.subplots(1, 2, figsize=(8, 4), sharey=True, sharex=True)
 
 for ax_cumreward, exp in zip(axes_cumreward.ravel(), all_exps):
     if not hasattr(exp, '__len__'):
         exp = [exp]
         
     if len(exp) > 0:
-        # try:
-        plot_cumreward(ax_cumreward, exp, window=20)
-        params = exp[0].params
-        policy = params['policy'][params['policy']['class']]
-        ax_cumreward.set_title('{0}\nN: {1}, H: {2}'.format(
-            params['alg']['env'].split("('")[-1].split("')")[0],
+        try:
+            plot_cumreward(ax_cumreward, exp, window=20)
+            params = exp[0].params
+            policy = params['policy'][params['policy']['class']]
+            ax_cumreward.set_title('{0}, N: {1}, H: {2}\nuse lstm: {3}'.format(
+                params['policy']['class'],
                 params['policy']['N'],
                 params['policy']['H'],
+                policy['use_lstm']
             ), fontdict={'fontsize': 6})
-            # except:
-            #     print('Could not plot exp')
+        except:
+            pass
 
-f_cumreward.savefig(os.path.join(SAVE_FOLDER, 'rccar0_comparison.png'), bbox_inches='tight', dpi=150)
+f_cumreward.savefig(os.path.join(SAVE_FOLDER, 'rccar3_comparison.png'), bbox_inches='tight', dpi=150)
 plt.close(f_cumreward)

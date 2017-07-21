@@ -16,6 +16,7 @@ class SquareEnv(CarEnv):
             'vel': -1.,
             'duration': 3.
         })
+        params.setdefault('collision_reward', 0.)
         self._model_path = params.get('model_path',
                                       os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models/square.egg'))
         CarEnv.__init__(
@@ -24,6 +25,7 @@ class SquareEnv(CarEnv):
 
         self.action_space = Box(low=np.array([-45., -1.]), high=np.array([45., 4.]))
         self.observation_space = Box(low=0, high=255, shape=tuple(self._get_observation().shape))
+        self._collision_reward = params['collision_reward']
 
     def _setup_light(self):
         pass
@@ -32,7 +34,7 @@ class SquareEnv(CarEnv):
         return (20.0, -19., 0.25)
 
     def _get_reward(self):
-        reward = 0 if self._collision else self._get_speed()
+        reward = self._collision_reward if self._collision else self._get_speed()
         return reward
 
     def _default_restart_pos(self):

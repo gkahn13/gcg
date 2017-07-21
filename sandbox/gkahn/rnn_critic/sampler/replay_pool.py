@@ -76,15 +76,15 @@ class RNNCriticReplayPool(object):
             else:
                 preclipped_indices = list(range(0, end+1))
 
-        if len(preclipped_indices) == 0:
-            import IPython; IPython.embed()
+        # if len(preclipped_indices) == 0:
+        #     import IPython; IPython.embed()
         indices = [preclipped_indices[-1]]
         for index in preclipped_indices[-2::-1]:
             if self._dones[index]:
                 break
             indices.insert(0, index)
-        if np.any(np.array(indices) > len(self)):
-            import IPython; IPython.embed()
+        # if np.any(np.array(indices) > len(self)):
+        #     import IPython; IPython.embed()
         return indices
 
     @property
@@ -112,8 +112,8 @@ class RNNCriticReplayPool(object):
                 stats[name + '_orth'] = orth / np.sqrt(eigs + 1e-5)
             else:
                 assert(value.dtype == np.uint8)
-                stats[name + '_mean'] = self._obs_mean # (0.5 * 255) * np.ones((1, value.shape[1]))
-                stats[name + '_orth'] = self._obs_orth # np.eye(value.shape[1]) / 255.
+                stats[name + '_mean'] = self._obs_mean
+                stats[name + '_orth'] = self._obs_orth
 
         return stats
 
@@ -446,3 +446,12 @@ class RNNCriticReplayPool(object):
     @staticmethod
     def get_recent_paths_pools(replay_pools):
         return list(itertools.chain(*[rp.get_recent_paths() for rp in replay_pools]))
+
+
+if __name__ == '__main__':
+    from sandbox.gkahn.rnn_critic.envs.env_utils import create_env
+
+    env_str = "PremadeGymEnv(wrap_deepmind(gym.envs.make('PongNoFrameskip-v3')), record_video=False, record_log=False)"
+    env = create_env(env_str)
+
+    rp = RNNCriticReplayPool
