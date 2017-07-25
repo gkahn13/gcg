@@ -66,4 +66,22 @@ class PendulumDiscreteSparse(PendulumContinuousSparse, PendulumDiscreteDense):
     def _step(self, u):
         u_cont = np.array([np.linspace(-self.max_torque, self.max_torque,self.action_space.n)[u]])
         return PendulumContinuousSparse._step(self, u_cont)
-    
+
+
+class PendulumStochastic(PendulumContinuousDense):
+    class spec:
+        id = 'PendulumStochastic'
+        timestep_limit = 200
+
+    def __init__(self, std=0.):
+        PendulumContinuousDense.__init__(self)
+
+        assert(0 <= std and std <= 1)
+        assert(np.all((self.action_space.low + self.action_space.high) == 0))
+        self._std = 0.
+
+    def step(self, action):
+        noise = self._std * \
+                (self.action_space.high - self.action_space.low) * \
+                np.random.normal(size=self.action_space.shape)
+        return super(PendulumStochastic, self).step(action + noise)

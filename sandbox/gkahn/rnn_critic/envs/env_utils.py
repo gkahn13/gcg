@@ -26,7 +26,7 @@ def create_env(env_str, seed=None):
     from sandbox.gkahn.rnn_critic.envs.phd_env import PhdEnv
     from sandbox.gkahn.rnn_critic.envs.cartpole_swingup_env import CartPoleSwingupEnv, CartPoleSwingupImageEnv
     from sandbox.gkahn.rnn_critic.envs.pendulum import PendulumContinuousDense, PendulumContinuousSparse, \
-        PendulumDiscreteDense, PendulumDiscreteSparse
+        PendulumDiscreteDense, PendulumDiscreteSparse, PendulumStochastic
 
     inner_env = eval(env_str)
     env = TfEnv(normalize(inner_env))

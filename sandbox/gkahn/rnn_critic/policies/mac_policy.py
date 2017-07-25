@@ -73,9 +73,15 @@ class MACPolicy(TfPolicy, Serializable):
         self._get_action_test = kwargs['get_action_test']
         self._get_action_target = kwargs['get_action_target']
         gaussian_es_params = kwargs['exploration_strategies'].get('GaussianStrategy', None)
-        self._gaussian_es = GaussianStrategy(self._env_spec, **gaussian_es_params) if gaussian_es_params else None
+        if gaussian_es_params is not None:
+            self._gaussian_es = GaussianStrategy(self._env_spec, **gaussian_es_params) if gaussian_es_params else None
+        else:
+            self._gaussian_es = None
         epsilon_greedy_es_params = kwargs['exploration_strategies'].get('EpsilonGreedyStrategy', None)
-        self._epsilon_greedy_es = EpsilonGreedyStrategy(self._env_spec, **epsilon_greedy_es_params)
+        if epsilon_greedy_es_params is not None:
+            self._epsilon_greedy_es = EpsilonGreedyStrategy(self._env_spec, **epsilon_greedy_es_params)
+        else:
+            self._epsilon_greedy_es = None
 
         ### setup the model
         self._tf_debug = dict()
