@@ -198,6 +198,7 @@ class RNNCritic(RLAlgorithm):
                                   train_rollouts=self._sampler.get_recent_paths(),
                                   eval_rollouts=eval_rollouts)
                 save_itr += 1
+                eval_rollouts = []
 
         self._save_params(save_itr,
                           train_rollouts=self._sampler.get_recent_paths(),
