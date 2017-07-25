@@ -94,7 +94,7 @@ class MACPolicy(TfPolicy, Serializable):
 
         assert((self._N == 1 and self._H == 1) or
                (self._N > 1 and self._H == 1) or
-               (self._N > 1 and self._H > 1 and self._N == self._H))
+               (self._N > 1 and self._H > 1))
 
     ##################
     ### Properties ###
@@ -268,7 +268,6 @@ class MACPolicy(TfPolicy, Serializable):
         """
         batch_size = tf.shape(tf_obs_lowd)[0]
         H = tf_actions_ph.get_shape()[1].value
-        N = H
         assert(tf_obs_lowd.get_shape()[1].value == (2 * self._rnn_state_dim if self._use_lstm else self._rnn_state_dim))
         tf.assert_equal(tf.shape(tf_obs_lowd)[0], tf.shape(tf_actions_ph)[0])
 
@@ -280,11 +279,11 @@ class MACPolicy(TfPolicy, Serializable):
         tf_nstep_rewards = []
         tf_nstep_values = []
         tf_nstep_values_softmax = []
-        for h in range(N):
+        for h in range(H):
             action = tf_actions_ph[:, h, :]
 
             next_istate, rew, val, vsoftmax = \
-                self._graph_inference_step(h, N, batch_size, istate, action, values_softmax, add_reg=add_reg)
+                self._graph_inference_step(h, H, batch_size, istate, action, values_softmax, add_reg=add_reg)
             if self._share_weights:
                 tf.get_variable_scope().reuse_variables()
 
@@ -293,10 +292,10 @@ class MACPolicy(TfPolicy, Serializable):
             tf_nstep_values.append(val)
             tf_nstep_values_softmax.append(vsoftmax)
 
-        tf_values = tf.concat(1, [self._graph_calculate_value(n, tf_nstep_rewards, tf_nstep_values) for n in range(N)])
+        tf_values = tf.concat(1, [self._graph_calculate_value(h, tf_nstep_rewards, tf_nstep_values) for h in range(H)])
         tf_values_softmax = tf.pack(tf_nstep_values_softmax, 1)
 
-        assert(tf_values.get_shape()[1].value == N)
+        assert(tf_values.get_shape()[1].value == H)
 
         return tf_values, tf_values_softmax, tf_nstep_rewards, tf_nstep_values
 
