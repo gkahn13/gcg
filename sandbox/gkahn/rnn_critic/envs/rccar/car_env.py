@@ -48,6 +48,7 @@ class CarEnv(DirectObject):
         self._world.setGravity(Vec3(0, 0, -9.81))
         self._dt = params.get('dt', 0.25)
         self._step = 0.05
+        self._world_time = 0
 
         # Vehicle
         shape = BulletBoxShape(Vec3(0.6, 1.0, 0.25))
@@ -157,7 +158,7 @@ class CarEnv(DirectObject):
         self._brakeForce = 0.0
 
     def _forward_1(self):
-        self._des_vel = 4 # 2
+        self._des_vel = 2
         self._brakeForce = 0.0
 
     def _forward_2(self):
@@ -276,6 +277,8 @@ class CarEnv(DirectObject):
         return vel
 
     def _update(self, dt=1.0, coll_check=True):
+        self._world_time += dt
+
         self._vehicle.setSteeringValue(self._steering, 0)
         self._vehicle.setSteeringValue(self._steering, 1)
         self._vehicle.setBrake(self._brakeForce, 0)
@@ -304,7 +307,7 @@ class CarEnv(DirectObject):
                 if self._des_vel is not None:
                     vel = self._get_speed()
                     self._mark_d += vel * self._curr_time
-                    print(vel, self._mark_d, self._is_contact())
+                    print('{0:.2f}, {1:.2f}, {2:.2f}, {3}'.format(self._world_time, vel, self._mark_d, self._is_contact()))
                     err = self._des_vel - vel
                     d_err = (err - self._last_err) / 0.05
                     self._last_err = err
@@ -430,6 +433,7 @@ class CarEnv(DirectObject):
                 pos, hpr = self._next_restart_pos_hpr()
             self._place_vehicle(pos=pos, hpr=hpr)
         self._collision = False
+        self._world_time = 0
         return self._get_observation()
 
     def step(self, action):

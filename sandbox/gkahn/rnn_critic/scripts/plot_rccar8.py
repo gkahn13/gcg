@@ -30,21 +30,7 @@ def load_experiments(indices):
 
     return exps
 
-# 63-65 DQN -1
-# 50-52 N-step -1
-# 53-55 MAC -1
-
-# 66-68 DQN -100
-# 56-58 N-step -100
-# 59-61 MAC -100
-
-# 69-71 DQN -10000
-# 43-45 N-step -10000
-# 46-48 MAC -10000
-
-all_exps = [load_experiments(range(63, 66)), load_experiments(range(50, 53)), load_experiments(range(53, 56)),
-            load_experiments(range(66, 69)), load_experiments(range(56, 59)), load_experiments(range(59, 62)),
-            load_experiments(range(69, 72)), load_experiments(range(43, 46)), load_experiments(range(46, 49))]
+all_exps = [load_experiments(range(i, i + 2)) for i in (82, 84, 91)]
 
 ############
 ### Plot ###
@@ -175,46 +161,11 @@ def plot_collisions(ax, analyze_group, color='k'):
     xfmt.set_powerlimits((0, 0))
     ax.xaxis.set_major_formatter(xfmt)
 
-def plot_value(ax, analyze_group, window=20):
-    # EstValuesMaxDiffMean, EstValuesMaxDiffStd
-    # EstValuesAvgDiffMean, EstValuesAvgDiffStd
-    # EstValuesMinDiffMean, EstValuesMinDiffStd
+f_cumreward, axes_cumreward = plt.subplots(1, 3, figsize=(15, 5), sharey=True, sharex=True)
+f_distance, axes_distance = plt.subplots(1, 3, figsize=(15, 5), sharey=True, sharex=True)
+f_coll, axes_coll = plt.subplots(1, 3, figsize=(15, 5), sharey=True, sharex=True)
 
-    for i, analyze in enumerate(analyze_group):
-        if analyze.progress is None:
-            continue
-        steps = np.array(analyze.progress['Step'])
-        max_values = np.array(analyze.progress['EstValuesMaxDiffMean'])
-        avg_values = np.array(analyze.progress['EstValuesAvgDiffMean'])
-        min_values = np.array(analyze.progress['EstValuesMinDiffMean'])
-
-        def moving_avg_std(idxs, data, window):
-            avg_idxs, means, stds = [], [], []
-            for i in range(window, len(data)):
-                avg_idxs.append(np.mean(idxs[i - window:i]))
-                means.append(np.mean(data[i - window:i]))
-                stds.append(np.std(data[i - window:i]))
-            return avg_idxs, np.asarray(means), np.asarray(stds)
-
-        steps, max_values, _ = moving_avg_std(steps, max_values, window=window)
-        steps, avg_values, _ = moving_avg_std(steps, avg_values, window=window)
-        steps, min_values, _ = moving_avg_std(steps, min_values, window=window)
-
-        ax.plot(steps, max_values, color='r', alpha=np.linspace(1., 0.4, len(analyze_group))[i])
-        ax.plot(steps, avg_values, color='k', alpha=np.linspace(1., 0.4, len(analyze_group))[i])
-        ax.plot(steps, min_values, color='b', alpha=np.linspace(1., 0.4, len(analyze_group))[i])
-
-    ax.grid()
-    xfmt = ticker.ScalarFormatter()
-    xfmt.set_powerlimits((0, 0))
-    ax.xaxis.set_major_formatter(xfmt)
-
-f_cumreward, axes_cumreward = plt.subplots(3, 3, figsize=(10, 10), sharey=True, sharex=True)
-f_distance, axes_distance = plt.subplots(3, 3, figsize=(10, 10), sharey=True, sharex=True)
-f_coll, axes_coll = plt.subplots(3, 3, figsize=(10, 10), sharey=True, sharex=True)
-f_value, axes_value = plt.subplots(3, 3, figsize=(10, 10), sharey=False, sharex=True)
-
-for ax_cumreward, ax_distance, ax_coll, ax_value, exp in zip(axes_cumreward.ravel(), axes_distance.ravel(), axes_coll.ravel(), axes_value.ravel(), all_exps):
+for ax_cumreward, ax_distance, ax_coll, exp in zip(axes_cumreward.ravel(), axes_distance.ravel(), axes_coll.ravel(), all_exps):
     if not hasattr(exp, '__len__'):
         exp = [exp]
         
@@ -223,10 +174,9 @@ for ax_cumreward, ax_distance, ax_coll, ax_value, exp in zip(axes_cumreward.rave
             plot_cumreward(ax_cumreward, exp, window=20)
             plot_distance(ax_distance, exp, window=20)
             plot_collisions(ax_coll, exp)
-            plot_value(ax_value, exp)
             params = exp[0].params
             policy = params['policy'][params['policy']['class']]
-            for ax in (ax_cumreward, ax_distance, ax_coll, ax_value):
+            for ax in (ax_cumreward, ax_distance, ax_coll):
                 ax.set_title('{0}, N: {1}, H: {2}, coll reward: {3}'.format(
                     params['policy']['class'],
                     params['policy']['N'],
@@ -237,21 +187,10 @@ for ax_cumreward, ax_distance, ax_coll, ax_value, exp in zip(axes_cumreward.rave
         except:
             pass
 
-for row in range(3):
-    axes = axes_value[row, :]
-    ymin, ymax = np.inf, -np.inf
-    for ax in axes:
-        ymin = min(ymin, ax.get_ylim()[0])
-        ymax = max(ymax, ax.get_ylim()[1])
-    for ax in axes:
-        ax.set_ylim((ymin, ymax))
-
-f_cumreward.savefig(os.path.join(SAVE_FOLDER, 'rccar6_cumreward.png'), bbox_inches='tight', dpi=150)
-f_distance.savefig(os.path.join(SAVE_FOLDER, 'rccar6_distance.png'), bbox_inches='tight', dpi=150)
-f_coll.savefig(os.path.join(SAVE_FOLDER, 'rccar6_coll.png'), bbox_inches='tight', dpi=150)
-f_value.savefig(os.path.join(SAVE_FOLDER, 'rccar6_value.png'), bbox_inches='tight', dpi=150)
+f_cumreward.savefig(os.path.join(SAVE_FOLDER, 'rccar8_cumreward.png'), bbox_inches='tight', dpi=150)
+f_distance.savefig(os.path.join(SAVE_FOLDER, 'rccar8_distance.png'), bbox_inches='tight', dpi=150)
+f_coll.savefig(os.path.join(SAVE_FOLDER, 'rccar8_coll.png'), bbox_inches='tight', dpi=150)
 
 plt.close(f_cumreward)
 plt.close(f_distance)
 plt.close(f_coll)
-plt.close(f_value)

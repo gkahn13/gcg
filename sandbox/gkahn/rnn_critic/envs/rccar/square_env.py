@@ -51,6 +51,6 @@ class SquareEnv(CarEnv):
 
 if __name__ == '__main__':
     # params = {'visualize': True, 'run_as_task': True, 'model_path': 'models/square.egg'}
-    params = {'visualize': True, 'run_as_task': True}
+    params = {'visualize': True, 'run_as_task': True, 'do_back_up': False}
     env = SquareEnv(params)
     import IPython; IPython.embed()
