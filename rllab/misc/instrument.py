@@ -759,6 +759,8 @@ def launch_ec2mujoco(params_list, exp_prefix, docker_image, code_full_path,
             rm -rf {local_code_path}
             export PYTHONPATH=/home/ubuntu/code/rllab:$PYTHONPATH
             export PATH="/home/ubuntu/anaconda2/bin:$PATH"
+            export PATH=/usr/local/cuda/bin:$PATH
+            export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
             source activate rllab3
             mkdir -p {local_code_path}
         """.format(code_full_path=code_full_path, local_code_path=config.DOCKER_CODE_DIR,
@@ -780,7 +782,6 @@ def launch_ec2mujoco(params_list, exp_prefix, docker_image, code_full_path,
         cd {local_code_path}
     """.format(local_code_path=config.DOCKER_CODE_DIR))
     sio.write("""
-        export DISPLAY=:0
         whoami
     """)
 
@@ -833,13 +834,14 @@ def launch_ec2mujoco(params_list, exp_prefix, docker_image, code_full_path,
             export MUJOCO_PY_MJPRO_PATH=$HOME/source/mjpro131
         """)
         # TODO: temp
-        # sio.write("""
-        #     sleep 10000
-        # """)
         sio.write("""
-            {command}
-        """.format(command=to_local_command(params, python_command=python_command, script=osp.join(config.DOCKER_CODE_DIR,script),
-                                             use_gpu=use_gpu)))
+             {command}
+         """.format(command=to_local_command(params, python_command=python_command, script=osp.join(config.DOCKER_CODE_DIR,script),
+                                              use_gpu=use_gpu)))
+        #sio.write("""
+        #    sleep 10000
+        #""")
+        
 
         sio.write("""
             aws s3 cp --recursive {log_dir} {remote_log_dir} --region {aws_region}
@@ -886,7 +888,7 @@ def launch_ec2mujoco(params_list, exp_prefix, docker_image, code_full_path,
         sio.write("""
         aws s3 cp {s3_path} /home/ubuntu/remote_script.sh --region {aws_region} && \\
         chmod +x /home/ubuntu/remote_script.sh && \\
-        su ubuntu -c /home/ubuntu/remote_script.sh
+        su ubuntu -c `xvfb-run -e /tmp/xvfb.err -a -s "-screen 0 1400x900x24 +extension RANDR" -- bash /home/ubuntu/remote_script.sh`
         """.format(s3_path=s3_path, aws_region=aws_config['region_name']))
         user_data = dedent(sio.getvalue())
     else:

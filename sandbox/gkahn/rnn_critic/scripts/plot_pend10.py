@@ -109,8 +109,6 @@ for i in range(1289, 1309, 3):
     #    print('Failed to load {0}'.format(i))
     #    edict[i] = np.nan
 
-import IPython; IPython.embed()
-
 ############
 ### Plot ###
 ############
@@ -163,3 +161,5 @@ ax.legend(handles=handles, loc='upper center', bbox_to_anchor=(0.52, 1.9), ncol=
 
 f.savefig(os.path.join(SAVE_FOLDER, 'pend10_comparison.png'), bbox_inches='tight', dpi=200)
 plt.close(f)
+
+import IPython; IPython.embed()
