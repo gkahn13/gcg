@@ -40,7 +40,7 @@ def load_probcoll_experiments(exp_folder):
 ### Plot ###
 ############
 
-def plot_cumreward(ax, analyze_group, color='k', label=None, window=20):
+def plot_cumreward(ax, analyze_group, color='k', label=None, window=20, success_cumreward=None):
     data_interp = DataAverageInterpolation()
     min_step = max_step = None
     for i, analyze in enumerate(analyze_group):
@@ -88,6 +88,11 @@ def plot_cumreward(ax, analyze_group, color='k', label=None, window=20):
     ax.plot(steps, values_mean, color=color, label=label)
     ax.fill_between(steps, values_mean - values_std, values_mean + values_std,
                     color=color, alpha=0.4)
+
+    if success_cumreward is not None:
+        if values_mean.max() >= success_cumreward:
+            thresh_step = steps[(values_mean >= success_cumreward).argmax()]
+            ax.vlines(thresh_step, (values_mean - values_std).min(), (values_mean + values_std).max(), color='g', linestyle='--')
 
     ax.grid()
     xfmt = ticker.ScalarFormatter()
@@ -211,20 +216,20 @@ def plot_value(ax, analyze_group, window=20):
 ### Specific experiments ###
 ############################
 
-def plot_554_562():
-    FILE_NAME = 'rccar_554_562'
+def plot_554_590():
+    FILE_NAME = 'rccar_554_590'
     SAVE_DISTANCE = False
     SAVE_COLL = False
     SAVE_VALUE = False
 
-    all_exps = [load_experiments(range(i, i + 3)) for i in range(554, 562, 3)]
+    all_exps = [load_experiments(range(i, i + 3)) for i in list(range(554, 562, 3)) + list(range(564, 590, 3))]
 
     probcoll_exp = load_probcoll_experiments('/home/gkahn/code/probcoll/experiments/sim_rccar/test/analysis_images')
 
-    f_cumreward, axes_cumreward = plt.subplots(1, 3, figsize=(15, 5), sharey=True, sharex=True)
-    f_distance, axes_distance = plt.subplots(1, 3, figsize=(15, 5), sharey=True, sharex=True)
-    f_coll, axes_coll = plt.subplots(1, 3, figsize=(15, 5), sharey=True, sharex=True)
-    f_value, axes_value = plt.subplots(1, 3, figsize=(15, 5), sharey=True, sharex=True)
+    f_cumreward, axes_cumreward = plt.subplots(4, 3, figsize=(15, 20), sharey=False, sharex=True)
+    f_distance, axes_distance = plt.subplots(4, 3, figsize=(15, 20), sharey=True, sharex=True)
+    f_coll, axes_coll = plt.subplots(4, 3, figsize=(15, 20), sharey=True, sharex=True)
+    f_value, axes_value = plt.subplots(4, 3, figsize=(15, 20), sharey=False, sharex=True)
 
     for ax_cumreward, ax_distance, ax_coll, ax_value, exp in \
             zip(axes_cumreward.ravel(), axes_distance.ravel(), axes_coll.ravel(), axes_value.ravel(), all_exps):
@@ -234,7 +239,267 @@ def plot_554_562():
 
         if len(exp) > 0:
             try:
-                plot_cumreward(ax_cumreward, exp, window=20)
+                plot_cumreward(ax_cumreward, exp, window=20, success_cumreward=40.)
+                if probcoll_exp is not None:
+                    plot_cumreward_probcoll(ax_cumreward, probcoll_exp)
+                plot_distance(ax_distance, exp, window=20)
+                plot_collisions(ax_coll, exp)
+                plot_value(ax_value, exp, window=4)
+                params = exp[0].params
+                policy = params['policy'][params['policy']['class']]
+                for ax in (ax_cumreward, ax_distance, ax_coll, ax_value):
+                    ax.set_title('{0}, N: {1}, H: {2}, coll reward: {3}'.format(
+                        params['policy']['class'],
+                        params['policy']['N'],
+                        params['policy']['H'],
+                        params['alg']['env'].split(':')[-1].split('}')[0]
+                    ), fontdict={'fontsize': 6})
+                ax_distance.set_ylim((0, 15))
+            except:
+                pass
+
+    for all_axes in (axes_cumreward, axes_value):
+        for row in range(4):
+            axes = all_axes[row, :]
+            ymin, ymax = np.inf, -np.inf
+            for ax in axes:
+                ymin = min(ymin, ax.get_ylim()[0])
+                ymax = max(ymax, ax.get_ylim()[1])
+            for ax in axes:
+                ax.set_ylim((ymin, ymax))
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    if SAVE_DISTANCE:
+        f_distance.savefig(os.path.join(SAVE_FOLDER, '{0}_distance.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    if SAVE_COLL:
+        f_coll.savefig(os.path.join(SAVE_FOLDER, '{0}_coll.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    if SAVE_VALUE:
+        f_value.savefig(os.path.join(SAVE_FOLDER, '{0}_value.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+
+    plt.close(f_cumreward)
+    plt.close(f_distance)
+    plt.close(f_coll)
+    plt.close(f_value)
+
+def plot_592_627():
+    FILE_NAME = 'rccar_592_627'
+    SAVE_DISTANCE = False
+    SAVE_COLL = False
+    SAVE_VALUE = False
+
+    all_exps = [load_experiments(range(i, i + 3)) for i in range(592, 627, 3)]
+
+    probcoll_exp = load_probcoll_experiments('/home/gkahn/code/probcoll/experiments/sim_rccar/test/analysis_images')
+
+    f_cumreward, axes_cumreward = plt.subplots(4, 3, figsize=(15, 20), sharey=False, sharex=True)
+    f_distance, axes_distance = plt.subplots(4, 3, figsize=(15, 20), sharey=True, sharex=True)
+    f_coll, axes_coll = plt.subplots(4, 3, figsize=(15, 20), sharey=True, sharex=True)
+    f_value, axes_value = plt.subplots(4, 3, figsize=(15, 20), sharey=False, sharex=True)
+
+    for ax_cumreward, ax_distance, ax_coll, ax_value, exp in \
+            zip(axes_cumreward.ravel(), axes_distance.ravel(), axes_coll.ravel(), axes_value.ravel(), all_exps):
+
+        if not hasattr(exp, '__len__'):
+            exp = [exp]
+
+        if len(exp) > 0:
+            try:
+                plot_cumreward(ax_cumreward, exp, window=20, success_cumreward=40.)
+                if probcoll_exp is not None:
+                    plot_cumreward_probcoll(ax_cumreward, probcoll_exp)
+                plot_distance(ax_distance, exp, window=20)
+                plot_collisions(ax_coll, exp)
+                plot_value(ax_value, exp, window=4)
+                params = exp[0].params
+                policy = params['policy'][params['policy']['class']]
+                for ax in (ax_cumreward, ax_distance, ax_coll, ax_value):
+                    ax.set_title('{0}, N: {1}, H: {2}, coll reward: {3}'.format(
+                        params['policy']['class'],
+                        params['policy']['N'],
+                        params['policy']['H'],
+                        params['alg']['env'].split(':')[-1].split('}')[0]
+                    ), fontdict={'fontsize': 6})
+                ax_distance.set_ylim((0, 15))
+            except:
+                pass
+
+    for all_axes in (axes_cumreward, axes_value):
+        for row in range(4):
+            axes = all_axes[row, :]
+            ymin, ymax = np.inf, -np.inf
+            for ax in axes:
+                ymin = min(ymin, ax.get_ylim()[0])
+                ymax = max(ymax, ax.get_ylim()[1])
+            for ax in axes:
+                ax.set_ylim((ymin, ymax))
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    if SAVE_DISTANCE:
+        f_distance.savefig(os.path.join(SAVE_FOLDER, '{0}_distance.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    if SAVE_COLL:
+        f_coll.savefig(os.path.join(SAVE_FOLDER, '{0}_coll.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    if SAVE_VALUE:
+        f_value.savefig(os.path.join(SAVE_FOLDER, '{0}_value.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+
+    plt.close(f_cumreward)
+    plt.close(f_distance)
+    plt.close(f_coll)
+    plt.close(f_value)
+
+def plot_629_664():
+    FILE_NAME = 'rccar_629_664'
+    SAVE_DISTANCE = False
+    SAVE_COLL = False
+    SAVE_VALUE = False
+
+    all_exps = [load_experiments(range(i, i + 3)) for i in range(629, 664, 3)]
+
+    probcoll_exp = load_probcoll_experiments('/home/gkahn/code/probcoll/experiments/sim_rccar/test/analysis_images')
+
+    f_cumreward, axes_cumreward = plt.subplots(4, 3, figsize=(15, 20), sharey=False, sharex=True)
+    f_distance, axes_distance = plt.subplots(4, 3, figsize=(15, 20), sharey=True, sharex=True)
+    f_coll, axes_coll = plt.subplots(4, 3, figsize=(15, 20), sharey=True, sharex=True)
+    f_value, axes_value = plt.subplots(4, 3, figsize=(15, 20), sharey=False, sharex=True)
+
+    for ax_cumreward, ax_distance, ax_coll, ax_value, exp in \
+            zip(axes_cumreward.ravel(), axes_distance.ravel(), axes_coll.ravel(), axes_value.ravel(), all_exps):
+
+        if not hasattr(exp, '__len__'):
+            exp = [exp]
+
+        if len(exp) > 0:
+            try:
+                plot_cumreward(ax_cumreward, exp, window=20, success_cumreward=40.)
+                if probcoll_exp is not None:
+                    plot_cumreward_probcoll(ax_cumreward, probcoll_exp)
+                plot_distance(ax_distance, exp, window=20)
+                plot_collisions(ax_coll, exp)
+                plot_value(ax_value, exp, window=4)
+                params = exp[0].params
+                policy = params['policy'][params['policy']['class']]
+                for ax in (ax_cumreward, ax_distance, ax_coll, ax_value):
+                    ax.set_title('{0}, N: {1}, H: {2}, coll reward: {3}'.format(
+                        params['policy']['class'],
+                        params['policy']['N'],
+                        params['policy']['H'],
+                        params['alg']['env'].split(':')[-1].split('}')[0]
+                    ), fontdict={'fontsize': 6})
+                ax_distance.set_ylim((0, 15))
+            except:
+                pass
+
+    for all_axes in (axes_cumreward, axes_value):
+        for row in range(4):
+            axes = all_axes[row, :]
+            ymin, ymax = np.inf, -np.inf
+            for ax in axes:
+                ymin = min(ymin, ax.get_ylim()[0])
+                ymax = max(ymax, ax.get_ylim()[1])
+            for ax in axes:
+                ax.set_ylim((ymin, ymax))
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    if SAVE_DISTANCE:
+        f_distance.savefig(os.path.join(SAVE_FOLDER, '{0}_distance.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    if SAVE_COLL:
+        f_coll.savefig(os.path.join(SAVE_FOLDER, '{0}_coll.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    if SAVE_VALUE:
+        f_value.savefig(os.path.join(SAVE_FOLDER, '{0}_value.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+
+    plt.close(f_cumreward)
+    plt.close(f_distance)
+    plt.close(f_coll)
+    plt.close(f_value)
+
+def plot_666_701():
+    FILE_NAME = 'rccar_666_701'
+    SAVE_DISTANCE = False
+    SAVE_COLL = False
+    SAVE_VALUE = False
+
+    all_exps = [load_experiments(range(i, i + 3)) for i in range(666, 701, 3)]
+
+    probcoll_exp = load_probcoll_experiments('/home/gkahn/code/probcoll/experiments/sim_rccar/test/analysis_images')
+
+    f_cumreward, axes_cumreward = plt.subplots(4, 3, figsize=(15, 20), sharey=False, sharex=True)
+    f_distance, axes_distance = plt.subplots(4, 3, figsize=(15, 20), sharey=True, sharex=True)
+    f_coll, axes_coll = plt.subplots(4, 3, figsize=(15, 20), sharey=True, sharex=True)
+    f_value, axes_value = plt.subplots(4, 3, figsize=(15, 20), sharey=False, sharex=True)
+
+    for ax_cumreward, ax_distance, ax_coll, ax_value, exp in \
+            zip(axes_cumreward.ravel(), axes_distance.ravel(), axes_coll.ravel(), axes_value.ravel(), all_exps):
+
+        if not hasattr(exp, '__len__'):
+            exp = [exp]
+
+        if len(exp) > 0:
+            try:
+                plot_cumreward(ax_cumreward, exp, window=20, success_cumreward=40.)
+                if probcoll_exp is not None:
+                    plot_cumreward_probcoll(ax_cumreward, probcoll_exp)
+                plot_distance(ax_distance, exp, window=20)
+                plot_collisions(ax_coll, exp)
+                plot_value(ax_value, exp, window=4)
+                params = exp[0].params
+                policy = params['policy'][params['policy']['class']]
+                for ax in (ax_cumreward, ax_distance, ax_coll, ax_value):
+                    ax.set_title('{0}, N: {1}, H: {2}, coll reward: {3}'.format(
+                        params['policy']['class'],
+                        params['policy']['N'],
+                        params['policy']['H'],
+                        params['alg']['env'].split(':')[-1].split('}')[0]
+                    ), fontdict={'fontsize': 6})
+                ax_distance.set_ylim((0, 15))
+            except:
+                pass
+
+    for all_axes in (axes_cumreward, axes_value):
+        for row in range(4):
+            axes = all_axes[row, :]
+            ymin, ymax = np.inf, -np.inf
+            for ax in axes:
+                ymin = min(ymin, ax.get_ylim()[0])
+                ymax = max(ymax, ax.get_ylim()[1])
+            for ax in axes:
+                ax.set_ylim((ymin, ymax))
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    if SAVE_DISTANCE:
+        f_distance.savefig(os.path.join(SAVE_FOLDER, '{0}_distance.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    if SAVE_COLL:
+        f_coll.savefig(os.path.join(SAVE_FOLDER, '{0}_coll.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    if SAVE_VALUE:
+        f_value.savefig(os.path.join(SAVE_FOLDER, '{0}_value.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+
+    plt.close(f_cumreward)
+    plt.close(f_distance)
+    plt.close(f_coll)
+    plt.close(f_value)
+
+def plot_703_714():
+    FILE_NAME = 'rccar_703_714'
+    SAVE_DISTANCE = False
+    SAVE_COLL = False
+    SAVE_VALUE = False
+
+    all_exps = [load_experiments(range(i, i + 3)) for i in range(703, 714, 3)]
+
+    probcoll_exp = load_probcoll_experiments('/home/gkahn/code/probcoll/experiments/sim_rccar/test/analysis_images')
+
+    f_cumreward, axes_cumreward = plt.subplots(1, 4, figsize=(20, 5), sharey=True, sharex=True)
+    f_distance, axes_distance = plt.subplots(1, 4, figsize=(20, 5), sharey=True, sharex=True)
+    f_coll, axes_coll = plt.subplots(1, 4, figsize=(20, 5), sharey=True, sharex=True)
+    f_value, axes_value = plt.subplots(1, 4, figsize=(20, 5), sharey=False, sharex=True)
+
+    for ax_cumreward, ax_distance, ax_coll, ax_value, exp in \
+            zip(axes_cumreward.ravel(), axes_distance.ravel(), axes_coll.ravel(), axes_value.ravel(), all_exps):
+
+        if not hasattr(exp, '__len__'):
+            exp = [exp]
+
+        if len(exp) > 0:
+            try:
+                plot_cumreward(ax_cumreward, exp, window=20, success_cumreward=40.)
                 if probcoll_exp is not None:
                     plot_cumreward_probcoll(ax_cumreward, probcoll_exp)
                 plot_distance(ax_distance, exp, window=20)
@@ -266,4 +531,64 @@ def plot_554_562():
     plt.close(f_coll)
     plt.close(f_value)
 
-plot_554_562()
+def plot_716_727():
+    FILE_NAME = 'rccar_716_727'
+    SAVE_DISTANCE = False
+    SAVE_COLL = False
+    SAVE_VALUE = False
+
+    all_exps = [load_experiments(range(i, i + 3)) for i in range(716, 727, 3)]
+
+    probcoll_exp = load_probcoll_experiments('/home/gkahn/code/probcoll/experiments/sim_rccar/test/analysis_images')
+
+    f_cumreward, axes_cumreward = plt.subplots(1, 4, figsize=(20, 5), sharey=True, sharex=True)
+    f_distance, axes_distance = plt.subplots(1, 4, figsize=(20, 5), sharey=True, sharex=True)
+    f_coll, axes_coll = plt.subplots(1, 4, figsize=(20, 5), sharey=True, sharex=True)
+    f_value, axes_value = plt.subplots(1, 4, figsize=(20, 5), sharey=False, sharex=True)
+
+    for ax_cumreward, ax_distance, ax_coll, ax_value, exp in \
+            zip(axes_cumreward.ravel(), axes_distance.ravel(), axes_coll.ravel(), axes_value.ravel(), all_exps):
+
+        if not hasattr(exp, '__len__'):
+            exp = [exp]
+
+        if len(exp) > 0:
+            try:
+                plot_cumreward(ax_cumreward, exp, window=20, success_cumreward=40.)
+                if probcoll_exp is not None:
+                    plot_cumreward_probcoll(ax_cumreward, probcoll_exp)
+                plot_distance(ax_distance, exp, window=20)
+                plot_collisions(ax_coll, exp)
+                plot_value(ax_value, exp, window=4)
+                params = exp[0].params
+                policy = params['policy'][params['policy']['class']]
+                for ax in (ax_cumreward, ax_distance, ax_coll, ax_value):
+                    ax.set_title('{0}, N: {1}, H: {2}, coll reward: {3}'.format(
+                        params['policy']['class'],
+                        params['policy']['N'],
+                        params['policy']['H'],
+                        params['alg']['env'].split(':')[-1].split('}')[0]
+                    ), fontdict={'fontsize': 6})
+                ax_distance.set_ylim((0, 15))
+            except:
+                pass
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    if SAVE_DISTANCE:
+        f_distance.savefig(os.path.join(SAVE_FOLDER, '{0}_distance.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    if SAVE_COLL:
+        f_coll.savefig(os.path.join(SAVE_FOLDER, '{0}_coll.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    if SAVE_VALUE:
+        f_value.savefig(os.path.join(SAVE_FOLDER, '{0}_value.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+
+    plt.close(f_cumreward)
+    plt.close(f_distance)
+    plt.close(f_coll)
+    plt.close(f_value)
+
+# plot_554_590()
+# plot_592_627()
+# plot_629_664()
+# plot_666_701()
+# plot_703_714()
+plot_716_727()

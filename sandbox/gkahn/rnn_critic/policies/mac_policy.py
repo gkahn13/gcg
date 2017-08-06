@@ -643,7 +643,6 @@ class MACPolicy(TfPolicy, Serializable):
                 ### logprob
                 tf_target_get_action_values = tf.transpose(tf.reshape(tf_target_get_action_values, (self._N + 1, -1)))[:, 1:]
             else:
-                assert(self._retrace_lambda is None)
                 tf_target_get_action_values = tf.zeros([tf.shape(tf_train_values)[0], self._N])
 
             ### update target network
