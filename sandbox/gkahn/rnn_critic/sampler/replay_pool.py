@@ -9,7 +9,7 @@ from sandbox.gkahn.rnn_critic.utils.utils import timeit
 
 class RNNCriticReplayPool(object):
 
-    def __init__(self, env_spec, N, gamma, size, obs_history_len, sampling_method, save_rollouts=False, save_rollouts_observations=True):
+    def __init__(self, env_spec, env_horizon, N, gamma, size, obs_history_len, sampling_method, save_rollouts=False, save_rollouts_observations=True):
         """
         :param env_spec: for observation/action dimensions
         :param N: horizon length
@@ -20,6 +20,7 @@ class RNNCriticReplayPool(object):
         :param save_rollouts: for debugging
         """
         self._env_spec = env_spec
+        self._env_horizon = env_horizon
         self._N = N
         self._gamma = gamma
         self._size = int(size)
@@ -180,6 +181,15 @@ class RNNCriticReplayPool(object):
                 if len(prev_start_indices) > 0 and \
                    np.all(self._rewards[prev_start_indices] == 0):
                     self._sampling_indices[prev_start_indices[0]] = False
+        elif self._sampling_method == 'terminal':
+            start_indices = self._get_prev_indices(self._index, self._N)
+            if done:
+                if len(self._get_indices(self._last_done_index, self._index)) == self._env_horizon - 1:
+                    self._sampling_indices[start_indices] = False
+                else:
+                    self._sampling_indices[start_indices] = True
+            else:
+                self._sampling_indices[start_indices[0]] = False
         else:
             raise NotImplementedError
         self._index = (self._index + 1) % self._size
@@ -244,7 +254,7 @@ class RNNCriticReplayPool(object):
                 start_index = np.random.randint(low=0, high=len(self) - self._N)
                 if start_index not in false_indices:
                     start_indices.append(start_index)
-        elif self._sampling_method == 'nonzero':
+        elif self._sampling_method == 'nonzero' or self._sampling_method == 'terminal':
             nonzero_indices = np.nonzero(self._sampling_indices[:len(self) - self._N])[0]
             zero_indices = np.nonzero(self._sampling_indices[:len(self) - self._N] == 0)[0]
 
@@ -259,6 +269,8 @@ class RNNCriticReplayPool(object):
 
                 if start_index not in false_indices:
                     start_indices.append(start_index)
+        else:
+            raise NotImplementedError
 
         return start_indices
 

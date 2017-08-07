@@ -24,6 +24,7 @@ class RNNCriticSampler(object):
         self._n_envs = n_envs
 
         self._replay_pools = [RNNCriticReplayPool(env.spec,
+                                                  env.horizon,
                                                   policy.N,
                                                   policy.gamma,
                                                   replay_pool_size // n_envs,
