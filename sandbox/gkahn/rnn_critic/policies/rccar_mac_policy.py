@@ -57,10 +57,10 @@ class RCcarMACPolicy(MACPolicy, Serializable):
         ### process to lowd
         with tf.variable_scope(scope_select, reuse=reuse_select):
             tf_preprocess_select = self._graph_preprocess_placeholders()
-            tf_obs_lowd_select = self._graph_obs_to_lowd(tf_obs_ph, tf_preprocess_select)
+            tf_obs_lowd_select = self._graph_obs_to_lowd(tf_obs_ph, tf_preprocess_select, is_training=False)
         with tf.variable_scope(scope_eval, reuse=reuse_eval):
             tf_preprocess_eval = self._graph_preprocess_placeholders()
-            tf_obs_lowd_eval = self._graph_obs_to_lowd(tf_obs_ph, tf_preprocess_eval)
+            tf_obs_lowd_eval = self._graph_obs_to_lowd(tf_obs_ph, tf_preprocess_eval, is_training=False)
         ### tile
         tf_actions = tf.tile(tf_actions, (num_obs, 1, 1))
         tf_obs_lowd_repeat_select = tf_utils.repeat_2d(tf_obs_lowd_select, K, 0)
@@ -69,11 +69,11 @@ class RCcarMACPolicy(MACPolicy, Serializable):
         with tf.variable_scope(scope_select, reuse=reuse_select):
             tf_values_all_select, tf_values_softmax_all_select, _, _ = \
                 self._graph_inference(tf_obs_lowd_repeat_select, tf_actions, get_action_params['values_softmax'],
-                                      tf_preprocess_select, add_reg=False)  # [num_obs*k, H]
+                                      tf_preprocess_select, is_training=False, add_reg=False)  # [num_obs*k, H]
         with tf.variable_scope(scope_eval, reuse=reuse_eval):
             tf_values_all_eval, tf_values_softmax_all_eval, _, _ = \
                 self._graph_inference(tf_obs_lowd_repeat_eval, tf_actions, get_action_params['values_softmax'],
-                                      tf_preprocess_eval, add_reg=False)  # [num_obs*k, H]
+                                      tf_preprocess_eval, is_training=False, add_reg=False)  # [num_obs*k, H]
         if self._is_classification:
             ### convert pre-activation to post-activation
             tf_values_all_select = -tf.sigmoid(tf_values_all_select)
@@ -143,7 +143,6 @@ class RCcarMACPolicy(MACPolicy, Serializable):
 
         return tf_cost, tf_cross_entropy
 
-
     def _graph_setup(self):
         ### create session and graph
         tf_sess = tf.get_default_session()
@@ -165,16 +164,16 @@ class RCcarMACPolicy(MACPolicy, Serializable):
                 ### create preprocess placeholders
                 tf_preprocess = self._graph_preprocess_placeholders()
                 ### process obs to lowd
-                tf_obs_lowd = self._graph_obs_to_lowd(tf_obs_ph, tf_preprocess)
+                tf_obs_lowd = self._graph_obs_to_lowd(tf_obs_ph, tf_preprocess, is_training=True)
                 ### create training policy
                 tf_train_values, tf_train_values_softmax, _, _ = \
                     self._graph_inference(tf_obs_lowd, tf_actions_ph[:, :self._H, :],
-                                          self._values_softmax, tf_preprocess)
+                                          self._values_softmax, tf_preprocess, is_training=True)
 
             with tf.variable_scope(policy_scope, reuse=True):
                 tf_train_values_test, tf_train_values_softmax_test, _, _ = \
                     self._graph_inference(tf_obs_lowd, tf_actions_ph[:, :self._get_action_test['H'], :],
-                                          self._values_softmax, tf_preprocess)
+                                          self._values_softmax, tf_preprocess, is_training=False)
                 tf_get_value = tf.reduce_sum(tf_train_values_softmax_test * tf_train_values_test, reduction_indices=1)
 
             ### action selection

@@ -22,7 +22,7 @@ aws_config = {
     'security_groups': ['rllab-sg'],
     'key_name': 'id_rsa',
     'instance_type': 'p2.xlarge',
-    'spot_price': '1.0',
+    'spot_price': '0.5',
 }
 if args.region == 'us-west-1':
     aws_config.update({
@@ -49,9 +49,9 @@ elif args.region == 'us-east-2':
     aws_config.update({
         'security_groups': [],
         # 'key_name': 'rllab-us-east-2',
-        'image_id': 'ami-0f2f0e6a',
+        'image_id': 'ami-99ddfdfc',
         'region_name': 'us-east-2',
-        'subnet_id': 'subnet-24ad045f',  # TODO
+        'subnet_id': 'subnet-2e14ef63',  # TODO
         'security_group_ids': ['sg-ee707e87']
     })
 else:

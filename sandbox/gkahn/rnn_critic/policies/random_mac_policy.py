@@ -7,13 +7,9 @@ from rllab.core.serializable import Serializable
 from rllab.misc.overrides import overrides
 from rllab.misc import ext
 
-from sandbox.rocky.tf.spaces.discrete import Discrete
-
 from sandbox.gkahn.rnn_critic.policies.mac_policy import MACPolicy
 from sandbox.gkahn.tf.core import xplatform
 from sandbox.gkahn.rnn_critic.utils import tf_utils
-
-from sandbox.gkahn.rnn_critic.tf.mulint_rnn_cell import BasicMulintRNNCell, BasicMulintLSTMCell
 
 class RandomMACPolicy(MACPolicy, Serializable):
     def __init__(self, **kwargs):

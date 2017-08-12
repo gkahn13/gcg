@@ -696,6 +696,102 @@ def plot_742_753():
     plt.close(f_coll)
     plt.close(f_value)
 
+def plot_755_766():
+    FILE_NAME = 'rccar_755_766'
+    SAVE_DISTANCE = False
+    SAVE_COLL = False
+    SAVE_VALUE = False
+
+    all_exps = [load_experiments(range(i, i + 3)) for i in range(755, 766, 3)]
+
+    probcoll_exp = load_probcoll_experiments('/home/gkahn/code/probcoll/experiments/sim_rccar/test/analysis_images')
+
+    f_cumreward, axes_cumreward = plt.subplots(1, 4, figsize=(20, 5), sharey=True, sharex=True)
+    f_distance, axes_distance = plt.subplots(1, 4, figsize=(20, 5), sharey=True, sharex=True)
+    f_coll, axes_coll = plt.subplots(1, 4, figsize=(20, 5), sharey=True, sharex=True)
+    f_value, axes_value = plt.subplots(1, 4, figsize=(20, 5), sharey=False, sharex=True)
+
+    for ax_cumreward, ax_distance, ax_coll, ax_value, exp in \
+            zip(axes_cumreward.ravel(), axes_distance.ravel(), axes_coll.ravel(), axes_value.ravel(), all_exps):
+
+        if not hasattr(exp, '__len__'):
+            exp = [exp]
+
+        if len(exp) > 0:
+            try:
+                plot_cumreward(ax_cumreward, exp, window=8, success_cumreward=40.)
+                if probcoll_exp is not None:
+                    plot_cumreward_probcoll(ax_cumreward, probcoll_exp)
+                plot_distance(ax_distance, exp, window=20)
+                plot_collisions(ax_coll, exp)
+                plot_value(ax_value, exp, window=4)
+                params = exp[0].params
+                policy = params['policy'][params['policy']['class']]
+                for ax in (ax_cumreward, ax_distance, ax_coll, ax_value):
+                    ax.set_title('{0}, N: {1}, H: {2}, coll reward: {3}'.format(
+                        params['policy']['class'],
+                        params['policy']['N'],
+                        params['policy']['H'],
+                        params['alg']['env_eval'].split(':')[-1].split('}')[0]
+                    ), fontdict={'fontsize': 6})
+                ax_distance.set_ylim((0, 15))
+            except:
+                pass
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    if SAVE_DISTANCE:
+        f_distance.savefig(os.path.join(SAVE_FOLDER, '{0}_distance.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    if SAVE_COLL:
+        f_coll.savefig(os.path.join(SAVE_FOLDER, '{0}_coll.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    if SAVE_VALUE:
+        f_value.savefig(os.path.join(SAVE_FOLDER, '{0}_value.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+
+    plt.close(f_cumreward)
+    plt.close(f_distance)
+    plt.close(f_coll)
+    plt.close(f_value)
+
+def plot_768_911():
+    FILE_NAME = 'rccar_768_911'
+
+    all_exps = np.array([load_experiments(range(i, i + 3)) for i in range(768, 911, 3)])
+
+    probcoll_exp = load_probcoll_experiments('/home/gkahn/code/probcoll/experiments/sim_rccar/test/analysis_images')
+
+    for i, exps in enumerate(np.split(all_exps, 3)):
+
+        f_cumreward, axes_cumreward = plt.subplots(4, 4, figsize=(15, 15), sharey=True, sharex=True)
+
+        for ax_cumreward, exp in zip(axes_cumreward.ravel(), exps):
+
+            if not hasattr(exp, '__len__'):
+                exp = [exp]
+
+            if len(exp) > 0:
+                try:
+                    plot_cumreward(ax_cumreward, exp, window=8, success_cumreward=40.)
+                    if probcoll_exp is not None:
+                        plot_cumreward_probcoll(ax_cumreward, probcoll_exp)
+                    params = exp[0].params
+                    policy = params['policy'][params['policy']['class']]
+                    for ax in (ax_cumreward,):
+                        ax.set_title('{0}, {1}, is_classif: {2},\ntarg: {3}, rp: {4}, N: {5}, H: {6}'.format(
+                            params['exp_name'],
+                            params['policy']['class'],
+                            params['policy']['RCcarMACPolicy']['is_classification'],
+                            params['policy']['use_target'],
+                            params['alg']['replay_pool_sampling'],
+                            params['policy']['N'],
+                            params['policy']['H'],
+                        ), fontdict={'fontsize': 8})
+                except:
+                    pass
+
+        f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward_{1}.png'.format(FILE_NAME, i)),
+                            bbox_inches='tight', dpi=150)
+
+        plt.close(f_cumreward)
+
 # plot_554_590()
 # plot_592_627()
 # plot_629_664()
@@ -703,4 +799,6 @@ def plot_742_753():
 # plot_703_714()
 # plot_716_727()
 # plot_729_740()
-plot_742_753()
+# plot_742_753()
+# plot_755_766()
+plot_768_911()

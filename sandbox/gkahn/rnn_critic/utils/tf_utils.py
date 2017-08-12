@@ -19,6 +19,31 @@ def minimize_and_clip(optimizer, objective, var_list, clip_val=10):
 ### Operations ###
 ##################
 
+def spatial_soft_argmax(features, dtype=tf.float32):
+    """
+    features shape is [N, H, W, C]
+    """
+    N = tf.shape(features)[0]
+    val_shape = features.get_shape()
+    H, W, C = val_shape[1].value, val_shape[2].value, val_shape[3].value
+    features = tf.reshape(
+        tf.transpose(features, [0, 3, 1, 2]),
+        [-1, H * W])
+    softmax = tf.nn.softmax(features)
+    spatial_softmax = tf.transpose(tf.reshape(softmax, [N, C, H, W]), [0, 2, 3, 1])
+    spatial_softmax_pos = tf.expand_dims(spatial_softmax, -1)
+    # TODO shape [H, W, 1, 2]
+    # TODO H or W is 1
+    assert(H != 1 and W != 1)
+    delta_h = 2. / tf.cast(H - 1, dtype)
+    delta_w = 2. / tf.cast(W - 1, dtype)
+    ran_h = tf.tile(tf.expand_dims(tf.range(-1., 1. + delta_h, delta_h, dtype=dtype), 1), [1, W])
+    ran_w = tf.tile(tf.expand_dims(tf.range(-1., 1 + delta_w, delta_w, dtype=dtype), 0), [H, 1])
+    image_pos = tf.expand_dims(tf.stack([ran_h, ran_w], 2), 2)
+    spatial_soft_amax = tf.reduce_sum(spatial_softmax_pos * image_pos, axis=[1, 2])
+    shaped_ssamax = tf.reshape(spatial_soft_amax, [N, C * 2])
+    return shaped_ssamax
+
 def repeat_2d(x, reps, axis):
     assert(axis == 0 or axis == 1)
 
