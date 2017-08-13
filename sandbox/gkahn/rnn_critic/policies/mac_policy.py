@@ -211,12 +211,12 @@ class MACPolicy(TfPolicy, Serializable):
                                               tf.tile(tf_preprocess['observations_mean_var'], (1, self._obs_history_len)),
                                               tf.tile(tf_preprocess['observations_orth_var'], (self._obs_history_len,)))
             else:
-                tf_obs_whitened = tf.matmul(tf_obs_ph -
-                                            tf.tile(tf_preprocess['observations_mean_var'], (1, self._obs_history_len)),
-                                            tf_utils.block_diagonal(
-                                                [tf_preprocess['observations_orth_var']] * self._obs_history_len))
+                tf_obs_whitened = tf_obs_ph # TODO
+                # tf_obs_whitened = tf.matmul(tf_obs_ph -
+                #                             tf.tile(tf_preprocess['observations_mean_var'], (1, self._obs_history_len)),
+                #                             tf_utils.block_diagonal(
+                #                                 [tf_preprocess['observations_orth_var']] * self._obs_history_len))
             tf_obs_whitened = tf.reshape(tf_obs_whitened, (-1, self._obs_history_len, obs_dim))
-            # tf_obs_whitened = tf_obs_ph # TODO
 
             ### obs --> lower dimensional space
             if self._image_graph is not None:
