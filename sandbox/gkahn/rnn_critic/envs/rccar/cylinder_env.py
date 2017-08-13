@@ -18,11 +18,13 @@ class CylinderEnv(CarEnv):
         params.setdefault('do_back_up', False)
         self._model_path = params.get('model_path',
                                       os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models/cylinder.egg'))
+
+        self._obs_shape = params['obs_shape']
+
         CarEnv.__init__(
             self,
             params=params)
 
-        self._obs_shape = params['obs_shape']
         self.action_space = Box(low=np.array([params['steer_limits'][0], params['speed_limits'][0]]),
                                 high=np.array([params['steer_limits'][1], params['speed_limits'][1]]))
         self.observation_space = Box(low=0, high=255, shape=tuple(self._get_observation().shape))
@@ -96,5 +98,5 @@ class CylinderEnv(CarEnv):
         return 24
 
 if __name__ == '__main__':
-    params = {'visualize': True, 'run_as_task': True, 'model_path': 'models/cylinder.egg', 'use_depth': True}
+    params = {'visualize': True, 'run_as_task': True}
     env = CylinderEnv(params)

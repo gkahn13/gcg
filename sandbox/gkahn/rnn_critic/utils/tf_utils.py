@@ -19,6 +19,29 @@ def minimize_and_clip(optimizer, objective, var_list, clip_val=10):
 ### Operations ###
 ##################
 
+def cumulative_increasing_sum(x, dtype=tf.float32):
+    """
+    x is tensor of shape (batch_size x T).
+    output[i] = sum(x[:i+1])
+    return output
+    """
+    # TODO
+    T = x.get_shape()[1].value
+    if T is None:
+        T = tf.shape(x)[1]
+    mask1 = tf.concat(
+        [tf.ones((1,), dtype=dtype), tf.zeros((T - 1,), dtype=dtype)],
+        axis= 0)
+    mask2 = tf.concat([tf.zeros((1,), dtype=dtype), tf.ones((T - 1,), dtype=dtype)],
+        axis=0)
+    masked = x * mask1 + tf.nn.relu(x) * mask2
+    upper_triangle = tf.matrix_band_part(
+        tf.ones((T, T), dtype=dtype),
+        0,
+        -1)
+    output = tf.matmul(masked, upper_triangle)
+    return output
+
 def spatial_soft_argmax(features, dtype=tf.float32):
     """
     features shape is [N, H, W, C]

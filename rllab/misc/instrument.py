@@ -833,14 +833,14 @@ def launch_ec2mujoco(params_list, exp_prefix, docker_image, code_full_path,
             export MUJOCO_PY_MJKEY_PATH=$HOME/source/mujoco/key_6061.txt
             export MUJOCO_PY_MJPRO_PATH=$HOME/source/mjpro131
         """)
-        # TODO: temp
+
         sio.write("""
              {command}
          """.format(command=to_local_command(params, python_command=python_command, script=osp.join(config.DOCKER_CODE_DIR,script),
                                               use_gpu=use_gpu)))
-        #sio.write("""
+        # sio.write("""
         #    sleep 10000
-        #""")
+        # """)
         
 
         sio.write("""

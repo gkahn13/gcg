@@ -7,6 +7,7 @@ from rllab.misc import ext
 from sandbox.gkahn.rnn_critic.policies.mac_policy import MACPolicy
 from sandbox.gkahn.rnn_critic.utils import tf_utils
 from sandbox.gkahn.tf.core import xplatform
+from sandbox.gkahn.rnn_critic.tf import networks
 
 from sandbox.rocky.tf.spaces.discrete import Discrete
 
@@ -17,12 +18,58 @@ class RCcarMACPolicy(MACPolicy, Serializable):
 
         self._speed_weight = kwargs.pop('speed_weight')
         self._is_classification = kwargs.pop('is_classification')
+        self._probcoll_strictly_increasing = kwargs.pop('probcoll_strictly_increasing')
 
         MACPolicy.__init__(self, **kwargs)
 
     ###########################
     ### TF graph operations ###
     ###########################
+
+    def _graph_inference(self, tf_obs_lowd, tf_actions_ph, values_softmax, tf_preprocess, is_training, add_reg=True):
+        """
+        :param tf_obs_lowd: [batch_size, self._rnn_state_dim]
+        :param tf_actions_ph: [batch_size, H, action_dim]
+        :param values_softmax: string
+        :param tf_preprocess:
+        :return: tf_values: [batch_size, H]
+        """
+        batch_size = tf.shape(tf_obs_lowd)[0]
+        H = tf_actions_ph.get_shape()[1].value
+        # tf.assert_equal(tf.shape(tf_obs_lowd)[0], tf.shape(tf_actions_ph)[0])
+
+        rnn_outputs, _ = networks.rnn(tf_actions_ph, self._action_graph, initial_state=tf_obs_lowd)
+        rnn_output_dim = rnn_outputs.get_shape()[2].value
+        rnn_outputs = tf.reshape(rnn_outputs, (-1, rnn_output_dim))
+
+        self._output_graph.update({'output_dim': 1})
+        tf_values, _ = networks.fcnn(rnn_outputs, self._output_graph, is_training=is_training, scope='fcnn_values')
+        tf_values = tf.reshape(tf_values, (-1, H))
+
+        if self._probcoll_strictly_increasing:
+            tf_values = tf_utils.cumulative_increasing_sum(tf_values)
+
+        with tf.name_scope('nstep_lambdas'):
+            if values_softmax['type'] == 'final':
+                tf_values_softmax = tf.zeros([batch_size, H])
+                tf_values_softmax[:, -1] = 1.
+            elif values_softmax['type'] == 'mean':
+                tf_values_softmax = (1. / float(H)) * tf.ones([batch_size, H])
+            elif values_softmax['type'] == 'exponential':
+                lam = values_softmax['exponential']['lambda']
+                tf_values_softmaxes = []
+                for h in range(H):
+                    if h == H - 1:
+                        tf_values_softmaxes.append(np.power(lam, h) * tf.ones([batch_size]))
+                    else:
+                        tf_values_softmaxes.append(tf_values_softmax=(1 - lam) * np.power(lam, h) * tf.ones([batch_size]))
+                tf_values_softmax = tf.stack(tf_values_softmaxes, 1)
+            else:
+                raise NotImplementedError
+
+        assert(tf_values.get_shape()[1].value == H)
+
+        return tf_values, tf_values_softmax, None, None
 
     def _graph_get_action(self, tf_obs_ph, get_action_params, scope_select, reuse_select, scope_eval, reuse_eval,
                           add_speed_cost=False):
@@ -126,12 +173,12 @@ class RCcarMACPolicy(MACPolicy, Serializable):
         tf.assert_equal(tf.reduce_sum(tf_weights, 0), 1.)
         tf.assert_equal(tf.reduce_sum(tf_train_values_softmax, 1), 1.)
 
-        tf.assert_equal(tf.reduce_min(tf_rewards_ph) == 0 or tf.reduce_min(tf_rewards_ph) == 1, True)
-        tf.assert_equal(tf.reduce_max(tf_rewards_ph) == 0 or tf.reduce_max(tf_rewards_ph) == 1, True)
+        tf.assert_equal(tf.reduce_min(tf.cast(tf.logical_or(tf.reduce_min(tf_rewards_ph) == -1, tf.reduce_min(tf_rewards_ph) == 0), tf.int32)), 1)
+        tf.assert_equal(tf.reduce_min(tf.cast(tf.logical_or(tf.reduce_max(tf_rewards_ph) == -1, tf.reduce_max(tf_rewards_ph) == 0), tf.int32)), 1)
 
         tf_labels = tf.cast(tf.cumsum(tf_rewards_ph, axis=1) < -0.5, tf.float32)
 
-        tf_cross_entropies = tf.nn.sigmoid_cross_entropy_with_logits(logits=tf_train_values, targets=tf_labels)
+        tf_cross_entropies = tf.nn.sigmoid_cross_entropy_with_logits(logits=tf_train_values, labels=tf_labels)
         tf_cross_entropy = tf.reduce_sum(tf_weights * tf_train_values_softmax * tf_cross_entropies)
 
         ### weight decay
@@ -212,11 +259,14 @@ class RCcarMACPolicy(MACPolicy, Serializable):
 
             ### update target network
             if self._use_target and self._separate_target_params:
+                tf_policy_vars_nobatchnorm = list(
+                    filter(lambda v: 'biased' not in v.name and 'local_step' not in v.name,
+                           tf_policy_vars))
                 tf_target_vars = sorted(tf.get_collection(xplatform.global_variables_collection_name(),
                                                           scope=target_scope), key=lambda v: v.name)
-                assert (len(tf_policy_vars) == len(tf_target_vars))
+                assert (len(tf_policy_vars_nobatchnorm) == len(tf_target_vars))
                 tf_update_target_fn = []
-                for var, var_target in zip(tf_policy_vars, tf_target_vars):
+                for var, var_target in zip(tf_policy_vars_nobatchnorm, tf_target_vars):
                     assert (var.name.replace(policy_scope, '') == var_target.name.replace(target_scope, ''))
                     tf_update_target_fn.append(var_target.assign(var))
                 tf_update_target_fn = tf.group(*tf_update_target_fn)

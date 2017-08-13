@@ -89,9 +89,7 @@ def fcnn(inputs,
          reuse=False,
          is_training=True):
 
-    if 'hidden_activation' not in params:
-        hidden_activation = None
-    elif params['hidden_activation'] == 'relu':
+    if params['hidden_activation'] == 'relu':
         hidden_activation = tf.nn.relu
     elif params['hidden_activation'] == 'tanh':
         hidden_activation = tf.nn.tanh

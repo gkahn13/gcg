@@ -38,6 +38,7 @@ class MACPolicy(TfPolicy, Serializable):
         self._image_graph = kwargs['image_graph']
         self._observation_graph = kwargs['observation_graph']
         self._action_graph = kwargs['action_graph']
+        self._rnn_graph = kwargs['rnn_graph']
         self._output_graph = kwargs['output_graph']
 
         ### target network
@@ -241,9 +242,15 @@ class MACPolicy(TfPolicy, Serializable):
         """
         batch_size = tf.shape(tf_obs_lowd)[0]
         H = tf_actions_ph.get_shape()[1].value
+        N = self._N
         # tf.assert_equal(tf.shape(tf_obs_lowd)[0], tf.shape(tf_actions_ph)[0])
 
-        rnn_outputs, _ = networks.rnn(tf_actions_ph, self._action_graph, initial_state=tf_obs_lowd)
+        action_dim = tf_actions_ph.get_shape()[2].value
+        actions = tf.reshape(tf_actions_ph, (-1, action_dim))
+        rnn_inputs, _ = networks.fcnn(actions, self._action_graph, is_training=is_training, scope='fcnn_actions')
+        rnn_inputs = tf.reshape(rnn_inputs, (-1, H, self._action_graph['output_dim']))
+
+        rnn_outputs, _ = networks.rnn(rnn_inputs, self._rnn_graph, initial_state=tf_obs_lowd)
         rnn_output_dim = rnn_outputs.get_shape()[2].value
         rnn_outputs = tf.reshape(rnn_outputs, (-1, rnn_output_dim))
 
@@ -253,17 +260,19 @@ class MACPolicy(TfPolicy, Serializable):
         tf_nstep_rewards = tf.unstack(tf.reshape(tf_nstep_rewards, (-1, H)), axis=1)
         tf_nstep_values = tf.unstack(tf.reshape(tf_nstep_values, (-1, H)), axis=1)
 
-        tf_values = tf.stack([self._graph_calculate_value(h, tf_nstep_rewards, tf_nstep_values) for h in range(H)], 1)
+        tf_values_list = [self._graph_calculate_value(h, tf_nstep_rewards, tf_nstep_values) for h in range(H)]
+        tf_values_list += [tf_values_list[-1]] * (N - H)
+        tf_values = tf.stack(tf_values_list, 1)
         with tf.name_scope('nstep_lambdas'):
             if values_softmax['type'] == 'final':
-                tf_values_softmax = tf.zeros([batch_size, H])
+                tf_values_softmax = tf.zeros([batch_size, N])
                 tf_values_softmax[:, -1] = 1.
             elif values_softmax['type'] == 'mean':
-                tf_values_softmax = (1. / float(H)) * tf.ones([batch_size, H])
+                tf_values_softmax = (1. / float(H)) * tf.ones([batch_size, N])
             elif values_softmax['type'] == 'exponential':
                 lam = values_softmax['exponential']['lambda']
                 tf_values_softmaxes = []
-                for h in range(H):
+                for h in range(N):
                     if h == H - 1:
                         tf_values_softmaxes.append(np.power(lam, h) * tf.ones([batch_size]))
                     else:
@@ -272,7 +281,7 @@ class MACPolicy(TfPolicy, Serializable):
             else:
                 raise NotImplementedError
 
-        assert(tf_values.get_shape()[1].value == H)
+        assert(tf_values.get_shape()[1].value == N)
 
         return tf_values, tf_values_softmax, tf_nstep_rewards, tf_nstep_values
 
