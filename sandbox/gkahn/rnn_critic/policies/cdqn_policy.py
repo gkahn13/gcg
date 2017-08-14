@@ -28,7 +28,7 @@ class CDQNPolicy(MACPolicy, Serializable):
     ###########################
 
     @overrides
-    def _graph_inference(self, tf_obs_lowd, tf_actions_ph, values_softmax, tf_preprocess, add_reg=True, pad_inputs=True):
+    def _graph_inference(self, tf_obs_lowd, tf_actions_ph, values_softmax, tf_preprocess, is_training, add_reg=True, pad_inputs=True):
         """
         :param tf_obs_lowd: [batch_size, self._rnn_state_dim]
         :param tf_actions_ph: [batch_size, H, action_dim]
@@ -48,10 +48,10 @@ class CDQNPolicy(MACPolicy, Serializable):
             layer = tf_obs_lowd
             if self._use_bilinear:
                 pad_ones = tf.ones((batch_size, 1))
-                layer = tf_utils.batch_outer_product_2d(tf.concat(1, [layer, pad_ones]),
-                                                        tf.concat(1, [tf_actions_ph[:, 0, :], pad_ones]))
+                layer = tf_utils.batch_outer_product_2d(tf.concat([layer, pad_ones], 1),
+                                                        tf.concat([tf_actions_ph[:, 0, :], pad_ones], 1))
             else:
-                layer = tf.concat(1, [layer, tf_actions_ph[:, 0, :]])
+                layer = tf.concat([layer, tf_actions_ph[:, 0, :]], 1)
 
             ### obs_lowd + action --> value
             for i, num_outputs in enumerate(self._value_hidden_layers + [1]):

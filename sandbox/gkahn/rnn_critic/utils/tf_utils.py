@@ -111,7 +111,7 @@ def batch_outer_product_2d(X, Y):
 
     X_tile = tf.tile(X, (1, V))
     Y_repeat = repeat_2d(Y, U, 1)
-    return tf.mul(X_tile, Y_repeat)
+    return tf.multiply(X_tile, Y_repeat)
 
 def gather_2d(x, idxs):
     """
