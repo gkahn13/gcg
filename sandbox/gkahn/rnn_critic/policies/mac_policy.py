@@ -273,7 +273,7 @@ class MACPolicy(TfPolicy, Serializable):
                 lam = values_softmax['exponential']['lambda']
                 tf_values_softmaxes = []
                 for h in range(N):
-                    if h == H - 1:
+                    if h == N - 1:
                         tf_values_softmaxes.append(np.power(lam, h) * tf.ones([batch_size]))
                     else:
                         tf_values_softmaxes.append(tf_values_softmax = (1 - lam) * np.power(lam, h) * tf.ones([batch_size]))

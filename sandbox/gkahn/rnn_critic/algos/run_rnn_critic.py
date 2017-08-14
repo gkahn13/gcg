@@ -23,6 +23,7 @@ from sandbox.gkahn.rnn_critic.policies.notarget_mac_policy import NotargetMACPol
 from sandbox.gkahn.rnn_critic.policies.final_mac_policy import FinalMACPolicy
 from sandbox.gkahn.rnn_critic.policies.final_nstep_mac_policy import FinalNstepMACPolicy
 from sandbox.gkahn.rnn_critic.policies.rccar_mac_policy import RCcarMACPolicy
+from sandbox.gkahn.rnn_critic.policies.nstep_mac_policy import NstepMACPolicy
 
 def run_rnn_critic(params):
     # copy yaml for posterity

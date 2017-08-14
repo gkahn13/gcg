@@ -792,20 +792,20 @@ def plot_768_911():
 
         plt.close(f_cumreward)
 
-def plot_913_921():
-        FILE_NAME = 'rccar_913_921'
+def plot_913_930():
+        FILE_NAME = 'rccar_913_930'
         SAVE_DISTANCE = False
         SAVE_COLL = False
         SAVE_VALUE = False
 
-        all_exps = [load_experiments(range(i, i + 3)) for i in range(913, 921, 3)]
+        all_exps = [load_experiments(range(i, i + 3)) for i in list(range(913, 921, 3)) + list(range(923, 930, 3))]
 
         probcoll_exp = load_probcoll_experiments('/home/gkahn/code/probcoll/experiments/sim_rccar/test/analysis_images')
 
-        f_cumreward, axes_cumreward = plt.subplots(1, 3, figsize=(15, 5), sharey=True, sharex=True)
-        f_distance, axes_distance = plt.subplots(1, 3, figsize=(15, 5), sharey=True, sharex=True)
-        f_coll, axes_coll = plt.subplots(1, 3, figsize=(15, 5), sharey=True, sharex=True)
-        f_value, axes_value = plt.subplots(1, 3, figsize=(15, 5), sharey=False, sharex=True)
+        f_cumreward, axes_cumreward = plt.subplots(2, 3, figsize=(15, 10), sharey=True, sharex=True)
+        f_distance, axes_distance = plt.subplots(2, 3, figsize=(15, 10), sharey=True, sharex=True)
+        f_coll, axes_coll = plt.subplots(2, 3, figsize=(15, 10), sharey=True, sharex=True)
+        f_value, axes_value = plt.subplots(2, 3, figsize=(15, 10), sharey=False, sharex=True)
 
         for ax_cumreward, ax_distance, ax_coll, ax_value, exp in \
                 zip(axes_cumreward.ravel(), axes_distance.ravel(), axes_coll.ravel(), axes_value.ravel(), all_exps):
@@ -824,11 +824,11 @@ def plot_913_921():
                     params = exp[0].params
                     policy = params['policy'][params['policy']['class']]
                     for ax in (ax_cumreward, ax_distance, ax_coll, ax_value):
-                        ax.set_title('{0}, N: {1}, H: {2}, coll reward: {3}'.format(
+                        ax.set_title('{0}, N: {1}, H: {2}, speeds: {3}'.format(
                             params['policy']['class'],
                             params['policy']['N'],
                             params['policy']['H'],
-                            params['alg']['env_eval'].split(':')[-1].split('}')[0]
+                            params['alg']['env_eval'].split("'speed_limits':")[-1].split('}')[0]
                         ), fontdict={'fontsize': 6})
                     ax_distance.set_ylim((0, 15))
                 except:
@@ -859,4 +859,4 @@ def plot_913_921():
 # plot_742_753()
 # plot_755_766()
 # plot_768_911()
-plot_913_921()
+plot_913_930()
