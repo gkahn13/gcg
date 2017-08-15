@@ -1,7 +1,6 @@
 import tensorflow as tf
 
 from sandbox.gkahn.rnn_critic.tf import rnn_cell
-from sandbox.gkahn.rnn_critic.tf import mulint_rnn_cell
 
 def convnn(inputs,
            params,
@@ -211,8 +210,7 @@ def rnn(inputs,
                 initial_state.append(tf.nn.rnn_cell.LSTMStateTuple(states[i * 2], states[i * 2 + 1]))
             initial_state = tuple(initial_state)
     elif params['cell_type'] == 'mulint_lstm':
-        # cell_type = rnn_cell.DpMulintLSTMCell
-        cell_type = mulint_rnn_cell.BasicMulintLSTMCell
+        cell_type = rnn_cell.DpMulintLSTMCell
         if initial_state is not None:
             states = tf.split(initial_state, 2 * num_cells, axis=1)
             num_units = states[0].get_shape()[1].value
@@ -259,17 +257,13 @@ def rnn(inputs,
                 num_inputs = inputs.get_shape()[-1]
             else:
                 num_inputs = num_units
-            if params['cell_type'] == 'mulint_lstm':
-                # TODO temp
-                cell = cell_type(num_units, activation=tf.nn.relu)
-            else:
-                cell = cell_type(
-                    num_units,
-                    dropout_mask=dp,
-                    dtype=dtype,
-                    num_inputs=num_inputs,
-                    weights_scope='{0}_{1}'.format(params['cell_type'], i),
-                    **cell_args)
+            cell = cell_type(
+                num_units,
+                dropout_mask=dp,
+                dtype=dtype,
+                num_inputs=num_inputs,
+                weights_scope='{0}_{1}'.format(params['cell_type'], i),
+                **cell_args)
 
             cells.append(cell)
 

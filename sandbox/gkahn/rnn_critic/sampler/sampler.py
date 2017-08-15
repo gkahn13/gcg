@@ -19,7 +19,7 @@ from sandbox.rocky.tf.spaces.box import Box
 
 class RNNCriticSampler(object):
     def __init__(self, policy, env, n_envs, replay_pool_size, max_path_length, sampling_method,
-                 save_rollouts=False, save_rollouts_observations=True, env_str=None):
+                 save_rollouts=False, save_rollouts_observations=True, save_env_infos=False, env_str=None):
         self._policy = policy
         self._n_envs = n_envs
 
@@ -31,7 +31,8 @@ class RNNCriticSampler(object):
                                                   obs_history_len=policy.obs_history_len,
                                                   sampling_method=sampling_method,
                                                   save_rollouts=save_rollouts,
-                                                  save_rollouts_observations=save_rollouts_observations)
+                                                  save_rollouts_observations=save_rollouts_observations,
+                                                  save_env_infos=save_env_infos)
                               for _ in range(n_envs)]
 
         try:
@@ -91,12 +92,12 @@ class RNNCriticSampler(object):
                                                                         explore=explore)
 
         ### take step
-        next_observations, rewards, dones, _ = self._vec_env.step(actions)
+        next_observations, rewards, dones, env_infos = self._vec_env.step(actions)
 
         ### add to replay pool
-        for replay_pool, action, reward, done, est_value, logprob in \
-                zip(self._replay_pools, actions, rewards, dones, est_values, logprobs):
-            replay_pool.store_effect(action, reward, done, est_value, logprob)
+        for replay_pool, action, reward, done, env_info, est_value, logprob in \
+                zip(self._replay_pools, actions, rewards, dones, env_infos, est_values, logprobs):
+            replay_pool.store_effect(action, reward, done, env_info, est_value, logprob)
 
         self._curr_observations = next_observations
 

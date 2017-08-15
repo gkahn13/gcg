@@ -98,5 +98,7 @@ class CylinderEnv(CarEnv):
         return 24
 
 if __name__ == '__main__':
-    params = {'visualize': True, 'run_as_task': True}
-    env = CylinderEnv(params)
+    # params = {'visualize': True, 'run_as_task': True}
+    # env = CylinderEnv(params)
+    env = CylinderEnv()
+    import IPython; IPython.embed()

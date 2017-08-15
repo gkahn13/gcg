@@ -4,6 +4,7 @@ import itertools
 
 import matplotlib.pyplot as plt
 from matplotlib import ticker
+import matplotlib.cm as cm
 
 from analyze_experiment import AnalyzeRNNCritic
 from sandbox.gkahn.rnn_critic.utils.utils import DataAverageInterpolation
@@ -211,6 +212,37 @@ def plot_value(ax, analyze_group, window=20):
     xfmt = ticker.ScalarFormatter()
     xfmt.set_powerlimits((0, 0))
     ax.xaxis.set_major_formatter(xfmt)
+
+def plot_paths(axes, analyze_group):
+
+    def get_rollout_positions(exp):
+        start_steps = []
+        positions = []
+        for rollout in itertools.chain(*exp.eval_rollouts_itrs):
+            start_steps.append(rollout['steps'][0])
+
+            p = np.array([d['pos'][:2] for d in rollout['env_infos']])
+            positions.append(p)
+
+        return start_steps, positions
+
+    group_start_steps, group_positions = zip(*[get_rollout_positions(exp) for exp in analyze_group])
+    colors = [cm.rainbow(i) for i in np.linspace(0, 1, len(group_positions))]
+
+    for start_steps, positions, color in zip(group_start_steps, group_positions, colors):
+        start_steps_list = np.array_split(start_steps, len(axes))
+        positions_list = np.array_split(positions, len(axes))
+        for ax, start_steps_i, positions_i in zip(axes, start_steps_list, positions_list):
+            ax.set_title('[{0:.2e}, {1:.2e}]'.format(min(start_steps_i), max(start_steps_i)),
+                         fontdict={'fontsize': 6})
+
+            for pos in positions_i[::len(positions_i)//10]:
+                ax.plot(pos[:, 0], pos[:, 1], color=color, linewidth=1.)
+                if len(pos) < 23:
+                    ax.plot([pos[-1, 0]], [pos[-1, 1]], color=color, marker='d')
+
+            ax.set_xlim([-4.5, 4.5])
+            ax.set_ylim([-7.5, 7.5])
 
 ############################
 ### Specific experiments ###
@@ -793,61 +825,81 @@ def plot_768_911():
         plt.close(f_cumreward)
 
 def plot_913_930():
-        FILE_NAME = 'rccar_913_930'
-        SAVE_DISTANCE = False
-        SAVE_COLL = False
-        SAVE_VALUE = False
+    FILE_NAME = 'rccar_913_930'
+    SAVE_DISTANCE = False
+    SAVE_COLL = False
+    SAVE_VALUE = False
 
-        all_exps = [load_experiments(range(i, i + 3)) for i in list(range(913, 921, 3)) + list(range(923, 930, 3))]
+    all_exps = [load_experiments(range(i, i + 3)) for i in list(range(913, 921, 3)) + list(range(923, 930, 3))]
 
-        probcoll_exp = load_probcoll_experiments('/home/gkahn/code/probcoll/experiments/sim_rccar/test/analysis_images')
+    probcoll_exp = load_probcoll_experiments('/home/gkahn/code/probcoll/experiments/sim_rccar/test/analysis_images')
 
-        f_cumreward, axes_cumreward = plt.subplots(2, 3, figsize=(15, 10), sharey=True, sharex=True)
-        f_distance, axes_distance = plt.subplots(2, 3, figsize=(15, 10), sharey=True, sharex=True)
-        f_coll, axes_coll = plt.subplots(2, 3, figsize=(15, 10), sharey=True, sharex=True)
-        f_value, axes_value = plt.subplots(2, 3, figsize=(15, 10), sharey=False, sharex=True)
+    f_cumreward, axes_cumreward = plt.subplots(2, 3, figsize=(15, 10), sharey=True, sharex=True)
+    f_distance, axes_distance = plt.subplots(2, 3, figsize=(15, 10), sharey=True, sharex=True)
+    f_coll, axes_coll = plt.subplots(2, 3, figsize=(15, 10), sharey=True, sharex=True)
+    f_value, axes_value = plt.subplots(2, 3, figsize=(15, 10), sharey=False, sharex=True)
 
-        for ax_cumreward, ax_distance, ax_coll, ax_value, exp in \
-                zip(axes_cumreward.ravel(), axes_distance.ravel(), axes_coll.ravel(), axes_value.ravel(), all_exps):
+    for ax_cumreward, ax_distance, ax_coll, ax_value, exp in \
+            zip(axes_cumreward.ravel(), axes_distance.ravel(), axes_coll.ravel(), axes_value.ravel(), all_exps):
 
-            if not hasattr(exp, '__len__'):
-                exp = [exp]
+        if not hasattr(exp, '__len__'):
+            exp = [exp]
 
-            if len(exp) > 0:
-                try:
-                    plot_cumreward(ax_cumreward, exp, window=8, success_cumreward=40.)
-                    if probcoll_exp is not None:
-                        plot_cumreward_probcoll(ax_cumreward, probcoll_exp)
-                    plot_distance(ax_distance, exp, window=20)
-                    plot_collisions(ax_coll, exp)
-                    plot_value(ax_value, exp, window=4)
-                    params = exp[0].params
-                    policy = params['policy'][params['policy']['class']]
-                    for ax in (ax_cumreward, ax_distance, ax_coll, ax_value):
-                        ax.set_title('{0}, N: {1}, H: {2}, speeds: {3}'.format(
-                            params['policy']['class'],
-                            params['policy']['N'],
-                            params['policy']['H'],
-                            params['alg']['env_eval'].split("'speed_limits':")[-1].split('}')[0]
-                        ), fontdict={'fontsize': 6})
-                    ax_distance.set_ylim((0, 15))
-                except:
-                    pass
+        if len(exp) > 0:
+            try:
+                plot_cumreward(ax_cumreward, exp, window=8, success_cumreward=40.)
+                if probcoll_exp is not None:
+                    plot_cumreward_probcoll(ax_cumreward, probcoll_exp)
+                plot_distance(ax_distance, exp, window=20)
+                plot_collisions(ax_coll, exp)
+                plot_value(ax_value, exp, window=4)
+                params = exp[0].params
+                policy = params['policy'][params['policy']['class']]
+                for ax in (ax_cumreward, ax_distance, ax_coll, ax_value):
+                    ax.set_title('{0}, N: {1}, H: {2}, speeds: {3}'.format(
+                        params['policy']['class'],
+                        params['policy']['N'],
+                        params['policy']['H'],
+                        params['alg']['env_eval'].split("'speed_limits':")[-1].split('}')[0]
+                    ), fontdict={'fontsize': 6})
+                ax_distance.set_ylim((0, 15))
+            except:
+                pass
 
-        f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight',
-                            dpi=150)
-        if SAVE_DISTANCE:
-            f_distance.savefig(os.path.join(SAVE_FOLDER, '{0}_distance.png'.format(FILE_NAME)), bbox_inches='tight',
-                               dpi=150)
-        if SAVE_COLL:
-            f_coll.savefig(os.path.join(SAVE_FOLDER, '{0}_coll.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
-        if SAVE_VALUE:
-            f_value.savefig(os.path.join(SAVE_FOLDER, '{0}_value.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight',
+                        dpi=150)
+    if SAVE_DISTANCE:
+        f_distance.savefig(os.path.join(SAVE_FOLDER, '{0}_distance.png'.format(FILE_NAME)), bbox_inches='tight',
+                           dpi=150)
+    if SAVE_COLL:
+        f_coll.savefig(os.path.join(SAVE_FOLDER, '{0}_coll.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    if SAVE_VALUE:
+        f_value.savefig(os.path.join(SAVE_FOLDER, '{0}_value.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
 
-        plt.close(f_cumreward)
-        plt.close(f_distance)
-        plt.close(f_coll)
-        plt.close(f_value)
+    plt.close(f_cumreward)
+    plt.close(f_distance)
+    plt.close(f_coll)
+    plt.close(f_value)
+
+def plot_test():
+    FILE_NAME = 'rccar_test'
+
+    exps = [[AnalyzeRNNCritic('/home/gkahn/code/rllab/data/local/rnn-critic/test_rccar',
+                     clear_obs=False,
+                     create_new_envs=False,
+                     load_train_rollouts=False,
+                     load_eval_rollouts=True)]]
+
+    paths_cols = 6
+    f_paths, axes_paths = plt.subplots(len(exps), paths_cols, figsize=(2*paths_cols, 2*len(exps)), sharey=True, sharex=True)
+    if len(axes_paths.shape) == 1:
+        axes_paths = np.array([axes_paths])
+
+    plot_paths(axes_paths[0], exps[0])
+
+    f_paths.savefig(os.path.join(SAVE_FOLDER, '{0}_paths.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    plt.close(f_paths)
+
 
 # plot_554_590()
 # plot_592_627()
@@ -859,4 +911,6 @@ def plot_913_930():
 # plot_742_753()
 # plot_755_766()
 # plot_768_911()
-plot_913_930()
+# plot_913_930()
+
+plot_test()

@@ -9,7 +9,8 @@ from sandbox.gkahn.rnn_critic.utils.utils import timeit
 
 class RNNCriticReplayPool(object):
 
-    def __init__(self, env_spec, env_horizon, N, gamma, size, obs_history_len, sampling_method, save_rollouts=False, save_rollouts_observations=True):
+    def __init__(self, env_spec, env_horizon, N, gamma, size, obs_history_len, sampling_method,
+                 save_rollouts=False, save_rollouts_observations=True, save_env_infos=False):
         """
         :param env_spec: for observation/action dimensions
         :param N: horizon length
@@ -28,6 +29,7 @@ class RNNCriticReplayPool(object):
         self._sampling_method = sampling_method
         self._save_rollouts = save_rollouts
         self._save_rollouts_observations = save_rollouts_observations
+        self._save_env_infos = save_env_infos
 
         ### buffer
         obs_shape = self._env_spec.observation_space.shape
@@ -38,6 +40,7 @@ class RNNCriticReplayPool(object):
         self._actions = np.nan * np.ones((self._size, action_dim), dtype=np.float32)
         self._rewards = np.nan * np.ones((self._size,), dtype=np.float32)
         self._dones = np.ones((self._size,), dtype=bool) # initialize as all done
+        self._env_infos = np.empty((self._size,), dtype=np.object)
         self._est_values = np.nan * np.ones((self._size,), dtype=np.float32)
         self._values = np.nan * np.ones((self._size,), dtype=np.float32)
         self._logprobs = np.nan * np.ones((self._size,), dtype=np.float32)
@@ -164,10 +167,11 @@ class RNNCriticReplayPool(object):
     def encode_recent_observation(self):
         return self._encode_observation(self._index)
 
-    def store_effect(self, action, reward, done, est_value, logprob, flatten_action=True, update_log_stats=True):
+    def store_effect(self, action, reward, done, env_info, est_value, logprob, flatten_action=True, update_log_stats=True):
         self._actions[self._index, :] = self._env_spec.action_space.flatten(action) if flatten_action else action
         self._rewards[self._index] = reward
         self._dones[self._index] = done
+        self._env_infos[self._index] = env_info if self._save_env_infos else None
         self._est_values[self._index] = est_value
         self._logprobs[self._index] = logprob
         if self._sampling_method == 'uniform':
@@ -411,6 +415,7 @@ class RNNCriticReplayPool(object):
                 'actions': self._actions[indices],
                 'rewards': self._rewards[indices],
                 'dones': self._dones[indices],
+                'env_infos': self._env_infos[indices],
                 'est_values': self._est_values[indices],
                 'values': self._values[indices],
                 'logprobs': self._logprobs[indices]
@@ -458,12 +463,3 @@ class RNNCriticReplayPool(object):
     @staticmethod
     def get_recent_paths_pools(replay_pools):
         return list(itertools.chain(*[rp.get_recent_paths() for rp in replay_pools]))
-
-
-if __name__ == '__main__':
-    from sandbox.gkahn.rnn_critic.envs.env_utils import create_env
-
-    env_str = "PremadeGymEnv(wrap_deepmind(gym.envs.make('PongNoFrameskip-v3')), record_video=False, record_log=False)"
-    env = create_env(env_str)
-
-    rp = RNNCriticReplayPool

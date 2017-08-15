@@ -34,6 +34,7 @@ class RNNCritic(RLAlgorithm):
                  save_rollouts=False,
                  save_rollouts_observations=True,
                  save_eval_rollouts_observations=False,
+                 save_env_infos=False,
                  offpolicy=None,
                  num_offpolicy=np.inf,
                  render=False,
@@ -71,6 +72,7 @@ class RNNCritic(RLAlgorithm):
             sampling_method=replay_pool_sampling,
             save_rollouts=save_rollouts,
             save_rollouts_observations=save_rollouts_observations,
+            save_env_infos=save_env_infos,
             env_str=env_str
         )
 
@@ -82,7 +84,8 @@ class RNNCritic(RLAlgorithm):
             max_path_length=max_path_length,
             sampling_method=replay_pool_sampling,
             save_rollouts=True,
-            save_rollouts_observations=save_eval_rollouts_observations
+            save_rollouts_observations=save_eval_rollouts_observations,
+            save_env_infos=save_env_infos,
         )
 
         if offpolicy is not None:
