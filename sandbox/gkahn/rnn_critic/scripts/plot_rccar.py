@@ -881,6 +881,88 @@ def plot_913_930():
     plt.close(f_coll)
     plt.close(f_value)
 
+def plot_932_949():
+    FILE_NAME = 'rccar_932_949'
+
+    all_exps = [load_experiments(range(i, i + 3)) for i in range(932, 949, 3)]
+
+    probcoll_exp = load_probcoll_experiments('/home/gkahn/code/probcoll/experiments/sim_rccar/test/analysis_images')
+
+    f_cumreward, axes_cumreward = plt.subplots(2, 3, figsize=(15, 10), sharey=True, sharex=True)
+    paths_cols = 6
+    f_paths, axes_paths = plt.subplots(len(all_exps), paths_cols, figsize=(2*paths_cols, 2*len(all_exps)), sharey=True, sharex=True)
+
+    for ax_cumreward, axes_paths_row, exp in \
+            zip(axes_cumreward.ravel(), axes_paths, all_exps):
+
+        if not hasattr(exp, '__len__'):
+            exp = [exp]
+
+        if len(exp) > 0:
+            try:
+                plot_cumreward(ax_cumreward, exp, window=8, success_cumreward=40.)
+                if probcoll_exp is not None:
+                    plot_cumreward_probcoll(ax_cumreward, probcoll_exp)
+                plot_paths(axes_paths_row, exp)
+                params = exp[0].params
+                policy = params['policy'][params['policy']['class']]
+                for ax in (ax_cumreward,):
+                    ax.set_title('{0}, N: {1}, H: {2}, speeds: {3}'.format(
+                        params['policy']['class'],
+                        params['policy']['N'],
+                        params['policy']['H'],
+                        params['alg']['env_eval'].split("'speed_limits':")[-1].split('}')[0]
+                    ), fontdict={'fontsize': 6})
+            except:
+                pass
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    f_paths.savefig(os.path.join(SAVE_FOLDER, '{0}_paths.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+
+    plt.close(f_cumreward)
+    plt.close(f_paths)
+
+def plot_951_974():
+    FILE_NAME = 'rccar_951_974'
+
+    all_exps = [load_experiments(range(i, i + 3)) for i in range(951, 974, 3)]
+
+    probcoll_exp = load_probcoll_experiments('/home/gkahn/code/probcoll/experiments/sim_rccar/test/analysis_images')
+
+    f_cumreward, axes_cumreward = plt.subplots(2, 3, figsize=(15, 10), sharey=True, sharex=True)
+    paths_cols = 6
+    f_paths, axes_paths = plt.subplots(len(all_exps), paths_cols, figsize=(2*paths_cols, 2*len(all_exps)), sharey=True, sharex=True)
+
+    for ax_cumreward, axes_paths_row, exp in \
+            zip(axes_cumreward.ravel(), axes_paths, all_exps):
+
+        if not hasattr(exp, '__len__'):
+            exp = [exp]
+
+        if len(exp) > 0:
+            try:
+                plot_cumreward(ax_cumreward, exp, window=8, success_cumreward=40.)
+                if probcoll_exp is not None:
+                    plot_cumreward_probcoll(ax_cumreward, probcoll_exp)
+                plot_paths(axes_paths_row, exp)
+                params = exp[0].params
+                policy = params['policy'][params['policy']['class']]
+                for ax in (ax_cumreward,):
+                    ax.set_title('{0}, N: {1}, H: {2}, speeds: {3}'.format(
+                        params['policy']['class'],
+                        params['policy']['N'],
+                        params['policy']['H'],
+                        params['alg']['env_eval'].split("'speed_limits':")[-1].split('}')[0]
+                    ), fontdict={'fontsize': 6})
+            except:
+                pass
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    f_paths.savefig(os.path.join(SAVE_FOLDER, '{0}_paths.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+
+    plt.close(f_cumreward)
+    plt.close(f_paths)
+
 def plot_test():
     FILE_NAME = 'rccar_test'
 
@@ -913,4 +995,7 @@ def plot_test():
 # plot_768_911()
 # plot_913_930()
 
-plot_test()
+plot_932_949()
+plot_951_974()
+
+# plot_test()

@@ -22,6 +22,8 @@ class RCcarMACPolicy(MACPolicy, Serializable):
 
         MACPolicy.__init__(self, **kwargs)
 
+        assert(self._H == self._N)
+
     ###########################
     ### TF graph operations ###
     ###########################
@@ -36,9 +38,17 @@ class RCcarMACPolicy(MACPolicy, Serializable):
         """
         batch_size = tf.shape(tf_obs_lowd)[0]
         H = tf_actions_ph.get_shape()[1].value
+        N = self._N
+        assert(self._H == self._N)
         # tf.assert_equal(tf.shape(tf_obs_lowd)[0], tf.shape(tf_actions_ph)[0])
 
-        rnn_outputs, _ = networks.rnn(tf_actions_ph, self._action_graph, initial_state=tf_obs_lowd)
+        self._action_graph.update({'output_dim': self._observation_graph['output_dim']})
+        action_dim = tf_actions_ph.get_shape()[2].value
+        actions = tf.reshape(tf_actions_ph, (-1, action_dim))
+        rnn_inputs, _ = networks.fcnn(actions, self._action_graph, is_training=is_training, scope='fcnn_actions')
+        rnn_inputs = tf.reshape(rnn_inputs, (-1, H, self._action_graph['output_dim']))
+
+        rnn_outputs, _ = networks.rnn(rnn_inputs, self._rnn_graph, initial_state=tf_obs_lowd)
         rnn_output_dim = rnn_outputs.get_shape()[2].value
         rnn_outputs = tf.reshape(rnn_outputs, (-1, rnn_output_dim))
 
@@ -49,23 +59,18 @@ class RCcarMACPolicy(MACPolicy, Serializable):
         if self._probcoll_strictly_increasing:
             tf_values = tf_utils.cumulative_increasing_sum(tf_values)
 
-        with tf.name_scope('nstep_lambdas'):
-            if values_softmax['type'] == 'final':
-                tf_values_softmax = tf.zeros([batch_size, H])
-                tf_values_softmax[:, -1] = 1.
-            elif values_softmax['type'] == 'mean':
-                tf_values_softmax = (1. / float(H)) * tf.ones([batch_size, H])
-            elif values_softmax['type'] == 'exponential':
-                lam = values_softmax['exponential']['lambda']
-                tf_values_softmaxes = []
-                for h in range(H):
-                    if h == H - 1:
-                        tf_values_softmaxes.append(np.power(lam, h) * tf.ones([batch_size]))
-                    else:
-                        tf_values_softmaxes.append(tf_values_softmax=(1 - lam) * np.power(lam, h) * tf.ones([batch_size]))
-                tf_values_softmax = tf.stack(tf_values_softmaxes, 1)
-            else:
-                raise NotImplementedError
+        if values_softmax['type'] == 'final':
+            tf_values_softmax = tf.zeros([batch_size, N])
+            tf_values_softmax[:, -1] = 1.
+        elif values_softmax['type'] == 'mean':
+            tf_values_softmax = (1. / float(N)) * tf.ones([batch_size, N])
+        elif values_softmax['type'] == 'exponential':
+            lam = values_softmax['exponential']['lambda']
+            lams = (1 - lam) * np.power(lam, np.arange(N - 1))
+            lams = np.array(list(lams) + [np.power(lam, N - 1)])
+            tf_values_softmax = lams * tf.ones(tf.shape(tf_values))
+        else:
+            raise NotImplementedError
 
         assert(tf_values.get_shape()[1].value == H)
 
