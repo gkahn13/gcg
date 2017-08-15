@@ -1,5 +1,5 @@
 import tensorflow as tf
-
+from sandbox.gkahn.tf.core import xplatform
 
 def linear(args, output_size, bias, bias_start=0.0, use_l2_loss=False, scope=None):
     """
@@ -44,7 +44,7 @@ def linear(args, output_size, bias, bias_start=0.0, use_l2_loss=False, scope=Non
         if len(args) == 1:
             res = tf.matmul(args[0], matrix)
         else:
-            res = tf.matmul(tf.concat(1, args), matrix)
+            res = tf.matmul(xplatform.concat(args, 1), matrix)
 
         if not bias:
             return res
@@ -77,7 +77,7 @@ def multiplicative_integration(list_of_inputs, output_size, initial_bias_value=0
             alpha = tf.get_variable('mulint_alpha', [output_size],
                                     initializer=tf.truncated_normal_initializer(mean=1.0, stddev=0.1))
 
-            beta1, beta2 = tf.split(tf.get_variable('mulint_params_betas', [output_size * 2],
+            beta1, beta2 = xplatform.split(tf.get_variable('mulint_params_betas', [output_size * 2],
                                                     initializer=tf.truncated_normal_initializer(mean=0.5, stddev=0.1)),
                                     2, 0)
 
@@ -106,11 +106,11 @@ class BasicMulintLSTMCell(tf.nn.rnn_cell.BasicLSTMCell):
             if self._state_is_tuple:
                 c, h = state
             else:
-                c, h = tf.split(state, 2, 1)
+                c, h = xplatform.split(state, 2, 1)
             concat = multiplicative_integration([inputs, h], 4 * self._num_units, 0.0)
 
             # i = input_gate, j = new_input, f = forget_gate, o = output_gate
-            i, j, f, o = tf.split(concat, 4, 1)
+            i, j, f, o = xplatform.split(concat, 4, 1)
 
             new_c = (c * tf.sigmoid(f + self._forget_bias) + tf.sigmoid(i) *
                      self._activation(j))
@@ -119,5 +119,5 @@ class BasicMulintLSTMCell(tf.nn.rnn_cell.BasicLSTMCell):
             if self._state_is_tuple:
                 new_state = tf.nn.rnn_cell.LSTMStateTuple(new_c, new_h)
             else:
-                new_state = tf.concat(1, [new_c, new_h])
+                new_state = xplatform.concat([new_c, new_h], 1)
             return new_h, new_state

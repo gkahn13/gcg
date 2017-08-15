@@ -5,7 +5,6 @@ import numpy as np
 from sklearn.utils.extmath import cartesian
 
 import tensorflow as tf
-import tensorflow.contrib.layers as layers
 
 from rllab.core.serializable import Serializable
 import rllab.misc.logger as logger
@@ -220,7 +219,7 @@ class MACPolicy(TfPolicy, Serializable):
 
         return tf_preprocess
 
-    def _graph_obs_to_lowd_NEW(self, tf_obs_ph, tf_preprocess, is_training, add_reg=True):
+    def _graph_obs_to_lowd(self, tf_obs_ph, tf_preprocess, is_training, add_reg=True):
         import tensorflow.contrib.layers as layers
 
         with tf.name_scope('obs_to_lowd'):
@@ -255,7 +254,7 @@ class MACPolicy(TfPolicy, Serializable):
 
         return tf_obs_lowd
 
-    def _graph_inference_NEW(self, tf_obs_lowd, tf_actions_ph, values_softmax, tf_preprocess, is_training, add_reg=True):
+    def _graph_inference(self, tf_obs_lowd, tf_actions_ph, values_softmax, tf_preprocess, is_training, add_reg=True):
         """
         :param tf_obs_lowd: [batch_size, self._rnn_state_dim]
         :param tf_actions_ph: [batch_size, H, action_dim]
@@ -268,6 +267,7 @@ class MACPolicy(TfPolicy, Serializable):
         N = self._N
         # tf.assert_equal(tf.shape(tf_obs_lowd)[0], tf.shape(tf_actions_ph)[0])
 
+        self._action_graph.update({'output_dim': self._observation_graph['output_dim']})
         action_dim = tf_actions_ph.get_shape()[2].value
         actions = tf.reshape(tf_actions_ph, (-1, action_dim))
         rnn_inputs, _ = networks.fcnn(actions, self._action_graph, is_training=is_training, scope='fcnn_actions')
@@ -286,30 +286,26 @@ class MACPolicy(TfPolicy, Serializable):
         tf_values_list = [self._graph_calculate_value(h, tf_nstep_rewards, tf_nstep_values) for h in range(H)]
         tf_values_list += [tf_values_list[-1]] * (N - H)
         tf_values = tf.stack(tf_values_list, 1)
-        with tf.name_scope('nstep_lambdas'):
-            if values_softmax['type'] == 'final':
-                tf_values_softmax = tf.zeros([batch_size, N])
-                tf_values_softmax[:, -1] = 1.
-            elif values_softmax['type'] == 'mean':
-                tf_values_softmax = (1. / float(H)) * tf.ones([batch_size, N])
-            elif values_softmax['type'] == 'exponential':
-                lam = values_softmax['exponential']['lambda']
-                tf_values_softmaxes = []
-                for h in range(N):
-                    if h == N - 1:
-                        tf_values_softmaxes.append(np.power(lam, h) * tf.ones([batch_size]))
-                    else:
-                        tf_values_softmaxes.append(tf_values_softmax = (1 - lam) * np.power(lam, h) * tf.ones([batch_size]))
-                tf_values_softmax = tf.stack(tf_values_softmaxes, 1)
-            else:
-                raise NotImplementedError
+
+        if values_softmax['type'] == 'final':
+            tf_values_softmax = tf.zeros([batch_size, N])
+            tf_values_softmax[:, -1] = 1.
+        elif values_softmax['type'] == 'mean':
+            tf_values_softmax = (1. / float(N)) * tf.ones([batch_size, N])
+        elif values_softmax['type'] == 'exponential':
+            lam = values_softmax['exponential']['lambda']
+            lams = (1 - lam) * np.power(lam, np.arange(N - 1))
+            lams = np.array(list(lams) + [np.power(lam, N - 1)])
+            tf_values_softmax = lams * tf.ones(tf.shape(tf_values))
+        else:
+            raise NotImplementedError
 
         assert(tf_values.get_shape()[1].value == N)
 
         return tf_values, tf_values_softmax, tf_nstep_rewards, tf_nstep_values
 
     ### OLD START
-    def _graph_obs_to_lowd(self, tf_obs_ph, tf_preprocess, is_training, add_reg=True):
+    def _graph_obs_to_lowd_OLD(self, tf_obs_ph, tf_preprocess, is_training, add_reg=True):
         import tensorflow.contrib.layers as layers
 
         with tf.name_scope('obs_to_lowd'):
@@ -319,9 +315,9 @@ class MACPolicy(TfPolicy, Serializable):
                 tf_obs_ph = tf.cast(tf_obs_ph, tf.float32)
             tf_obs_ph = tf.reshape(tf_obs_ph, (-1, self._obs_history_len * obs_dim))
             if self._obs_is_im:
-                tf_obs_whitened = tf.mul(tf_obs_ph -
-                                         tf.tile(tf_preprocess['observations_mean_var'], (1, self._obs_history_len)),
-                                         tf.tile(tf_preprocess['observations_orth_var'], (self._obs_history_len,)))
+                tf_obs_whitened = tf.multiply(tf_obs_ph -
+                                              tf.tile(tf_preprocess['observations_mean_var'], (1, self._obs_history_len)),
+                                              tf.tile(tf_preprocess['observations_orth_var'], (self._obs_history_len,)))
             else:
                 tf_obs_whitened = tf_obs_ph # TODO
                 # tf_obs_whitened = tf.matmul(tf_obs_ph -
@@ -357,7 +353,7 @@ class MACPolicy(TfPolicy, Serializable):
 
         return tf_obs_lowd
 
-    def _graph_inference(self, tf_obs_lowd, tf_actions_ph, values_softmax, tf_preprocess, is_training, add_reg=True):
+    def _graph_inference_OLD(self, tf_obs_lowd, tf_actions_ph, values_softmax, tf_preprocess, is_training, add_reg=True):
         """
         :param tf_obs_lowd: [batch_size, self._rnn_state_dim]
         :param tf_actions_ph: [batch_size, H, action_dim]
@@ -371,7 +367,7 @@ class MACPolicy(TfPolicy, Serializable):
         tf.assert_equal(tf.shape(tf_obs_lowd)[0], tf.shape(tf_actions_ph)[0])
 
         if self._use_lstm:
-            istate = tf.nn.rnn_cell.LSTMStateTuple(*tf.split(tf_obs_lowd, 2, 1))  # so state_is_tuple=True
+            istate = tf.nn.rnn_cell.LSTMStateTuple(*xplatform.split(tf_obs_lowd, 2, 1))  # so state_is_tuple=True
         else:
             istate = tf_obs_lowd
 
@@ -391,20 +387,22 @@ class MACPolicy(TfPolicy, Serializable):
             tf_nstep_values.append(val)
             tf_nstep_values_softmax.append(vsoftmax)
 
-        tf_values = tf.concat([self._graph_calculate_value(h, tf_nstep_rewards, tf_nstep_values) for h in range(H)], 1)
+        tf_values = xplatform.concat([self._graph_calculate_value(h, tf_nstep_rewards, tf_nstep_values) for h in range(H)], 1)
         tf_values_softmax = tf.stack(tf_nstep_values_softmax, 1)
 
         assert(tf_values.get_shape()[1].value == H)
 
         return tf_values, tf_values_softmax, tf_nstep_rewards, tf_nstep_values
 
-    def _graph_inference_step(self, n, N, batch_size, istate, action, values_softmax, add_reg=True):
+    def _graph_inference_step_NEW(self, n, N, batch_size, istate, action, values_softmax, add_reg=True):
         """
         :param n: current step
         :param N: max step
         :param istate: current internal state
         :param action: if action is None, input zeros
         """
+        import tensorflow.contrib.layers as layers
+
         with tf.name_scope('inference_step'):
             ### action
             with tf.name_scope('action'):
@@ -729,7 +727,7 @@ class MACPolicy(TfPolicy, Serializable):
             if self._use_target:
                 target_scope = 'target' if self._separate_target_params else 'policy'
                 ### action selection
-                tf_obs_target_ph_packed = tf.concat([tf_obs_target_ph[:, h - self._obs_history_len:h, :]
+                tf_obs_target_ph_packed = xplatform.concat([tf_obs_target_ph[:, h - self._obs_history_len:h, :]
                                                      for h in range(self._obs_history_len, self._obs_history_len + self._N + 1)],
                                                     0)
                 tf_target_get_action, tf_target_get_action_values = self._graph_get_action(tf_obs_target_ph_packed,
