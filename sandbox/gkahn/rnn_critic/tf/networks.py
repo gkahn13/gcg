@@ -79,17 +79,20 @@ def convnn(inputs,
     return output
 
 
-def fcnn(inputs,
-         params,
-         dp_masks=None,
-         num_dp=1,
-         dtype=tf.float32,
-         data_format='NCHW',
-         scope='fcnn',
-         reuse=False,
-         is_training=True):
-
-    if params['hidden_activation'] == 'relu':
+def fcnn(
+        inputs,
+        params,
+        dp_masks=None,
+        num_dp=1,
+        dtype=tf.float32,
+        data_format='NCHW',
+        scope='fcnn',
+        reuse=False,
+        is_training=True,
+        T=None):
+    if 'hidden_activation' not in params:
+        hidden_activation = None
+    elif params['hidden_activation'] == 'relu':
         hidden_activation = tf.nn.relu
     elif params['hidden_activation'] == 'tanh':
         hidden_activation = tf.nn.tanh
@@ -116,6 +119,7 @@ def fcnn(inputs,
     hidden_layers = params.get('hidden_layers', [])
     output_dim = params['output_dim']
     dropout = params.get('dropout', None)
+    normalizer = params.get('normalizer', None)
     if dp_masks is not None or dropout is None:
         dp_return_masks = None
     else:
@@ -131,7 +135,7 @@ def fcnn(inputs,
                 activation = output_activation
             else:
                 activation = hidden_activation
-            if params.get('use_batch_norm', False):
+            if normalizer == 'batch_norm':
                 normalizer_fn = tf.contrib.layers.batch_norm
                 scale = not (activation == tf.nn.relu or activation is None)
                 normalizer_params = {
@@ -140,21 +144,46 @@ def fcnn(inputs,
                     'fused': True,
                     'decay': params.get('batch_norm_decay', 0.999),
                     'zero_debias_moving_mean': True,
-                    'scale': scale
+                    'scale': True,
+                    #                        'scale': scale,
+                    'center': True
                 }
-            else:
+            elif normalizer == 'layer_norm':
+                normalizer_fn = tf.contrib.layers.layer_norm
+                scale = not (activation == tf.nn.relu or activation is None)
+                normalizer_params = {
+                    'scale': scale,
+                    'center': True
+                }
+            elif normalizer is None:
                 normalizer_fn = None
                 normalizer_params = None
-            next_layer_input = tf.contrib.layers.fully_connected(
-                inputs=next_layer_input,
-                num_outputs=dim,
-                activation_fn=activation,
-                normalizer_fn=normalizer_fn,
-                normalizer_params=normalizer_params,
-                weights_initializer=tf.contrib.layers.xavier_initializer(dtype=dtype),
-                biases_initializer=tf.constant_initializer(0., dtype=dtype),
-                weights_regularizer=tf.contrib.layers.l2_regularizer(0.5),
-                trainable=True)
+            else:
+                raise NotImplementedError(
+                    'Normalizer {0} is not valid'.format(normalizer))
+
+            if T is None or normalizer != 'batch_norm':
+                next_layer_input = tf.contrib.layers.fully_connected(
+                    inputs=next_layer_input,
+                    num_outputs=dim,
+                    activation_fn=activation,
+                    normalizer_fn=normalizer_fn,
+                    normalizer_params=normalizer_params,
+                    weights_initializer=tf.contrib.layers.xavier_initializer(dtype=dtype),
+                    biases_initializer=tf.constant_initializer(0., dtype=dtype),
+                    weights_regularizer=tf.contrib.layers.l2_regularizer(0.5),
+                    trainable=True)
+            else:
+                fc_out = tf.contrib.layers.fully_connected(
+                    inputs=next_layer_input,
+                    num_outputs=dim,
+                    activation_fn=activation,
+                    weights_initializer=tf.contrib.layers.xavier_initializer(dtype=dtype),
+                    weights_regularizer=tf.contrib.layers.l2_regularizer(0.5),
+                    trainable=True)
+                fc_out_reshape = tf.reshape(fc_out, (-1, T * fc_out.get_shape()[1].value))
+                bn_out = tf.contrib.layers.batch_norm(fc_out_reshape, **normalizer_params)
+                next_layer_input = tf.reshape(bn_out, tf.shape(fc_out))
 
             if dropout is not None:
                 assert (type(dropout) is float and 0 < dropout and dropout <= 1.0)
@@ -176,7 +205,6 @@ def fcnn(inputs,
         output = next_layer_input
 
     return output, dp_return_masks
-
 
 def rnn(inputs,
         params,

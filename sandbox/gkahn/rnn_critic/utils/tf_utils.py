@@ -168,6 +168,19 @@ def block_diagonal(matrices, dtype=tf.float32):
     blocked.set_shape(batch_shape.concatenate((blocked_rows, blocked_cols)))
     return blocked
 
+###############
+### Asserts ###
+###############
+
+def assert_shape(tensor, shape):
+    assert(len(tensor.get_shape()) == len(shape))
+    tensor_shape = tf.shape(tensor)
+    for i, s_i in enumerate(shape):
+        tf.assert_equal(tensor_shape[i], tf.cast(s_i, tf.int32))
+
+def assert_equal_approx(tensor, value, eps=1e-5, name=None):
+    return tf.assert_equal(tf.cast(tf.abs(tensor - value) < 1e-5, tf.int32), 1, name=name)
+
 if __name__ == '__main__':
     import numpy as np
     np.random.seed(0)
@@ -197,10 +210,3 @@ if __name__ == '__main__':
     print('b:\n{0}'.format(b_eval))
     print('ab_outer:\n{0}'.format(ab_outer_eval))
     print('ab_outer_2d:\n{0}'.format(ab_outer_2d_eval))
-
-
-def assert_shape(tensor, shape):
-    assert(len(tensor.get_shape()) == len(shape))
-    tensor_shape = tf.shape(tensor)
-    for i, s_i in enumerate(shape):
-        tf.assert_equal(tensor_shape[i], tf.cast(s_i, tf.int32))

@@ -19,6 +19,7 @@ class RCcarMACPolicy(MACPolicy, Serializable):
         self._speed_weight = kwargs.pop('speed_weight')
         self._is_classification = kwargs.pop('is_classification')
         self._probcoll_strictly_increasing = kwargs.pop('probcoll_strictly_increasing')
+        self._reweight_coll_nocoll = kwargs.pop('reweight_coll_nocoll')
 
         MACPolicy.__init__(self, **kwargs)
 
@@ -45,7 +46,7 @@ class RCcarMACPolicy(MACPolicy, Serializable):
         self._action_graph.update({'output_dim': self._observation_graph['output_dim']})
         action_dim = tf_actions_ph.get_shape()[2].value
         actions = tf.reshape(tf_actions_ph, (-1, action_dim))
-        rnn_inputs, _ = networks.fcnn(actions, self._action_graph, is_training=is_training, scope='fcnn_actions')
+        rnn_inputs, _ = networks.fcnn(actions, self._action_graph, is_training=is_training, scope='fcnn_actions', T=H)
         rnn_inputs = tf.reshape(rnn_inputs, (-1, H, self._action_graph['output_dim']))
 
         rnn_outputs, _ = networks.rnn(rnn_inputs, self._rnn_graph, initial_state=tf_obs_lowd)
@@ -53,7 +54,7 @@ class RCcarMACPolicy(MACPolicy, Serializable):
         rnn_outputs = tf.reshape(rnn_outputs, (-1, rnn_output_dim))
 
         self._output_graph.update({'output_dim': 1})
-        tf_values, _ = networks.fcnn(rnn_outputs, self._output_graph, is_training=is_training, scope='fcnn_values')
+        tf_values, _ = networks.fcnn(rnn_outputs, self._output_graph, is_training=is_training, scope='fcnn_values', T=H)
         tf_values = tf.reshape(tf_values, (-1, H))
 
         if self._probcoll_strictly_increasing:
@@ -172,19 +173,47 @@ class RCcarMACPolicy(MACPolicy, Serializable):
 
         assert(not self._use_target)
 
+        tf_dones = tf.cast(tf_dones_ph, tf.float32)
         batch_size = tf.shape(tf_dones_ph)[0]
 
         tf_weights = (1. / tf.cast(batch_size, tf.float32)) * tf.ones(tf.shape(tf_train_values_softmax))
-        tf.assert_equal(tf.reduce_sum(tf_weights, 0), 1.)
-        tf.assert_equal(tf.reduce_sum(tf_train_values_softmax, 1), 1.)
 
-        tf.assert_equal(tf.reduce_min(tf.cast(tf.logical_or(tf.reduce_min(tf_rewards_ph) == -1, tf.reduce_min(tf_rewards_ph) == 0), tf.int32)), 1)
-        tf.assert_equal(tf.reduce_min(tf.cast(tf.logical_or(tf.reduce_max(tf_rewards_ph) == -1, tf.reduce_max(tf_rewards_ph) == 0), tf.int32)), 1)
+        with tf.control_dependencies([tf.assert_equal(tf.reduce_min(tf.cast(tf.logical_or(tf.equal(tf.reduce_min(tf_rewards_ph), -1),
+                                                                                          tf.equal(tf.reduce_min(tf_rewards_ph), 0)), tf.int32)), 1,
+                                                      name='cost_assert_0'),
+                                      tf.assert_equal(tf.reduce_min(tf.cast(tf.logical_or(tf.equal(tf.reduce_max(tf_rewards_ph), -1),
+                                                                                          tf.equal(tf.reduce_max(tf_rewards_ph), 0)), tf.int32)), 1,
+                                                      name='cost_assert_1')]):
 
-        tf_labels = tf.cast(tf.cumsum(tf_rewards_ph, axis=1) < -0.5, tf.float32)
+            tf_labels = tf.cast(tf.cumsum(tf_rewards_ph, axis=1) < -0.5, tf.float32)
 
-        tf_cross_entropies = tf.nn.sigmoid_cross_entropy_with_logits(logits=tf_train_values, labels=tf_labels)
-        tf_cross_entropy = tf.reduce_sum(tf_weights * tf_train_values_softmax * tf_cross_entropies)
+            ### cut off post-done labels (debugged, all good)
+            values_softmax = tf_train_values_softmax
+            values_softmax = tf.concat([tf.expand_dims(values_softmax[:, 0], 1),
+                                        tf.multiply(values_softmax[:, 1:], (1 - tf_dones[:, :-1]))],
+                                       1)
+            values_softmax = values_softmax / tf.tile(tf.reduce_sum(values_softmax, axis=1, keep_dims=True), (1, self._N))
+
+            ### re-weight collisions to be 50/50 (debugged, all good)
+            colls = tf.cast(tf_rewards_ph < -0.5, tf.float32)
+            included = tf.cast(values_softmax > 1e-6, tf.float32)
+            num_colls = tf.reduce_sum(colls * included)
+            num_nocolls = tf.reduce_sum((1 - colls) * included)
+            if self._reweight_coll_nocoll:
+                coll_factor = num_nocolls / (num_colls + num_nocolls)
+            else:
+                coll_factor = 0.5
+            reweight_coll = coll_factor * colls * included + (1 - coll_factor) * (1 - colls) * included
+            reweight_coll /= tf.reduce_sum(reweight_coll)
+
+            control_dependencies = []
+            control_dependencies += [tf_utils.assert_equal_approx(tf.reduce_sum(tf_weights, 0), 1, name='cost_assert_2')]
+            control_dependencies += [tf_utils.assert_equal_approx(tf.reduce_sum(reweight_coll), 1, name='cost_assert_3')]
+            control_dependencies += [tf_utils.assert_equal_approx(tf.reduce_sum(tf_train_values_softmax, 1), 1, name='cost_assert_4')]
+            control_dependencies += [tf_utils.assert_equal_approx(tf.reduce_sum(values_softmax, 1), 1, name='cost_assert_5')]
+            with tf.control_dependencies(control_dependencies):
+                tf_cross_entropies = tf.nn.sigmoid_cross_entropy_with_logits(logits=tf_train_values, labels=tf_labels)
+                tf_cross_entropy = tf.reduce_sum(tf_weights * values_softmax * reweight_coll * tf_cross_entropies)
 
         ### weight decay
         if len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)) > 0:
@@ -307,3 +336,11 @@ class RCcarMACPolicy(MACPolicy, Serializable):
             'opt': tf_opt,
             'lr_ph': tf_lr_ph,
         }
+
+    ################
+    ### Training ###
+    ################
+
+    def train_step(self, step, steps, observations, actions, rewards, values, dones, logprobs, use_target):
+        # always True use_target so dones is passed in
+        return MACPolicy.train_step(self, step, steps, observations, actions, rewards, values, dones, logprobs, True)
