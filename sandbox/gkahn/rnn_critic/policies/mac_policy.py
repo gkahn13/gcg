@@ -44,7 +44,7 @@ class MACPolicy(TfPolicy, Serializable):
         self._values_softmax = kwargs['values_softmax'] # which value horizons to train over
         self._use_target = kwargs['use_target']
         self._separate_target_params = kwargs['separate_target_params']
-        self._separate_mses = kwargs['separate_mses']
+        self._clip_cost_target_with_dones = kwargs['clip_cost_target_with_dones']
 
         ### training
         self._only_completed_episodes = kwargs['only_completed_episodes']
@@ -439,17 +439,19 @@ class MACPolicy(TfPolicy, Serializable):
             tf_values_desired.append(tf_sum_rewards_n + tf_target_values_n)
         tf_values_desired = tf.stack(tf_values_desired, 1)
 
-        if self._separate_mses:
-            tf_mse = tf.reduce_sum(tf_weights * tf_train_values_softmax * tf.square(tf_train_values - tf_values_desired))
+        ### cut off post-done labels (debugged, all good)
+        if self._clip_cost_target_with_dones:
+            lengths = tf.reduce_sum(1 - tf_dones, axis=1) + 1
+            mask = tf.sequence_mask(
+                tf.cast(lengths, tf.int32),
+                maxlen=self._H,
+                dtype=tf.float32)
+            values_softmax = mask * tf_train_values_softmax
+            values_softmax = values_softmax / tf.tile(tf.reduce_sum(values_softmax, axis=1, keep_dims=True), (1, self._N))
         else:
-            tf_mse = tf.reduce_sum(tf_weights[:, 0] *
-                                   tf.reduce_mean(
-                                       tf.square(tf_train_values -
-                                                 tf.tile(
-                                                     tf.reduce_sum(tf_train_values_softmax * tf_values_desired, axis=1, keep_dims=True),
-                                                     (1, self._N))),
-                                       1))
+            values_softmax = tf_train_values_softmax
 
+        tf_mse = tf.reduce_sum(tf_weights * values_softmax * tf.square(tf_train_values - tf_values_desired))
 
         ### weight decay
         if len(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)) > 0:
@@ -462,13 +464,13 @@ class MACPolicy(TfPolicy, Serializable):
 
     def _graph_optimize(self, tf_cost, tf_policy_vars):
         tf_lr_ph = tf.placeholder(tf.float32, (), name="learning_rate")
-        optimizer = tf.train.AdamOptimizer(learning_rate=tf_lr_ph, epsilon=1e-4)
-        gradients = optimizer.compute_gradients(tf_cost, var_list=tf_policy_vars)
-        for i, (grad, var) in enumerate(gradients):
-            if grad is not None:
-                gradients[i] = (tf.clip_by_norm(grad, self._grad_clip_norm), var)
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
+            optimizer = tf.train.AdamOptimizer(learning_rate=tf_lr_ph, epsilon=1e-4)
+            gradients = optimizer.compute_gradients(tf_cost, var_list=tf_policy_vars)
+            for i, (grad, var) in enumerate(gradients):
+                if grad is not None:
+                    gradients[i] = (tf.clip_by_norm(grad, self._grad_clip_norm), var)
             tf_opt = optimizer.apply_gradients(gradients)
         return tf_opt, tf_lr_ph
 

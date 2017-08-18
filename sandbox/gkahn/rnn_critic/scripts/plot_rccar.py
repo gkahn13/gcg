@@ -1055,7 +1055,7 @@ def plot_test():
                      create_new_envs=False,
                      load_train_rollouts=False,
                      load_eval_rollouts=True)],
-            load_experiments(range(957, 957 + 3))]
+            load_experiments(range(994, 994 + 3))]
     probcoll_exp = load_probcoll_experiments('/home/gkahn/code/probcoll/experiments/sim_rccar/test/analysis_images')
 
 
@@ -1082,6 +1082,45 @@ def plot_test():
     f_paths.savefig(os.path.join(SAVE_FOLDER, '{0}_paths.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
     plt.close(f_paths)
 
+def plot_1149_1154():
+    FILE_NAME = 'rccar_1149_1154'
+
+    all_exps = [load_experiments(range(i, i + 3)) for i in range(1149, 1154, 3)]
+
+    probcoll_exp = load_probcoll_experiments('/home/gkahn/code/probcoll/experiments/sim_rccar/test/analysis_images\
+')
+
+    f_cumreward, axes_cumreward = plt.subplots(1, 2, figsize=(10, 5), sharey=True, sharex=True)
+
+    for ax_cumreward, exp in \
+            zip(axes_cumreward.ravel(), all_exps):
+
+        if not hasattr(exp, '__len__'):
+            exp = [exp]
+
+        if len(exp) > 0:
+            try:
+                plot_cumreward(ax_cumreward, exp, window=8, success_cumreward=40.)
+                if probcoll_exp is not None:
+                    plot_cumreward_probcoll(ax_cumreward, probcoll_exp)
+                params = exp[0].params
+                policy = params['policy'][params['policy']['class']]
+                for ax in (ax_cumreward,):
+                    ax.set_title('{0}, N: {1}, H: {2}, clip: {3}'.format(
+                        params['policy']['class'],
+                        params['policy']['N'],
+                        params['policy']['H'],
+                        params['policy']['clip_cost_target_with_dones'],
+                    ), fontdict={'fontsize': 6})
+            except:
+                pass
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi\
+=150)
+
+    plt.close(f_cumreward)
+
+
 
 # plot_554_590()
 # plot_592_627()
@@ -1097,6 +1136,7 @@ def plot_test():
 # plot_932_949()
 # plot_951_974()
 # plot_976_1002()
-plot_1004_1147()
+# plot_1004_1147()
+# plot_1149_1154()
 
-# plot_test()
+plot_test()
