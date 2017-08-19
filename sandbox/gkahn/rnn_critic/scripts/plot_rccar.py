@@ -93,7 +93,7 @@ def plot_cumreward(ax, analyze_group, color='k', label=None, window=20, success_
     if success_cumreward is not None:
         if values_mean.max() >= success_cumreward:
             thresh_step = steps[(values_mean >= success_cumreward).argmax()]
-            ax.vlines(thresh_step, (values_mean - values_std).min(), (values_mean + values_std).max(), color='g', linestyle='--')
+            ax.vlines(thresh_step, (values_mean - values_std).min(), (values_mean + values_std).max(), color=color, linestyle='--')
 
     ax.set_xticks(np.arange(0, max(steps), 1e3), minor=True)
     ax.grid(which='minor', alpha=0.2)
@@ -1047,41 +1047,6 @@ def plot_1004_1147():
 
         plt.close(f_cumreward)
 
-def plot_test():
-    FILE_NAME = 'rccar_test'
-
-    exps = [[AnalyzeRNNCritic('/home/gkahn/code/rllab/data/local/rnn-critic/test_rccar',
-                     clear_obs=False,
-                     create_new_envs=False,
-                     load_train_rollouts=False,
-                     load_eval_rollouts=True)],
-            load_experiments(range(994, 994 + 3))]
-    probcoll_exp = load_probcoll_experiments('/home/gkahn/code/probcoll/experiments/sim_rccar/test/analysis_images')
-
-
-    ### cumreward
-    f_cumreward, ax_cumreward = plt.subplots(1, 1, figsize=(20, 10), sharey=True, sharex=True)
-
-    plot_cumreward(ax_cumreward, exps[0], window=8, success_cumreward=40., color='r')
-    plot_cumreward(ax_cumreward, exps[1], window=8, success_cumreward=40., color='k')
-    plot_cumreward_probcoll(ax_cumreward, probcoll_exp)
-
-    ax_cumreward.set_xlim((0, 1e4))
-
-    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
-    plt.close(f_cumreward)
-
-    ### paths
-    paths_cols = 6
-    f_paths, axes_paths = plt.subplots(len(exps), paths_cols, figsize=(2*paths_cols, 2*len(exps)), sharey=True, sharex=True)
-    if len(axes_paths.shape) == 1:
-        axes_paths = np.array([axes_paths])
-
-    plot_paths(axes_paths[0], exps[0])
-
-    f_paths.savefig(os.path.join(SAVE_FOLDER, '{0}_paths.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
-    plt.close(f_paths)
-
 def plot_1149_1154():
     FILE_NAME = 'rccar_1149_1154'
 
@@ -1120,7 +1085,95 @@ def plot_1149_1154():
 
     plt.close(f_cumreward)
 
+def plot_1156_1200():
+    FILE_NAME = 'rccar_1156_1200'
 
+    le = load_experiments
+    base_exp = le(range(1156, 1156 + 3))
+    all_exps = [
+        base_exp, le(range(1159, 1159 + 3)), [], [],
+        base_exp, le(range(1162, 1162 + 3)), le(range(1165, 1165 + 3)), [],
+        base_exp, le(range(1168, 1168 + 3)), [], [],
+        base_exp, le(range(1171, 1171 + 3)), le(range(1174, 1174 + 3)), le(range(1177, 1177 + 3)),
+        base_exp, le(range(1180, 1180 + 3)), le(range(1183, 1183 + 3)), le(range(1186, 1186 + 3)),
+        base_exp, le(range(1189, 1189 + 3)), [], [],
+        base_exp, le(range(1192, 1192 + 3)), le(range(1195, 1195 + 3)), [],
+        base_exp, le(range(1198, 1198 + 3)), [], []
+    ]
+    title_str_funcs = [
+        *[lambda p: '{0}, learn after: {1}'.format(p['exp_name'], p['alg']['learn_after_n_steps'])] * 4,
+        *[lambda p: '{0}, train every: {1}'.format(p['exp_name'], p['alg']['train_every_n_steps'])] * 4,
+        *[lambda p: '{0}, rp: {1}, coll weight: {2}'.format(p['exp_name'], p['alg']['replay_pool_sampling'], p['policy']['RCcarMACPolicy']['coll_weight_pct'])] * 4,
+        *[lambda p: '{0}, target: {1}, clip: {2}'.format(p['exp_name'], p['policy']['use_target'], p['policy']['clip_cost_target_with_dones'])] * 4,
+        *[lambda p: '{0}, speed weight: {1}'.format(p['exp_name'], p['policy']['RCcarMACPolicy']['speed_weight'])] * 4,
+        *[lambda p: '{0}, increase: {1}'.format(p['exp_name'], p['policy']['RCcarMACPolicy']['probcoll_strictly_increasing'])] * 4,
+        *[lambda p: '{0}, lr: {1}'.format(p['exp_name'], p['policy']['lr_schedule']['outside_value'])] * 4,
+        *[lambda p: '{0}, batch: {1}'.format(p['exp_name'], p['policy']['MACPolicy']['image_graph']['use_batch_norm'])] * 4,
+    ]
+
+    maql_exp = load_experiments(range(994, 994 + 3))
+    probcoll_exp = load_probcoll_experiments('/home/gkahn/code/probcoll/experiments/sim_rccar/test/analysis_images\
+')
+
+    f_cumreward, axes_cumreward = plt.subplots(8, 4, figsize=(16, 16), sharey=True, sharex=True)
+
+    for ax_cumreward, exp, title_str_func in \
+            zip(axes_cumreward.ravel(), all_exps, title_str_funcs):
+
+        if not hasattr(exp, '__len__'):
+            exp = [exp]
+
+        if len(exp) > 0:
+            try:
+                if probcoll_exp is not None:
+                    plot_cumreward_probcoll(ax_cumreward, probcoll_exp)
+                if maql_exp is not None:
+                    plot_cumreward(ax_cumreward, maql_exp, window=8, success_cumreward=40., color='r')
+                plot_cumreward(ax_cumreward, exp, window=8, success_cumreward=40.)
+                params = exp[0].params
+                ax_cumreward.set_title(title_str_func(params), fontdict={'fontsize': 6})
+            except:
+                pass
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi\
+=300)
+
+    plt.close(f_cumreward)
+
+def plot_test():
+    FILE_NAME = 'rccar_test'
+
+    exps = [[AnalyzeRNNCritic('/home/gkahn/code/rllab/data/local/rnn-critic/test_rccar',
+                     clear_obs=False,
+                     create_new_envs=False,
+                     load_train_rollouts=False,
+                     load_eval_rollouts=True)],
+            load_experiments(range(994, 994 + 3))]
+    probcoll_exp = load_probcoll_experiments('/home/gkahn/code/probcoll/experiments/sim_rccar/test/analysis_images')
+
+
+    ### cumreward
+    f_cumreward, ax_cumreward = plt.subplots(1, 1, figsize=(20, 10), sharey=True, sharex=True)
+
+    plot_cumreward(ax_cumreward, exps[0], window=8, success_cumreward=40., color='r')
+    plot_cumreward(ax_cumreward, exps[1], window=8, success_cumreward=40., color='k')
+    plot_cumreward_probcoll(ax_cumreward, probcoll_exp)
+
+    ax_cumreward.set_xlim((0, 1e4))
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    plt.close(f_cumreward)
+
+    ### paths
+    paths_cols = 6
+    f_paths, axes_paths = plt.subplots(len(exps), paths_cols, figsize=(2*paths_cols, 2*len(exps)), sharey=True, sharex=True)
+    if len(axes_paths.shape) == 1:
+        axes_paths = np.array([axes_paths])
+
+    plot_paths(axes_paths[0], exps[0])
+
+    f_paths.savefig(os.path.join(SAVE_FOLDER, '{0}_paths.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    plt.close(f_paths)
 
 # plot_554_590()
 # plot_592_627()
@@ -1138,5 +1191,6 @@ def plot_1149_1154():
 # plot_976_1002()
 # plot_1004_1147()
 # plot_1149_1154()
+plot_1156_1200()
 
-plot_test()
+# plot_test()

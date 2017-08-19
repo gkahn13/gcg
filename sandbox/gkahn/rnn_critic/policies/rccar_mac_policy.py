@@ -20,7 +20,6 @@ class RCcarMACPolicy(MACPolicy, Serializable):
         self._is_classification = kwargs['is_classification']
         self._probcoll_strictly_increasing = kwargs['probcoll_strictly_increasing']
         self._coll_weight_pct = kwargs['coll_weight_pct']
-        self._reweight_coll_nocoll = kwargs['reweight_coll_nocoll']
 
         MACPolicy.__init__(self, **kwargs)
 
@@ -233,16 +232,12 @@ class RCcarMACPolicy(MACPolicy, Serializable):
 
     def _graph_cost(self, tf_train_values, tf_train_values_softmax, tf_rewards_ph, tf_dones_ph,
                     tf_target_get_action_values):
-        assert(not self._use_target)
+        if not self._is_classification:
+            return MACPolicy._graph_cost(self, tf_train_values, tf_train_values_softmax, tf_rewards_ph, tf_dones_ph,
+                                         tf_target_get_action_values)
 
         tf_dones = tf.cast(tf_dones_ph, tf.int32)
         tf_labels = tf.cast(tf.cumsum(tf_rewards_ph, axis=1) < -0.5, tf.float32)
-
-        ### desired values
-        if self._use_target:
-            tf_labels = tf.clip_by_value(tf_labels + (1 - tf_dones) * tf_target_get_action_values, 0., 1.)
-        else:
-            pass
 
         ### mask
         if self._clip_cost_target_with_dones:
@@ -265,21 +260,24 @@ class RCcarMACPolicy(MACPolicy, Serializable):
             mask = tf.ones(tf.shape(tf_labels), dtype=tf.float32)
         mask /= tf.reduce_sum(mask)
 
-        # self._tf_debug['lengths'] = lengths
-        # self._tf_debug['all_mask'] = all_mask
-        # self._tf_debug['factor'] = factor
-        # self._tf_debug['coll_weight'] = coll_weight
-        # self._tf_debug['one_mask'] = one_mask
-        # self._tf_debug['one_mask_coll'] = one_mask_coll
-        # self._tf_debug['mask'] = mask
+        ### desired values
+        if self._use_target:
+            control_dependencies = []
+            control_dependencies += [tf.assert_greater_equal(tf_target_get_action_values, -1., name='cost_assert_0')]
+            control_dependencies += [tf.assert_less_equal(tf_target_get_action_values, 0., name='cost_assert_1')]
+            with tf.control_dependencies(control_dependencies):
+                tf_labels = tf.clip_by_value(tf_labels +
+                                             (1 - tf.cast(tf_dones, tf.float32)) * -tf.round(tf_target_get_action_values),
+                                             0., 1.)
 
         ### cost
-        if self._is_classification:
+        control_dependencies = []
+        control_dependencies += [tf.assert_greater_equal(tf_labels, 0., name='cost_assert_2')]
+        control_dependencies += [tf.assert_less_equal(tf_labels, 1., name='cost_assert_3')]
+        with tf.control_dependencies(control_dependencies):
             cross_entropies = tf.nn.sigmoid_cross_entropy_with_logits(logits=tf_train_values, labels=tf_labels)
             cost = tf.reduce_sum(mask * cross_entropies)
-        else:
-            cost = tf.reduce_sum(mask * 0.5 * tf.square(tf_train_values - tf_labels))
-        weight_decay = self._weight_decay * tf.add_n(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
+            weight_decay = self._weight_decay * tf.add_n(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
 
         return cost + weight_decay, cost
 
@@ -333,20 +331,17 @@ class RCcarMACPolicy(MACPolicy, Serializable):
             if self._use_target:
                 target_scope = 'target' if self._separate_target_params else 'policy'
                 ### action selection
-                tf_obs_target_ph_packed = tf.concat(0, [tf_obs_target_ph[:, h - self._obs_history_len:h, :]
-                                                        for h in
-                                                        range(self._obs_history_len, self._obs_history_len + self._N + 1)])
+                tf_obs_target_ph_packed = xplatform.concat([tf_obs_target_ph[:, h - self._obs_history_len:h, :]
+                                                     for h in range(self._obs_history_len, self._obs_history_len + self._N + 1)],
+                                                    0)
                 tf_target_get_action, tf_target_get_action_values = self._graph_get_action(tf_obs_target_ph_packed,
                                                                                            self._get_action_target,
                                                                                            scope_select=policy_scope,
                                                                                            reuse_select=True,
                                                                                            scope_eval=target_scope,
-                                                                                           reuse_eval=(
-                                                                                           target_scope == policy_scope))
+                                                                                           reuse_eval=(target_scope == policy_scope))
 
-                ### logprob
-                tf_target_get_action_values = tf.transpose(tf.reshape(tf_target_get_action_values, (self._N + 1, -1)))[:,
-                                              1:]
+                tf_target_get_action_values = tf.transpose(tf.reshape(tf_target_get_action_values, (self._N + 1, -1)))[:, 1:]
             else:
                 tf_target_get_action_values = tf.zeros([tf.shape(tf_train_values)[0], self._N])
 
