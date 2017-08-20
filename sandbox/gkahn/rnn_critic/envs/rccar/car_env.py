@@ -308,7 +308,8 @@ class CarEnv(DirectObject):
                 if self._des_vel is not None:
                     vel = self._get_speed()
                     self._mark_d += vel * self._curr_time
-                    print(vel, self._mark_d, self._is_contact())
+                    # print(vel, self._mark_d, self._is_contact())
+                    print(np.array(self._vehicle_pointer.getPos()))
                     err = self._des_vel - vel
                     d_err = (err - self._last_err) / 0.05
                     self._last_err = err

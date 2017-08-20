@@ -103,12 +103,12 @@ def plot_cumreward(ax, analyze_group, color='k', label=None, window=20, success_
     ax.xaxis.set_major_formatter(xfmt)
     ax.set_ylim((10, 60))
 
-def plot_cumreward_probcoll(ax, exp, color='b'):
+def plot_cumreward_probcoll(ax, exp, color='b', label=None):
     steps = exp['steps']
     cumrewards_mean = np.array(exp['cumrewards_mean'])
     cumrewards_std = np.array(exp['cumrewards_std'])
 
-    ax.plot(steps, cumrewards_mean, color=color)
+    ax.plot(steps, cumrewards_mean, color=color, label=label)
     ax.fill_between(steps, cumrewards_mean + cumrewards_std, cumrewards_mean - cumrewards_std, color=color, alpha=0.4)
 
 def plot_distance(ax, analyze_group, color='k', label=None, window=20):
@@ -977,6 +977,8 @@ def plot_976_1002():
 
     f_cumreward, axes_cumreward = plt.subplots(3, 5, figsize=(20, 12), sharey=True, sharex=True)
 
+    window = 20
+
     for ax_cumreward, exp in zip(axes_cumreward.ravel(), all_exps):
 
         if not hasattr(exp, '__len__'):
@@ -984,7 +986,7 @@ def plot_976_1002():
 
         if len(exp) > 0:
             try:
-                plot_cumreward(ax_cumreward, exp, window=8, success_cumreward=40.)
+                plot_cumreward(ax_cumreward, exp, window=window, success_cumreward=40.)
                 if probcoll_exp is not None:
                     plot_cumreward_probcoll(ax_cumreward, probcoll_exp)
                 params = exp[0].params
@@ -1140,6 +1142,114 @@ def plot_1156_1200():
 
     plt.close(f_cumreward)
 
+def plot_1202_1297():
+    FILE_NAME = 'rccar_1202_1297'
+
+    all_exps = np.array([load_experiments(range(i, i + 3)) for i in range(1202, 1297, 3)])
+
+    probcoll_exp = load_probcoll_experiments('/home/gkahn/code/probcoll/experiments/sim_rccar/test/analysis_images')
+    nstep_exp = load_experiments(range(982, 982+ 3))
+
+    # import IPython; IPython.embed()
+    window = 20
+
+    for i, exps in enumerate(np.split(all_exps, 2)):
+
+        f_cumreward, axes_cumreward = plt.subplots(4, 4, figsize=(15, 15), sharey=True, sharex=True)
+
+        for ax_cumreward, exp in zip(axes_cumreward.ravel(), exps):
+
+            if not hasattr(exp, '__len__'):
+                exp = [exp]
+
+            if len(exp) > 0:
+                try:
+                    plot_cumreward(ax_cumreward, exp, window=window, success_cumreward=40.)
+                    if probcoll_exp is not None:
+                        plot_cumreward_probcoll(ax_cumreward, probcoll_exp)
+                    if nstep_exp is not None:
+                        plot_cumreward(ax_cumreward, nstep_exp, window=window, success_cumreward=40., color='r')
+                    params = exp[0].params
+                    for ax in (ax_cumreward,):
+                        ax.set_title('{0}, clip: {1}, batch: {2},\nln: {3}, incr: {4}, lr: {5}'.format(
+                            params['exp_name'],
+                            params['policy']['clip_cost_target_with_dones'],
+                            params['policy']['MACPolicy']['image_graph']['use_batch_norm'],
+                            params['policy']['MACPolicy']['rnn_graph']['cell_args']['use_layer_norm'],
+                            params['policy']['RCcarMACPolicy']['probcoll_strictly_increasing'],
+                            params['policy']['lr_schedule']['outside_value']
+                        ), fontdict={'fontsize': 6})
+                except:
+                    pass
+
+        f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward_{1}.png'.format(FILE_NAME, i)), bbox_inches='tight', dpi=200)
+        plt.close(f_cumreward)
+
+def plot_1299_1319():
+    FILE_NAME = 'rccar_1299_1319'
+
+    all_exps = [load_experiments(range(1299, 1299 + 3))] + 4*[[]] + \
+               [[]] + [load_experiments(range(i, i + 3)) for i in (1302, 1305, 1308, 1311)] + \
+               [[]] + [load_experiments(range(i, i + 3)) for i in (1314, 1317)] + [[]] + [[]]
+
+    probcoll_exp = load_probcoll_experiments('/home/gkahn/code/probcoll/experiments/sim_rccar/test/analysis_images')
+
+    f_cumreward, axes_cumreward = plt.subplots(3, 5, figsize=(20, 12), sharey=True, sharex=True)
+
+    window = 20
+
+    for ax_cumreward, exp in zip(axes_cumreward.ravel(), all_exps):
+
+        if not hasattr(exp, '__len__'):
+            exp = [exp]
+
+        if len(exp) > 0:
+            try:
+                plot_cumreward(ax_cumreward, exp, window=window, success_cumreward=40.)
+                if probcoll_exp is not None:
+                    plot_cumreward_probcoll(ax_cumreward, probcoll_exp)
+                params = exp[0].params
+                for ax in (ax_cumreward,):
+                    ax.set_title('{0}, {1}, N: {2}, H: {3}, speeds: {4}'.format(
+                        params['exp_name'],
+                        params['policy']['class'],
+                        params['policy']['N'],
+                        params['policy']['H'],
+                        params['alg']['env_eval'].split("'speed_limits':")[-1].split('}')[0]
+                    ), fontdict={'fontsize': 6})
+            except:
+                pass
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    plt.close(f_cumreward)
+
+def plot_comparison_1319():
+    FILE_NAME = 'rccar_comparison_1319'
+
+    all_exps = [load_experiments(range(1299, 1299 + 3)), # DQN
+                load_experiments(range(1305, 1305 + 3)), # n-step DQN
+                load_experiments(range(1317, 1317 + 3)), # MAQL,
+                load_experiments(range(1241, 1241 + 3))] # probcoll
+
+    all_labels = ['DQN', 'N-step DQN', 'MAQL', 'MAQL-probcoll']
+    all_colors = ['k', 'm', 'r', 'b']
+
+    probcoll_exp = load_probcoll_experiments('/home/gkahn/code/probcoll/experiments/sim_rccar/test/analysis_images')
+    probcoll_label = 'probcoll'
+    probcoll_color = 'c'
+
+    f_cumreward, ax_cumreward = plt.subplots(1, 1, figsize=(10, 10), sharey=True, sharex=True)
+
+    for exp, color, label in zip(all_exps, all_colors, all_labels):
+        plot_cumreward(ax_cumreward, exp, window=20, success_cumreward=40., color=color, label=label)
+
+    # plot_cumreward_probcoll(ax_cumreward, probcoll_exp, color=probcoll_color, label=probcoll_label)
+
+    ax_cumreward.legend(loc='lower right')
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    plt.close(f_cumreward)
+
 def plot_test():
     FILE_NAME = 'rccar_test'
 
@@ -1191,6 +1301,9 @@ def plot_test():
 # plot_976_1002()
 # plot_1004_1147()
 # plot_1149_1154()
-plot_1156_1200()
+# plot_1156_1200()
+# plot_1202_1297()
+# plot_1299_1319()
+plot_comparison_1319()
 
 # plot_test()
