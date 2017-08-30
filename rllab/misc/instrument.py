@@ -758,6 +758,7 @@ def launch_ec2mujoco(params_list, exp_prefix, docker_image, code_full_path,
         sio.write("""
             rm -rf {local_code_path}
             export PYTHONPATH=/home/ubuntu/code/rllab:$PYTHONPATH
+            export PYTHONPATH=/home/ubuntu/code/rllab/sandbox/gkahn/probcoll:$PYTHONPATH
             export PATH="/home/ubuntu/anaconda2/bin:$PATH"
             export PATH=/usr/local/cuda/bin:$PATH
             export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
@@ -801,7 +802,7 @@ def launch_ec2mujoco(params_list, exp_prefix, docker_image, code_full_path,
             if sync_s3_pkl:
                 sio.write("""
                     while /bin/true; do
-                        aws s3 sync --exclude '*' --include '*.csv' --include '*.json' --include '*.mp4' --include '*.pkl' {log_dir} {remote_log_dir} --region {aws_region}
+                        aws s3 sync --include '*.csv' --include '*.json' --include '*.mp4' --include '*.pkl' {log_dir} {remote_log_dir} --region {aws_region}
                         sleep {periodic_sync_interval}
                     done & echo sync initiated""".format(log_dir=log_dir, remote_log_dir=remote_log_dir,
                                                          aws_region=aws_config['region_name'],
@@ -809,7 +810,7 @@ def launch_ec2mujoco(params_list, exp_prefix, docker_image, code_full_path,
             else:
                 sio.write("""
                     while /bin/true; do
-                        aws s3 sync --exclude '*' --include '*.csv' --include '*.json' --include '*.mp4' {log_dir} {remote_log_dir} --region {aws_region}
+                        aws s3 sync --include '*.csv' --include '*.json' --include '*.mp4' {log_dir} {remote_log_dir} --region {aws_region}
                         sleep {periodic_sync_interval}
                     done & echo sync initiated""".format(log_dir=log_dir, remote_log_dir=remote_log_dir,
                                                          aws_region=aws_config['region_name'],

@@ -41,7 +41,7 @@ def load_probcoll_experiments(exp_folder):
 ### Plot ###
 ############
 
-def plot_cumreward(ax, analyze_group, color='k', label=None, window=20, success_cumreward=None):
+def plot_cumreward(ax, analyze_group, color='k', label=None, window=20, success_cumreward=None, ylim=(10, 60)):
     data_interp = DataAverageInterpolation()
     min_step = max_step = None
     for i, analyze in enumerate(analyze_group):
@@ -69,7 +69,7 @@ def plot_cumreward(ax, analyze_group, color='k', label=None, window=20, success_
 
         steps, values, _ = moving_avg_std(steps, values, window=window)
 
-        # ax.plot(steps, values, color='r', alpha=np.linspace(1., 0.4, len(analyze_group))[i])
+        ax.plot(steps, values, color='r', alpha=np.linspace(1., 0.4, len(analyze_group))[i])
 
         try:
             data_interp.add_data(steps, values)
@@ -101,7 +101,8 @@ def plot_cumreward(ax, analyze_group, color='k', label=None, window=20, success_
     xfmt = ticker.ScalarFormatter()
     xfmt.set_powerlimits((0, 0))
     ax.xaxis.set_major_formatter(xfmt)
-    ax.set_ylim((10, 60))
+    if ylim is not None:
+        ax.set_ylim(ylim)
 
 def plot_cumreward_probcoll(ax, exp, color='b', label=None):
     steps = exp['steps']
@@ -1250,6 +1251,38 @@ def plot_comparison_1319():
     f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
     plt.close(f_cumreward)
 
+def plot_1321_1341():
+    FILE_NAME = 'rccar_1321_1341'
+
+    all_exps = [load_experiments(range(i, i + 3)) for i in range(1321, 1338, 3)] + [load_experiments(range(1339, 1339 + 3))]
+
+    f_cumreward, axes_cumreward = plt.subplots(2, 4, figsize=(16, 8), sharey=True, sharex=True)
+
+    window = 20
+
+    for ax_cumreward, exp in zip(axes_cumreward.ravel(), all_exps):
+
+        if not hasattr(exp, '__len__'):
+            exp = [exp]
+
+        if len(exp) > 0:
+            try:
+                plot_cumreward(ax_cumreward, exp, window=window, success_cumreward=40., ylim=None)
+                params = exp[0].params
+                for ax in (ax_cumreward,):
+                    ax.set_title('{0}, {1}, N: {2}, H: {3}, speeds: {4}'.format(
+                        params['exp_name'],
+                        params['policy']['class'],
+                        params['policy']['N'],
+                        params['policy']['H'],
+                        params['alg']['env_eval'].split("'speed_limits':")[-1].split('}')[0]
+                    ), fontdict={'fontsize': 6})
+            except:
+                pass
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    plt.close(f_cumreward)
+
 def plot_test():
     FILE_NAME = 'rccar_test'
 
@@ -1304,6 +1337,7 @@ def plot_test():
 # plot_1156_1200()
 # plot_1202_1297()
 # plot_1299_1319()
-plot_comparison_1319()
+# plot_comparison_1319()
+plot_1321_1341()
 
 # plot_test()

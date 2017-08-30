@@ -39,4 +39,5 @@ rllab/config_personal.py
 *.swp
 sandbox/rocky
 sandbox/gkahn/rnn_critic/yamls
+sandbox/gkahn/probcoll
 rllab/bin
