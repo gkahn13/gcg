@@ -11,7 +11,7 @@ class CylinderEnv(CarEnv):
     def __init__(self, params={}):
         params.setdefault('obs_shape', (64, 36)) # not for size b/c don't want aliasing
         params.setdefault('collision_reward_only', False)
-        params.setdefault('steer_limits', [-15., 15.])
+        params.setdefault('steer_limits', [-30., 30.])
         params.setdefault('speed_limits', [2., 2.])
 
         params.setdefault('use_depth', False)

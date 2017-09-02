@@ -4,61 +4,40 @@ import tensorflow as tf
 ### Operations ###
 ##################
 
-def linear(args, output_size, bias, bias_start=0.0, use_l2_loss=False, scope=None):
-    """
-    Linear map: sum_i(args[i] * W[i]), where W[i] is a variable.
-    Args:
-      args: a 2D Tensor or a list of 2D, batch x n, Tensors.
-      output_size: int, second dimension of W[i].
-      bias: boolean, whether to add a bias term or not.
-      bias_start: starting value to initialize the bias; 0 by default.
-      scope: VariableScope for the created subgraph; defaults to "Linear".
-    Returns:
-      A 2D Tensor with shape [batch x output_size] equal to
-      sum_i(args[i] * W[i]), where W[i]s are newly created matrices.
-    Raises:
-      ValueError: if some of the arguments has unspecified or wrong shape.
-    """
-    # assert args #was causing error in upgraded tensorflow
-    if not isinstance(args, (list, tuple)):
-        args = [args]
-
-    # Calculate the total size of arguments on dimension 1.
-    total_arg_size = 0
-    shapes = [a.get_shape().as_list() for a in args]
-    for shape in shapes:
-        if len(shape) != 2:
-            raise ValueError("Linear is expecting 2D arguments: %s" % str(shapes))
-        if not shape[1]:
-            raise ValueError("Linear expects shape[1] of arguments: %s" % str(shapes))
+def linear(args, output_size, dtype=tf.float32, scope=None):
+    with tf.variable_scope(scope or "linear"):
+        if isinstance(args, list) or isinstance(args, tuple):
+            if len(args) != 1:
+                inputs = tf.concat(args, axis=1)
+            else:
+                inputs = args[0]
         else:
-            total_arg_size += shape[1]
+            inputs = args
+            args = [args]
+        total_arg_size = 0
+        shapes = [a.get_shape() for a in args]
+        for shape in shapes:
+            if shape.ndims != 2:
+                raise ValueError("linear is expecting 2D arguments: %s" % shapes)
+            else:
+                total_arg_size += shape[1].value
+        dtype = args[0].dtype
+        weights = tf.get_variable(
+            "weights",
+            [total_arg_size, output_size],
+            dtype=dtype,
+            initializer=tf.contrib.layers.xavier_initializer(dtype=dtype))
+        output = tf.matmul(inputs, weights)
+    return output
 
-    if use_l2_loss:
-        l_regularizer = tf.contrib.layers.l2_regularizer(1e-5)
-    else:
-        l_regularizer = None
-
-    # Now the computation.
-    with tf.variable_scope(scope or "Linear"):
-        matrix = tf.get_variable("Matrix", [total_arg_size, output_size],
-                                 initializer=tf.uniform_unit_scaling_initializer(), regularizer=l_regularizer)
-
-        if len(args) == 1:
-            res = tf.matmul(args[0], matrix)
-        else:
-            res = tf.matmul(tf.concat(1, args), matrix)
-
-        if not bias:
-            return res
-        bias_term = tf.get_variable("Bias", [output_size],
-                                    initializer=tf.constant_initializer(bias_start), regularizer=l_regularizer)
-
-    return res + bias_term
-
-
-def multiplicative_integration(list_of_inputs, output_size, initial_bias_value=0.0, weights_already_calculated=False,
-                               reg_collection=None, dtype=tf.float32, scope=None):
+def multiplicative_integration(
+            list_of_inputs,
+            output_size,
+            initial_bias_value=0.0,
+            weights_already_calculated=False,
+            reg_collection=None,
+            dtype=tf.float32,
+            scope=None):
     '''
     expects len(2) for list of inputs and will perform integrative multiplication
     weights_already_calculated will treat the list of inputs as Wx and Uz and is useful for batch normed inputs
@@ -121,7 +100,14 @@ def multiplicative_integration(list_of_inputs, output_size, initial_bias_value=0
 
     return final_output
 
-def layer_norm(inputs, center=True, scale=True, reuse=None, trainable=True, epsilon=1e-12, scope=None):
+def layer_norm(
+        inputs,
+        center=True,
+        scale=True,
+        reuse=None,
+        trainable=True,
+        epsilon=1e-4,
+        scope=None):
     # TODO
     # Assumes that inputs is 2D
     # add to collections in order to do l2 norm
@@ -153,7 +139,7 @@ def layer_norm(inputs, center=True, scale=True, reuse=None, trainable=True, epsi
             scale=gamma,
             offset=beta,
             is_training=True,
-            epsilon=1e-4,
+            epsilon=epsilon,
             data_format='NCHW')
         outputs_reshaped = tf.transpose(outputs_T_reshaped, (1, 0, 2, 3))
         outputs = tf.reshape(outputs_reshaped, shape)
@@ -164,8 +150,14 @@ def layer_norm(inputs, center=True, scale=True, reuse=None, trainable=True, epsi
 #############
 
 class DpRNNCell(tf.nn.rnn_cell.BasicRNNCell):
-    def __init__(self, num_units, dropout_mask=None, activation=tf.tanh, dtype=tf.float32, num_inputs=None,
-                 weights_scope=None):
+    def __init__(
+            self,
+            num_units,
+            dropout_mask=None,
+            activation=tf.tanh,
+            dtype=tf.float32,
+            num_inputs=None,
+            weights_scope=None):
         self._num_units = num_units
         self._dropout_mask = dropout_mask
         self._activation = activation
@@ -179,7 +171,11 @@ class DpRNNCell(tf.nn.rnn_cell.BasicRNNCell):
                 initializer=tf.contrib.layers.xavier_initializer(dtype=dtype),
                 regularizer=tf.contrib.layers.l2_regularizer(0.5))
 
-    def __call__(self, inputs, state, scope=None):
+    def __call__(
+            self,
+            inputs,
+            state,
+            scope=None):
         """Most basic RNN: output = new_state = tanh(W * input + U * state + B). With same dropout at every time step."""
         with tf.variable_scope(scope or type(self).__name__):  # "BasicRNNCell"
 
@@ -191,9 +187,17 @@ class DpRNNCell(tf.nn.rnn_cell.BasicRNNCell):
 
         return output, output
 
+
 class DpMulintRNNCell(DpRNNCell):
-    def __init__(self, num_units, dropout_mask=None, activation=tf.tanh, dtype=tf.float32, num_inputs=None,
-                 use_layer_norm=False, weights_scope=None):
+    def __init__(
+            self,
+            num_units,
+            dropout_mask=None,
+            activation=tf.tanh,
+            dtype=tf.float32,
+            num_inputs=None,
+            use_layer_norm=False,
+            weights_scope=None):
 
         self._num_units = num_units
         self._dropout_mask = dropout_mask
@@ -216,19 +220,21 @@ class DpMulintRNNCell(DpRNNCell):
                 initializer=tf.contrib.layers.xavier_initializer(dtype=dtype),
                 regularizer=tf.contrib.layers.l2_regularizer(0.5))
 
-    def __call__(self, inputs, state, scope=None):
+    def __call__(
+            self,
+            inputs,
+            state,
+            scope=None):
         """Most basic RNN: output = new_state = tanh(W * input + U * state + B)."""
         with tf.variable_scope(scope or type(self).__name__):  # "BasicRNNCell"
             Wx = tf.matmul(inputs, self._weights_W)
             Uz = tf.matmul(state, self._weights_U)
             if self._use_layer_norm:
-                #                Wx = tf_utils.layer_norm(
                 Wx = tf.contrib.layers.layer_norm(
                     Wx,
                     center=False,
                     scale=False)
-                #                Uz = tf_utils.layer_norm(
-                Uz = tf.contrib.layer.layer_norm(
+                Uz = tf.contrib.layers.layer_norm(
                     Uz,
                     center=False,
                     scale=False)
@@ -244,9 +250,17 @@ class DpMulintRNNCell(DpRNNCell):
 
         return output, output
 
+
 class DpLSTMCell(tf.nn.rnn_cell.BasicLSTMCell):
-    def __init__(self, num_units, forget_bias=1.0, dropout_mask=None, activation=tf.tanh,
-                 dtype=tf.float32, num_inputs=None, weights_scope=None):
+    def __init__(
+            self,
+            num_units,
+            forget_bias=1.0,
+            dropout_mask=None,
+            activation=tf.tanh,
+            dtype=tf.float32,
+            num_inputs=None,
+            weights_scope=None):
         self._num_units = num_units
         self._forget_bias = forget_bias
         self._dropout_mask = dropout_mask
@@ -262,7 +276,11 @@ class DpLSTMCell(tf.nn.rnn_cell.BasicLSTMCell):
                 initializer=tf.contrib.layers.xavier_initializer(dtype=dtype),
                 regularizer=tf.contrib.layers.l2_regularizer(0.5))
 
-    def __call__(self, inputs, state, scope=None):
+    def __call__(
+            self,
+            inputs,
+            state,
+            scope=None):
         """Most basic LSTM with same dropout at every time step."""
         with tf.variable_scope(scope or type(self).__name__):  # "BasicRNNCell"
 
@@ -285,9 +303,18 @@ class DpLSTMCell(tf.nn.rnn_cell.BasicLSTMCell):
 
         return new_h, new_state
 
+
 class DpMulintLSTMCell(DpLSTMCell):
-    def __init__(self, num_units, forget_bias=1.0, dropout_mask=None, activation=tf.tanh,
-                 dtype=tf.float32, num_inputs=None, use_layer_norm=False, weights_scope=None):
+    def __init__(
+            self,
+            num_units,
+            forget_bias=1.0,
+            dropout_mask=None,
+            activation=tf.tanh,
+            dtype=tf.float32,
+            num_inputs=None,
+            use_layer_norm=False,
+            weights_scope=None):
 
         self._num_units = num_units
         self._forget_bias = forget_bias
@@ -312,7 +339,11 @@ class DpMulintLSTMCell(DpLSTMCell):
                 initializer=tf.contrib.layers.xavier_initializer(dtype=dtype),
                 regularizer=tf.contrib.layers.l2_regularizer(0.5))
 
-    def __call__(self, inputs, state, scope=None):
+    def __call__(
+            self,
+            inputs,
+            state,
+            scope=None):
         """Most basic RNN: output = new_state = tanh(W * input + U * state + B)."""
         with tf.variable_scope(scope or type(self).__name__):  # "BasicRNNCell"
 
@@ -321,12 +352,10 @@ class DpMulintLSTMCell(DpLSTMCell):
             Wx = tf.matmul(inputs, self._weights_W)
             Uz = tf.matmul(h, self._weights_U)
             if self._use_layer_norm:
-                #                Wx = tf_utils.layer_norm(
                 Wx = tf.contrib.layers.layer_norm(
                     Wx,
                     center=False,
                     scale=False)
-                #                Uz = tf_utils.layer_norm(
                 Uz = tf.contrib.layers.layer_norm(
                     Uz,
                     center=False,
@@ -344,13 +373,23 @@ class DpMulintLSTMCell(DpLSTMCell):
             new = tf.nn.sigmoid(i) * self._activation(j)
             new_c = forget + new
 
-            if self._use_layer_norm:
-                new_c = layer_norm(new_c)
+            #            if self._use_layer_norm:
+            #                new_c = tf.contrib.layers.layer_norm(
+            #                    new_c,
+            #                    center=True,
+            #                    scale=True)
 
             # TODO make sure this is correct
             if self._dropout_mask is not None:
                 new_c = new_c * self._dropout_mask
 
-            new_h = self._activation(new_c) * tf.nn.sigmoid(o)
+            if self._use_layer_norm:
+                norm_c = tf.contrib.layers.layer_norm(
+                    new_c,
+                    center=True,
+                    scale=True)
+                new_h = self._activation(norm_c) * tf.nn.sigmoid(o)
+            else:
+                new_h = self._activation(new_c) * tf.nn.sigmoid(o)
             new_state = tf.nn.rnn_cell.LSTMStateTuple(new_c, new_h)
         return new_h, new_state

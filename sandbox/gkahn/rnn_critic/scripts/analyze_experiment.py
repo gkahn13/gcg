@@ -27,30 +27,7 @@ from sandbox.gkahn.rnn_critic.sampler.vectorized_rollout_sampler import RNNCriti
 from sandbox.gkahn.rnn_critic.sampler.sampler import RNNCriticSampler
 
 ### environments
-from sandbox.rocky.tf.envs.base import TfEnv
-from rllab.envs.normalized_env import normalize
-from rllab.envs.gym_env import GymEnv
-import gym
-from sandbox.gkahn.rnn_critic.envs.atari_wrappers import wrap_deepmind
-from sandbox.gkahn.rnn_critic.envs.pygame_wrappers import wrap_pygame
-from rllab.envs.gym_env import GymEnv
-from sandbox.gkahn.rnn_critic.envs.premade_gym_env import PremadeGymEnv
-try:
-    import gym_ple
-except:
-    pass
-from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
-from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv
-from sandbox.gkahn.rnn_critic.envs.chain_env import ChainEnv
-from sandbox.gkahn.rnn_critic.envs.phd_env import PhdEnv
-from sandbox.gkahn.rnn_critic.envs.cartpole_swingup_env import CartPoleSwingupEnv, CartPoleSwingupImageEnv
-try:
-    from sandbox.gkahn.rnn_critic.envs.car.collision_car_racing_env import CollisionCarRacingSteeringEnv, CollisionCarRacingDiscreteEnv
-except:
-    class CollisionCarRacingSteeringEnv(object):
-        pass
-    class CollisionCarRacingDiscreteEnv(object):
-        pass
+from sandbox.gkahn.rnn_critic.envs.env_utils import create_env
 
 #########################
 ### Utility functions ###
@@ -71,7 +48,7 @@ def rollout_policy(env, agent, max_path_length=np.inf, animated=False, speedup=1
     if animated:
         env.render()
     while path_length < max_path_length:
-        a, agent_info = agent.get_action(o)
+        a, agent_info = agent.get_action(step=path_length, observation=o, explore=False)
         next_o, r, d, env_info = env.step(a)
         observations.append(env.observation_space.flatten(o))
         rewards.append(r)
@@ -151,7 +128,7 @@ class AnalyzeRNNCritic(object):
 
         # logger.log('AnalyzeRNNCritic: Loaded all itrs')
         if create_new_envs:
-            self.env = TfEnv(normalize(eval(self.params['alg']['env'])))
+            self.env = create_env(self.params['alg']['env'])
         else:
             self.env = None
         # logger.log('AnalyzeRNNCritic: Created env')
@@ -204,43 +181,45 @@ class AnalyzeRNNCritic(object):
         policy = d['policy']
         return policy
 
-    def _eval_all_policies(self):
-        rollouts_itrs = []
-        itr = 0
-        while os.path.exists(self._itr_file(itr)) and itr < self._max_itr:
-            # set seed
-            if self.params['seed'] is not None:
-                set_seed(self.params['seed'])
+    def eval_policy(self, itr, gpu_device=None, gpu_frac=None):
+        if self.params['seed'] is not None:
+            set_seed(self.params['seed'])
+            try:
                 inner_env(self.env).env.seed(self.params['seed'])
+            except:
+                pass
 
-            sess, graph = MACPolicy.create_session_and_graph(gpu_device=self.params['policy']['gpu_device'],
-                                                             gpu_frac=self.params['policy']['gpu_frac'])
-            with graph.as_default(), sess.as_default():
-                policy = self._load_itr_policy(itr)
+        if gpu_device is None:
+            gpu_device = self.params['policy']['gpu_device']
+        if gpu_frac is None:
+            gpu_frac = self.params['policy']['gpu_frac']
+        sess, graph = MACPolicy.create_session_and_graph(gpu_device=gpu_device, gpu_frac=gpu_frac)
+        with graph.as_default(), sess.as_default():
+            policy = self._load_itr_policy(itr)
 
-                logger.log('Evaluating policy for itr {0}'.format(itr))
-                n_envs = 1
-                if 'max_path_length' in self.params['alg']:
-                    max_path_length = self.params['alg']['max_path_length']
-                else:
-                    max_path_length = self.env.horizon
-                sampler = RNNCriticSampler(
-                    policy=policy,
-                    env=self.env,
-                    n_envs=n_envs,
-                    replay_pool_size=int(1e4),
-                    max_path_length=max_path_length,
-                    save_rollouts=True
-                )
-                rollouts = []
-                step = 0
-                while len(rollouts) < 25:
-                    sampler.step(step)
-                    step += n_envs
-                    rollouts += sampler.get_recent_paths()
+            logger.log('Evaluating policy for itr {0}'.format(itr))
+            n_envs = 1
+            if 'max_path_length' in self.params['alg']:
+                max_path_length = self.params['alg']['max_path_length']
+            else:
+                max_path_length = self.env.horizon
 
-            rollouts_itrs.append(rollouts)
-            itr += self._skip_itr
+            import IPython; IPython.embed()
 
-        return rollouts_itrs
+            sampler = RNNCriticSampler(
+                policy=policy,
+                env=self.env,
+                n_envs=n_envs,
+                replay_pool_size=int(1e4),
+                max_path_length=max_path_length,
+                save_rollouts=True,
+                sampling_method=self.params['alg']['replay_pool_sampling']
+            )
+            rollouts = []
+            step = 0
+            while len(rollouts) < 25:
+                sampler.step(step)
+                step += n_envs
+                rollouts += sampler.get_recent_paths()
 
+        return rollouts

@@ -2,14 +2,15 @@ import tensorflow as tf
 
 from sandbox.gkahn.rnn_critic.tf import rnn_cell
 
-def convnn(inputs,
-           params,
-           scope='convnn',
-           dtype=tf.float32,
-           data_format='NHWC',
-           reuse=False,
-           is_training=True):
-
+def convnn(
+        inputs,
+        params,
+        scope='convnn',
+        dtype=tf.float32,
+        data_format='NHWC',
+        reuse=False,
+        is_training=True,
+        global_step_tensor=None):
     if params['conv_activation'] == 'relu':
         conv_activation = tf.nn.relu
     else:
@@ -24,7 +25,7 @@ def convnn(inputs,
     elif params['output_activation'] == 'softmax':
         output_activation = tf.nn.softmax
     elif params['output_activation'] == 'spatial_softmax':
-        output_activation = lambda x: spatial_soft_argmax(x, dtype)
+        output_activation = lambda x: tf_utils.spatial_soft_argmax(x, dtype)
     elif params['output_activation'] == 'tanh':
         output_activation = tf.nn.tanh
     elif params['output_activation'] == 'relu':
@@ -38,7 +39,8 @@ def convnn(inputs,
     filters = params['filters']
     strides = params['strides']
     # Assuming all paddings will be the same type
-    padding = params.get('padding', 'SAME')
+    padding = params['padding']
+    normalizer = params.get('normalizer', None)
     next_layer_input = inputs
     with tf.variable_scope(scope, reuse=reuse):
         for i in range(len(kernels)):
@@ -46,37 +48,73 @@ def convnn(inputs,
                 activation = output_activation
             else:
                 activation = conv_activation
-            if params.get('use_batch_norm', False):
+            if normalizer == 'batch_norm':
                 normalizer_fn = tf.contrib.layers.batch_norm
-                scale = not (activation == tf.nn.relu or activation is None)
                 normalizer_params = {
                     'is_training': is_training,
                     'data_format': data_format,
                     'fused': True,
                     'decay': params.get('batch_norm_decay', 0.999),
-                    # 'zero_debias_moving_mean': True,
-                    'scale': scale
+                    'zero_debias_moving_mean': True,
+                    'scale': True,
+                    'center': True,
+                    'updates_collections': None
                 }
-            else:
+            elif normalizer == 'layer_norm':
+                normalizer_fn = tf.contrib.layers.layer_norm
+                normalizer_params = {
+                    'scale': True,
+                    'center': True
+                }
+            elif normalizer == 'weight_norm':
                 normalizer_fn = None
                 normalizer_params = None
-            next_layer_input = tf.contrib.layers.conv2d(
-                inputs=next_layer_input,
-                num_outputs=filters[i],
-                data_format=data_format,
-                kernel_size=kernels[i],
-                stride=strides[i],
-                padding=padding,
-                activation_fn=activation,
-                normalizer_fn=normalizer_fn,
-                normalizer_params=normalizer_params,
-                weights_initializer=tf.contrib.layers.xavier_initializer_conv2d(dtype=dtype),
-                weights_regularizer=tf.contrib.layers.l2_regularizer(0.5),
-                biases_initializer=tf.constant_initializer(0., dtype=dtype),
-                trainable=True)
+
+                if i == 0 and data_format != 'NHWC':
+                    if data_format == 'NCHW':
+                        next_layer_input = tf.transpose(next_layer_input, (0, 2, 3, 1))
+                    else:
+                        raise Exception('weight norm and data format, fix it')
+                    data_format = 'NHWC'
+
+            elif normalizer is None:
+                normalizer_fn = None
+                normalizer_params = None
+            else:
+                raise NotImplementedError(
+                    'Normalizer {0} is not valid'.format(normalizer))
+
+            if normalizer == 'weight_norm':
+                next_layer_input = conv2d_weight_norm(
+                    inputs=next_layer_input,
+                    num_outputs=filters[i],
+                    data_format=data_format,
+                    kernel_size=kernels[i],
+                    stride=strides[i],
+                    padding=padding,
+                    activation_fn=activation,
+                    trainable=True,
+                    global_step_tensor=global_step_tensor
+                )
+            else:
+                next_layer_input = tf.contrib.layers.conv2d(
+                    inputs=next_layer_input,
+                    num_outputs=filters[i],
+                    data_format=data_format,
+                    kernel_size=kernels[i],
+                    stride=strides[i],
+                    padding=padding,
+                    activation_fn=activation,
+                    normalizer_fn=normalizer_fn,
+                    normalizer_params=normalizer_params,
+                    weights_initializer=tf.contrib.layers.xavier_initializer_conv2d(dtype=dtype),
+                    weights_regularizer=tf.contrib.layers.l2_regularizer(0.5),
+                    biases_initializer=tf.constant_initializer(0., dtype=dtype),
+                    trainable=True)
 
     output = next_layer_input
-    return output
+    # TODO
+    return output, None
 
 
 def fcnn(
@@ -89,7 +127,8 @@ def fcnn(
         scope='fcnn',
         reuse=False,
         is_training=True,
-        T=None):
+        T=None,
+        global_step_tensor=None):
     if 'hidden_activation' not in params:
         hidden_activation = None
     elif params['hidden_activation'] == 'relu':
@@ -137,7 +176,6 @@ def fcnn(
                 activation = hidden_activation
             if normalizer == 'batch_norm':
                 normalizer_fn = tf.contrib.layers.batch_norm
-                scale = not (activation == tf.nn.relu or activation is None)
                 normalizer_params = {
                     'is_training': is_training,
                     'data_format': data_format,
@@ -145,16 +183,18 @@ def fcnn(
                     'decay': params.get('batch_norm_decay', 0.999),
                     'zero_debias_moving_mean': True,
                     'scale': True,
-                    #                        'scale': scale,
-                    'center': True
+                    'center': True,
+                    'updates_collections': None
                 }
             elif normalizer == 'layer_norm':
                 normalizer_fn = tf.contrib.layers.layer_norm
-                scale = not (activation == tf.nn.relu or activation is None)
                 normalizer_params = {
-                    'scale': scale,
+                    'scale': True,
                     'center': True
                 }
+            elif normalizer == 'weight_norm':
+                normalizer_fn = None
+                normalizer_params = None
             elif normalizer is None:
                 normalizer_fn = None
                 normalizer_params = None
@@ -173,6 +213,14 @@ def fcnn(
                     biases_initializer=tf.constant_initializer(0., dtype=dtype),
                     weights_regularizer=tf.contrib.layers.l2_regularizer(0.5),
                     trainable=True)
+            elif normalizer == 'weight_norm':
+                next_layer_input = fully_connected_weight_norm(
+                    inputs=next_layer_input,
+                    num_outputs=dim,
+                    activation_fn=activation,
+                    trainable=True,
+                    global_step_tensor=global_step_tensor
+                )
             else:
                 fc_out = tf.contrib.layers.fully_connected(
                     inputs=next_layer_input,
@@ -206,7 +254,9 @@ def fcnn(
 
     return output, dp_return_masks
 
-def rnn(inputs,
+
+def rnn(
+        inputs,
         params,
         initial_state=None,
         dp_masks=None,
@@ -218,6 +268,7 @@ def rnn(inputs,
     inputs is shape [batch_size x T x features].
     """
     num_cells = params['num_cells']
+    cell_args = params.get('cell_args', {})
     if params['cell_type'] == 'rnn':
         cell_type = rnn_cell.DpRNNCell
         if initial_state is not None:
@@ -229,7 +280,11 @@ def rnn(inputs,
             initial_state = tuple(tf.split(initial_state, num_cells, axis=1))
             num_units = initial_state[0].get_shape()[1].value
     elif params['cell_type'] == 'lstm':
-        cell_type = rnn_cell.DpLSTMCell
+        if 'use_layer_norm' in cell_args and cell_args['use_layer_norm']:
+            cell_type = tf.contrib.rnn.LayerNormBasicLSTMCell
+        else:
+            cell_type = rnn_cell.DpLSTMCell
+        cell_args = dict([(k, v) for k, v in cell_args.items() if k != 'use_layer_norm'])
         if initial_state is not None:
             states = tf.split(initial_state, 2 * num_cells, axis=1)
             num_units = states[0].get_shape()[1].value
@@ -253,7 +308,6 @@ def rnn(inputs,
     if initial_state is None:
         num_units = params['num_units']
     dropout = params.get('dropout', None)
-    cell_args = params.get('cell_args', {})
     if dp_masks is not None or dropout is None:
         dp_return_masks = None
     else:
@@ -285,13 +339,16 @@ def rnn(inputs,
                 num_inputs = inputs.get_shape()[-1]
             else:
                 num_inputs = num_units
-            cell = cell_type(
-                num_units,
-                dropout_mask=dp,
-                dtype=dtype,
-                num_inputs=num_inputs,
-                weights_scope='{0}_{1}'.format(params['cell_type'], i),
-                **cell_args)
+            if cell_type == tf.contrib.rnn.LayerNormBasicLSTMCell:
+                cell = cell_type(num_units, **cell_args)
+            else:
+                cell = cell_type(
+                    num_units,
+                    dropout_mask=dp,
+                    dtype=dtype,
+                    num_inputs=num_inputs,
+                    weights_scope='{0}_{1}'.format(params['cell_type'], i),
+                    **cell_args)
 
             cells.append(cell)
 

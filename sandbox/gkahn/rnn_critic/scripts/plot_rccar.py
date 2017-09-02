@@ -9,6 +9,8 @@ import matplotlib.cm as cm
 from analyze_experiment import AnalyzeRNNCritic
 from sandbox.gkahn.rnn_critic.utils.utils import DataAverageInterpolation
 
+from robots.sim_rccar.analysis.analyze_sim_rccar import AnalyzeSimRCcar
+
 EXP_FOLDER = '/media/gkahn/ExtraDrive1/rllab/s3/rnn-critic'
 SAVE_FOLDER = '/media/gkahn/ExtraDrive1/rllab/rnn_critic/final_plots'
 
@@ -31,11 +33,23 @@ def load_experiments(indices):
 
     return exps
 
-def load_probcoll_experiments(exp_folder):
-    exp = {}
-    with open(os.path.join(exp_folder, 'testing_cumreward.pkl'), 'rb') as f:
-        exp.update(pickle.load(f))
-    return exp
+def load_probcoll_experiments(exp_folder, num):
+    save_dir = os.path.join(exp_folder, 'sim_rccar{0:3d}/sim_rccar{0:3d}'.format(num))
+
+    analyze = AnalyzeSimRCcar(save_dir=save_dir)
+
+    steps_and_samples, _ = analyze._load_testing_samples()
+
+    samples_per_itr = analyze.params['probcoll']['T']
+    steps, samples = zip(*[(samples_per_itr * step, sample) for step, sample in steps_and_samples])
+    rewards = [[s.get_X(sub_state='velocity') * (1 - s.get_X(sub_state='collision')) for s in samples_itr] for samples_itr in samples]
+
+    # steps = np.repeat(steps, analyze.params['probcoll']['testing']['num_rollout'])
+    # samples = list(itertools.chain(*samples))
+    # rewards = list(itertools.chain(*rewards))
+
+    return {'exp_num': num, 'steps': steps, 'samples': samples, 'rewards': rewards}
+
 
 ############
 ### Plot ###
@@ -90,10 +104,68 @@ def plot_cumreward(ax, analyze_group, color='k', label=None, window=20, success_
     ax.fill_between(steps, values_mean - values_std, values_mean + values_std,
                     color=color, alpha=0.4)
 
+    ax.set_xticks(np.arange(0, max(steps), 1e3), minor=True)
+    ax.grid(which='minor', alpha=0.2)
+    ax.grid(which='major', alpha=0.5)
+    xfmt = ticker.ScalarFormatter()
+    xfmt.set_powerlimits((0, 0))
+    ax.xaxis.set_major_formatter(xfmt)
+    if ylim is not None:
+        ax.set_ylim(ylim)
+
     if success_cumreward is not None:
-        if values_mean.max() >= success_cumreward:
-            thresh_step = steps[(values_mean >= success_cumreward).argmax()]
-            ax.vlines(thresh_step, (values_mean - values_std).min(), (values_mean + values_std).max(), color=color, linestyle='--')
+        if not hasattr(success_cumreward, '__iter__'):
+            success_cumreward = [success_cumreward]
+
+        for i, sc in enumerate(success_cumreward):
+            if values_mean.max() >= sc:
+                thresh_step = steps[(values_mean >= sc).argmax()]
+                ax.vlines(thresh_step, *ax.get_ylim(),
+                          color=cm.viridis(i / float(len(success_cumreward))), linestyle='--')
+
+def plot_cumreward_probcoll(ax, analyze_group, color='k', label=None, window=20, success_cumreward=None, ylim=(10, 60)):
+    data_interp = DataAverageInterpolation()
+    min_step = max_step = None
+    for i, analyze in enumerate(analyze_group):
+        # steps = np.array(analyze.progress['Step'])
+        # values = np.array(analyze.progress['EvalCumRewardMean'])
+
+        steps = np.array(analyze['steps'])
+        values = np.array([np.mean([np.sum(r) for r in rewards_itr]) for rewards_itr in analyze['rewards']])
+
+        # steps, values = zip(*sorted(zip(steps, values), key=lambda k: k[0]))
+        # steps, values = zip(*[(s, v) for s, v in zip(steps, values) if np.isfinite(v)])
+        #
+        # def moving_avg_std(idxs, data, window):
+        #     avg_idxs, means, stds = [], [], []
+        #     for i in range(window, len(data)):
+        #         avg_idxs.append(np.mean(idxs[i - window:i]))
+        #         means.append(np.mean(data[i - window:i]))
+        #         stds.append(np.std(data[i - window:i]))
+        #     return avg_idxs, np.asarray(means), np.asarray(stds)
+        #
+        # steps, values, _ = moving_avg_std(steps, values, window=window)
+
+        # ax.plot(steps, values, color='r', alpha=np.linspace(1., 0.4, len(analyze_group))[i])
+
+        try:
+            data_interp.add_data(steps, values)
+        except:
+            continue
+        if min_step is None:
+            min_step = steps[0]
+        if max_step is None:
+            max_step = steps[-1]
+        min_step = max(min_step, steps[0])
+        max_step = min(max_step, steps[-1])
+
+    steps = np.r_[min_step:max_step:50.][1:-1]
+    values_mean, values_std = data_interp.eval(steps)
+    # steps -= min_step
+
+    ax.plot(steps, values_mean, color=color, label=label)
+    ax.fill_between(steps, values_mean - values_std, values_mean + values_std,
+                    color=color, alpha=0.4)
 
     ax.set_xticks(np.arange(0, max(steps), 1e3), minor=True)
     ax.grid(which='minor', alpha=0.2)
@@ -104,13 +176,15 @@ def plot_cumreward(ax, analyze_group, color='k', label=None, window=20, success_
     if ylim is not None:
         ax.set_ylim(ylim)
 
-def plot_cumreward_probcoll(ax, exp, color='b', label=None):
-    steps = exp['steps']
-    cumrewards_mean = np.array(exp['cumrewards_mean'])
-    cumrewards_std = np.array(exp['cumrewards_std'])
+    if success_cumreward is not None:
+        if not hasattr(success_cumreward, '__iter__'):
+            success_cumreward = [success_cumreward]
 
-    ax.plot(steps, cumrewards_mean, color=color, label=label)
-    ax.fill_between(steps, cumrewards_mean + cumrewards_std, cumrewards_mean - cumrewards_std, color=color, alpha=0.4)
+        for i, sc in enumerate(success_cumreward):
+            if values_mean.max() >= sc:
+                thresh_step = steps[(values_mean >= sc).argmax()]
+                ax.vlines(thresh_step, *ax.get_ylim(),
+                          color=cm.viridis(i / float(len(success_cumreward))), linestyle='--')
 
 def plot_distance(ax, analyze_group, color='k', label=None, window=20):
     data_interp = DataAverageInterpolation()
@@ -1283,6 +1357,101 @@ def plot_1321_1341():
     f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
     plt.close(f_cumreward)
 
+def plot_1339_paths():
+    analyze = AnalyzeRNNCritic(os.path.join(EXP_FOLDER, 'rccar1339'),
+                               clear_obs=False,
+                               create_new_envs=True,
+                               load_train_rollouts=True,
+                               load_eval_rollouts=True)
+
+    rollouts = analyze.eval_policy(5, gpu_device=0, gpu_frac=0.5)
+
+    import IPython; IPython.embed()
+
+def plot_1343_1366():
+    FILE_NAME = 'rccar_1343_1366'
+
+    all_exps = [load_experiments(range(i, i + 3)) for i in range(1343, 1366, 3)] + \
+               [[load_probcoll_experiments('/home/gkahn/code/rllab/data/s3/sim-rccar/', i) for i in range(657, 657 + 3)]]
+
+    f_cumreward, axes_cumreward = plt.subplots(3, 3, figsize=(16, 8), sharey=True, sharex=True)
+
+    window = 20
+    probcoll_window = 4
+    ylim = (0, 2100)
+    success_cumreward = [500, 1000, 1500, 1750]
+
+    for ax_cumreward, exp in zip(axes_cumreward.ravel(), all_exps):
+
+        if not hasattr(exp, '__len__'):
+            exp = [exp]
+
+        if len(exp) > 0:
+            try:
+                if type(exp[0]) is dict:
+                    plot_cumreward_probcoll(ax_cumreward, exp, window=probcoll_window, success_cumreward=success_cumreward, ylim=ylim)
+                    for ax in (ax_cumreward,):
+                        ax.set_title('probcoll {0}'.format(exp[0]['exp_num']),
+                                     fontdict={'fontsize': 6})
+                else:
+                    plot_cumreward(ax_cumreward, exp, window=window, success_cumreward=success_cumreward, ylim=ylim)
+                    params = exp[0].params
+                    for ax in (ax_cumreward,):
+                        ax.set_title('{0}, {1}, N: {2}, H: {3}, speeds: {4}'.format(
+                            params['exp_name'],
+                            params['policy']['class'],
+                            params['policy']['N'],
+                            params['policy']['H'],
+                            params['alg']['env_eval'].split("'speed_limits':")[-1].split('}')[0]
+                        ), fontdict={'fontsize': 6})
+            except:
+                pass
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    plt.close(f_cumreward)
+
+def plot_1368_1382():
+    FILE_NAME = 'rccar_1368_1382'
+
+    all_exps = [load_experiments(range(i, i + 3)) for i in range(1368, 1382, 3)] + \
+               [[load_probcoll_experiments('/home/gkahn/code/rllab/data/s3/sim-rccar/', i) for i in range(663, 663 + 3)]]
+
+    f_cumreward, axes_cumreward = plt.subplots(3, 3, figsize=(16, 8), sharey=True, sharex=True)
+
+    window = 20
+    probcoll_window = 4
+    ylim = (0, 2100)
+    success_cumreward = [500, 1000, 1500, 1750]
+
+    for ax_cumreward, exp in zip(axes_cumreward.ravel(), all_exps):
+
+        if not hasattr(exp, '__len__'):
+            exp = [exp]
+
+        if len(exp) > 0:
+            try:
+                if type(exp[0]) is dict:
+                    plot_cumreward_probcoll(ax_cumreward, exp, window=probcoll_window, success_cumreward=success_cumreward, ylim=ylim)
+                    for ax in (ax_cumreward,):
+                        ax.set_title('probcoll {0}'.format(exp[0]['exp_num']),
+                                     fontdict={'fontsize': 6})
+                else:
+                    plot_cumreward(ax_cumreward, exp, window=window, success_cumreward=success_cumreward, ylim=ylim)
+                    params = exp[0].params
+                    for ax in (ax_cumreward,):
+                        ax.set_title('{0}, {1}, N: {2}, H: {3}, speeds: {4}'.format(
+                            params['exp_name'],
+                            params['policy']['class'],
+                            params['policy']['N'],
+                            params['policy']['H'],
+                            params['alg']['env_eval'].split("'speed_limits':")[-1].split('}')[0]
+                        ), fontdict={'fontsize': 6})
+            except:
+                pass
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    plt.close(f_cumreward)
+
 def plot_test():
     FILE_NAME = 'rccar_test'
 
@@ -1338,6 +1507,9 @@ def plot_test():
 # plot_1202_1297()
 # plot_1299_1319()
 # plot_comparison_1319()
-plot_1321_1341()
+# plot_1321_1341()
+# plot_1339_paths()
+plot_1343_1366()
+plot_1368_1382()
 
 # plot_test()
