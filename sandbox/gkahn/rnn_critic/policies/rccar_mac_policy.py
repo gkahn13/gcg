@@ -78,7 +78,7 @@ class RCcarMACPolicy(MACPolicy, Serializable):
         return tf_values, tf_values_softmax, None, None
 
     def _graph_get_action(self, tf_obs_ph, get_action_params, scope_select, reuse_select, scope_eval, reuse_eval,
-                          add_speed_cost=False):
+                          tf_episode_timesteps_ph, add_speed_cost):
         """
         :param tf_obs_ph: [batch_size, obs_history_len, obs_dim]
         :param get_action_params: how to select actions
@@ -86,27 +86,6 @@ class RCcarMACPolicy(MACPolicy, Serializable):
         :param scope_eval: which scope to select values (double Q-learning)
         :return: tf_get_action [batch_size, action_dim], tf_get_action_value [batch_size]
         """
-        H = get_action_params['H']
-        assert(H <= self._N)
-        get_action_type = get_action_params['type']
-        num_obs = tf.shape(tf_obs_ph)[0]
-        action_dim = self._env_spec.action_space.flat_dim
-        max_speed = self._env_spec.action_space.high[1]
-
-        ### create actions
-        if get_action_type == 'random':
-            K = get_action_params[get_action_type]['K']
-            if isinstance(self._env_spec.action_space, Discrete):
-                tf_actions = tf.one_hot(tf.random_uniform([K, H], minval=0, maxval=action_dim, dtype=tf.int32),
-                                        depth=action_dim,
-                                        axis=2)
-            else:
-                action_lb = np.expand_dims(self._env_spec.action_space.low, 0)
-                action_ub = np.expand_dims(self._env_spec.action_space.high, 0)
-                tf_actions = (action_ub - action_lb) * tf.random_uniform([K, H, action_dim]) + action_lb
-        else:
-            raise NotImplementedError
-
         ### process to lowd
         with tf.variable_scope(scope_select, reuse=reuse_select):
             tf_preprocess_select = self._graph_preprocess_placeholders()
@@ -114,6 +93,48 @@ class RCcarMACPolicy(MACPolicy, Serializable):
         with tf.variable_scope(scope_eval, reuse=reuse_eval):
             tf_preprocess_eval = self._graph_preprocess_placeholders()
             tf_obs_lowd_eval = self._graph_obs_to_lowd(tf_obs_ph, tf_preprocess_eval, is_training=False)
+
+        get_action_type = get_action_params['type']
+        if get_action_type == 'random':
+            tf_get_action, tf_get_value, tf_get_action_reset_ops = self._graph_get_action_random(
+                tf_obs_lowd_select, tf_obs_lowd_eval,
+                tf_preprocess_select, tf_preprocess_eval,
+                get_action_params, get_action_type,
+                scope_select, reuse_select,
+                scope_eval, reuse_eval,
+                add_speed_cost)
+        elif get_action_type == 'cem':
+            tf_get_action, tf_get_value, tf_get_action_reset_ops = self._graph_get_action_cem(
+                tf_obs_lowd_select, tf_obs_lowd_eval,
+                tf_preprocess_select, tf_preprocess_eval,
+                get_action_params, get_action_type, scope_select, reuse_select, scope_eval, reuse_eval,
+                tf_episode_timesteps_ph, add_speed_cost)
+        else:
+            raise NotImplementedError
+
+        return tf_get_action, tf_get_value, tf_get_action_reset_ops
+
+    def _graph_get_action_random(self, tf_obs_lowd_select, tf_obs_lowd_eval, tf_preprocess_select, tf_preprocess_eval,
+                                 get_action_params, get_action_type, scope_select, reuse_select, scope_eval, reuse_eval,
+                                 add_speed_cost):
+        H = get_action_params['H']
+        assert (H <= self._N)
+
+        num_obs = tf.shape(tf_obs_lowd_select)[0]
+        action_dim = self._env_spec.action_space.flat_dim
+        max_speed = self._env_spec.action_space.high[1]
+
+        ### create actions
+        K = get_action_params[get_action_type]['K']
+        if isinstance(self._env_spec.action_space, Discrete):
+            tf_actions = tf.one_hot(tf.random_uniform([K, H], minval=0, maxval=action_dim, dtype=tf.int32),
+                                    depth=action_dim,
+                                    axis=2)
+        else:
+            action_lb = np.expand_dims(self._env_spec.action_space.low, 0)
+            action_ub = np.expand_dims(self._env_spec.action_space.high, 0)
+            tf_actions = (action_ub - action_lb) * tf.random_uniform([K, H, action_dim]) + action_lb
+
         ### tile
         tf_actions = tf.tile(tf_actions, (num_obs, 1, 1))
         tf_obs_lowd_repeat_select = tf_utils.repeat_2d(tf_obs_lowd_select, K, 0)
@@ -152,13 +173,129 @@ class RCcarMACPolicy(MACPolicy, Serializable):
                                                                     reduction_indices=1)
         tf_values_eval = tf.reshape(tf_values_eval, (num_obs, K))  # [num_obs, K]
         tf_get_action_value = tf.reduce_sum(tf_values_argmax_select * tf_values_eval, reduction_indices=1)
+        tf_get_action_reset_ops = []
 
         ### check shapes
         tf.assert_equal(tf.shape(tf_get_action)[0], num_obs)
         tf.assert_equal(tf.shape(tf_get_action_value)[0], num_obs)
         assert(tf_get_action.get_shape()[1].value == action_dim)
 
-        return tf_get_action, tf_get_action_value
+        return tf_get_action, tf_get_action_value, tf_get_action_reset_ops
+
+    def _graph_get_action_cem(self, tf_obs_lowd_select, tf_obs_lowd_eval, tf_preprocess_select, tf_preprocess_eval,
+                              get_action_params, get_action_type, scope_select, reuse_select, scope_eval, reuse_eval,
+                              tf_episode_timesteps_ph, add_speed_cost):
+        H = get_action_params['H']
+        assert (H <= self._N)
+
+        num_obs = tf.shape(tf_obs_lowd_select)[0]
+        dU = self._env_spec.action_space.flat_dim
+        eps = get_action_params['cem']['eps']
+
+        def run_cem(cem_params, distribution):
+            init_M = cem_params['init_M']
+            M = cem_params['M']
+            K = cem_params['K']
+            num_additional_iters = cem_params['num_additional_iters']
+            Ms = [init_M] + [M] * num_additional_iters
+            tf_obs_lowd_repeat_selects = [tf_utils.repeat_2d(tf_obs_lowd_select, init_M, 0)] + \
+                                         [tf_utils.repeat_2d(tf_obs_lowd_select, M, 0)] * num_additional_iters
+
+            for M, tf_obs_lowd_repeat_select in zip(Ms, tf_obs_lowd_repeat_selects):
+                ### sample from current distribution
+                tf_flat_actions_preclip = distribution.sample((M,))
+                tf_flat_actions = tf.clip_by_value(
+                    tf_flat_actions_preclip,
+                    np.array(list(self._env_spec.action_space.low) * H, dtype=np.float32),
+                    np.array(list(self._env_spec.action_space.high) * H, dtype=np.float32))
+                tf_actions = tf.reshape(tf_flat_actions, (M, H, dU))
+
+                ### eval current distribution costs
+                with tf.variable_scope(scope_select, reuse=reuse_select):
+                    tf_values_all_select, tf_values_softmax_all_select, _, _ = \
+                        self._graph_inference(tf_obs_lowd_repeat_select, tf_actions,
+                                              get_action_params['values_softmax'],
+                                              tf_preprocess_select, is_training=False, add_reg=False)  # [num_obs*k, H]
+
+                if self._is_classification:
+                    tf_values_all_select = -tf.sigmoid(tf_values_all_select) # convert pre-activation to post-activation
+                else:
+                    tf_values_all_select = -tf_values_all_select
+
+                tf_values_select = tf.reduce_sum(tf_values_all_select * tf_values_softmax_all_select,
+                                                 reduction_indices=1)  # [num_obs*K] # TODO: if variable speed, need to multiple by kinetic energy
+                if add_speed_cost:
+                    max_speed = self._env_spec.action_space.high[1]
+                    tf_values_select -= self._speed_weight * tf.reduce_mean(tf.square(tf_actions[:, :, 1] - max_speed),
+                                                                            reduction_indices=1)
+
+                ### get top k
+                _, top_indices = tf.nn.top_k(tf_values_select, k=K)
+                top_controls = tf.gather(tf_flat_actions, indices=top_indices)
+
+                ### set new distribution based on top k
+                mean = tf.reduce_mean(top_controls, axis=0)
+                covar = tf.matmul(tf.transpose(top_controls), top_controls) / float(K)
+                sigma = covar + eps * tf.eye(H * dU)
+
+                distribution = tf.contrib.distributions.MultivariateNormalFullCovariance(
+                    loc=mean,
+                    covariance_matrix=sigma
+                )
+
+            return tf_values_select, tf_actions
+
+        control_dependencies = []
+        control_dependencies += [tf.assert_equal(num_obs, 1)]
+        control_dependencies += [tf.assert_equal(tf.shape(tf_episode_timesteps_ph)[0], 1)]
+        with tf.control_dependencies(control_dependencies):
+            with tf.variable_scope('cem_warm_start', reuse=False):
+                mu = tf.get_variable('mu', [dU * H], trainable=False)
+            tf_get_action_reset_ops = [mu.initializer]
+
+            control_lower = np.array(self._env_spec.action_space.low.tolist() * H, dtype=np.float32)
+            control_upper = np.array(self._env_spec.action_space.high.tolist() * H, dtype=np.float32)
+            control_std = np.square(control_upper - control_lower) / 12.0
+            init_distribution = tf.contrib.distributions.Uniform(control_lower, control_upper)
+            gauss_distribution = tf.contrib.distributions.MultivariateNormalDiag(loc=mu, scale_diag=control_std)
+
+            tf_values_select, tf_actions = tf.cond(tf.greater(tf_episode_timesteps_ph[0], 0),
+                                   lambda: run_cem(get_action_params['cem']['warm_start'], gauss_distribution),
+                                   lambda: run_cem(get_action_params['cem'], init_distribution))
+
+            ### get action from best of last batch
+            tf_get_action_index = tf.cast(tf.argmax(tf_values_select, axis=0), tf.int32)
+            tf_get_action_seq = tf_actions[tf_get_action_index]
+
+            ### update mu for warm starting
+            tf_get_action_seq_flat_end = tf.reshape(tf_get_action_seq[1:], (dU * (H - 1), ))
+            next_mean = tf.concat([tf_get_action_seq_flat_end, tf_get_action_seq_flat_end[-dU:]], axis=0)
+            update_mean = tf.assign(mu, next_mean)
+            with tf.control_dependencies([update_mean]):
+                tf_get_action = tf_get_action_seq[0]
+
+            ### get_action_value based on eval (target)
+            with tf.variable_scope(scope_eval, reuse=reuse_eval):
+                tf_actions = tf.expand_dims(tf_get_action_seq, 0)
+                tf_values_all_eval, tf_values_softmax_all_eval, _, _ = \
+                    self._graph_inference(tf_obs_lowd_eval, tf_actions, get_action_params['values_softmax'],
+                                          tf_preprocess_eval, is_training=False, add_reg=False)  # [num_obs*k, H]
+
+                if self._is_classification:
+                    tf_values_all_eval = -tf.sigmoid(tf_values_all_eval) # convert pre-activation to post-activation
+                else:
+                    tf_values_all_eval = -tf_values_all_eval
+
+                tf_values_eval = tf.reduce_sum(tf_values_all_eval * tf_values_softmax_all_eval,
+                                               reduction_indices=1)  # [num_obs*K] # TODO: if variable speed, need to multiple by kinetic energy
+                if add_speed_cost:
+                    max_speed = self._env_spec.action_space.high[1]
+                    tf_values_eval -= self._speed_weight * tf.reduce_mean(tf.square(tf_actions[:, :, 1] - max_speed),
+                                                                          reduction_indices=1)
+
+                tf_get_action_value = tf_values_eval
+
+            return tf_get_action, tf_get_action_value, tf_get_action_reset_ops
 
     def _graph_cost(self, tf_train_values, tf_train_values_softmax, tf_rewards_ph, tf_dones_ph,
                     tf_target_get_action_values):
@@ -224,7 +361,7 @@ class RCcarMACPolicy(MACPolicy, Serializable):
 
             ### create input output placeholders
             tf_obs_ph, tf_actions_ph, tf_dones_ph, tf_rewards_ph, tf_obs_target_ph, \
-            tf_test_es_ph_dict = self._graph_input_output_placeholders()
+                tf_test_es_ph_dict, tf_episode_timesteps_ph = self._graph_input_output_placeholders()
 
             ### policy
             policy_scope = 'policy'
@@ -245,9 +382,11 @@ class RCcarMACPolicy(MACPolicy, Serializable):
                 tf_get_value = tf.reduce_sum(tf_train_values_softmax_test * tf_train_values_test, reduction_indices=1)
 
             ### action selection
-            tf_get_action, tf_get_action_value = self._graph_get_action(tf_obs_ph, self._get_action_test,
-                                                                        policy_scope, True, policy_scope, True,
-                                                                        add_speed_cost=True)
+            tf_get_action, tf_get_action_value, tf_get_action_reset_ops = \
+                self._graph_get_action(tf_obs_ph, self._get_action_test,
+                                       policy_scope, True, policy_scope, True,
+                                       add_speed_cost=True,
+                                       tf_episode_timesteps_ph=tf_episode_timesteps_ph)
             ### exploration strategy and logprob
             tf_get_action_explore = self._graph_get_action_explore(tf_get_action, tf_test_es_ph_dict)
 
@@ -264,12 +403,13 @@ class RCcarMACPolicy(MACPolicy, Serializable):
                 tf_obs_target_ph_packed = xplatform.concat([tf_obs_target_ph[:, h - self._obs_history_len:h, :]
                                                      for h in range(self._obs_history_len, self._obs_history_len + self._N + 1)],
                                                     0)
-                tf_target_get_action, tf_target_get_action_values = self._graph_get_action(tf_obs_target_ph_packed,
-                                                                                           self._get_action_target,
-                                                                                           scope_select=policy_scope,
-                                                                                           reuse_select=True,
-                                                                                           scope_eval=target_scope,
-                                                                                           reuse_eval=(target_scope == policy_scope))
+                tf_target_get_action, tf_target_get_action_values, _ = self._graph_get_action(tf_obs_target_ph_packed,
+                                                                                              self._get_action_target,
+                                                                                              scope_select=policy_scope,
+                                                                                              reuse_select=True,
+                                                                                              scope_eval=target_scope,
+                                                                                              reuse_eval=(target_scope == policy_scope),
+                                                                                              tf_episode_timesteps_ph=None) # TODO: would need to fill in
 
                 tf_target_get_action_values = tf.transpose(tf.reshape(tf_target_get_action_values, (self._N + 1, -1)))[:, 1:]
             else:
@@ -309,11 +449,13 @@ class RCcarMACPolicy(MACPolicy, Serializable):
             'rewards_ph': tf_rewards_ph,
             'obs_target_ph': tf_obs_target_ph,
             'test_es_ph_dict': tf_test_es_ph_dict,
+            'episode_timesteps_ph': tf_episode_timesteps_ph,
             'preprocess': tf_preprocess,
             'get_value': tf_get_value,
             'get_action': tf_get_action,
             'get_action_explore': tf_get_action_explore,
             'get_action_value': tf_get_action_value,
+            'get_action_reset_ops': tf_get_action_reset_ops,
             'update_target_fn': tf_update_target_fn,
             'cost': tf_cost,
             'mse': tf_mse,

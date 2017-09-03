@@ -46,3 +46,7 @@ class VecEnvExecutor(object):
 
     def terminate(self):
         pass
+
+    @property
+    def current_episode_steps(self):
+        return np.copy(self.ts)

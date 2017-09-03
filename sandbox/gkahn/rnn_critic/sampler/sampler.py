@@ -23,6 +23,8 @@ class RNNCriticSampler(object):
         self._policy = policy
         self._n_envs = n_envs
 
+        assert(self._n_envs == 1) # b/c policy reset
+
         self._replay_pools = [RNNCriticReplayPool(env.spec,
                                                   env.horizon,
                                                   policy.N,
@@ -87,12 +89,17 @@ class RNNCriticSampler(object):
             else:
                 raise NotImplementedError
         else:
-            actions, est_values, logprobs, _ = self._policy.get_actions(list(range(step, step + self._n_envs)),
-                                                                        encoded_observations,
-                                                                        explore=explore)
+            actions, est_values, logprobs, _ = self._policy.get_actions(
+                steps=list(range(step, step + self._n_envs)),
+                current_episode_steps=self._vec_env.current_episode_steps,
+                observations=encoded_observations,
+                explore=explore)
 
         ### take step
         next_observations, rewards, dones, env_infos = self._vec_env.step(actions)
+
+        if np.any(dones):
+            self._policy.reset()
 
         ### add to replay pool
         for replay_pool, action, reward, done, env_info, est_value, logprob in \

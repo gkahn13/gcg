@@ -20,6 +20,7 @@ def create_env(env_str, seed=None):
         pass
     try:
         from sandbox.gkahn.rnn_critic.envs.rccar.square_env import SquareEnv
+        from sandbox.gkahn.rnn_critic.envs.rccar.square_cluttered_env import SquareClutteredEnv
         from sandbox.gkahn.rnn_critic.envs.rccar.cylinder_env import CylinderEnv
     except:
         pass

@@ -58,6 +58,7 @@ class MACPolicy(TfPolicy, Serializable):
         ### action selection and exploration
         self._get_action_test = kwargs['get_action_test']
         self._get_action_target = kwargs['get_action_target']
+        assert(self._get_action_target['type'] == 'random')
         gaussian_es_params = kwargs['exploration_strategies'].get('GaussianStrategy', None)
         if gaussian_es_params is not None:
             self._gaussian_es = GaussianStrategy(self._env_spec, **gaussian_es_params) if gaussian_es_params else None
@@ -162,8 +163,10 @@ class MACPolicy(TfPolicy, Serializable):
                 tf_test_es_ph_dict['gaussian'] = tf.placeholder(tf.float32, [None], name='tf_test_gaussian_es')
             if self._epsilon_greedy_es:
                 tf_test_es_ph_dict['epsilon_greedy'] = tf.placeholder(tf.float32, [None], name='tf_test_epsilon_greedy_es')
+            ### episode timesteps
+            tf_episode_timesteps_ph = tf.placeholder(tf.int32, [None], name='tf_episode_timesteps')
 
-        return tf_obs_ph, tf_actions_ph, tf_dones_ph, tf_rewards_ph, tf_obs_target_ph, tf_test_es_ph_dict
+        return tf_obs_ph, tf_actions_ph, tf_dones_ph, tf_rewards_ph, tf_obs_target_ph, tf_test_es_ph_dict, tf_episode_timesteps_ph
 
     def _graph_preprocess_placeholders(self):
         tf_preprocess = dict()
@@ -299,7 +302,8 @@ class MACPolicy(TfPolicy, Serializable):
 
         return tf_actions
 
-    def _graph_get_action(self, tf_obs_ph, get_action_params, scope_select, reuse_select, scope_eval, reuse_eval):
+    def _graph_get_action(self, tf_obs_ph, get_action_params, scope_select, reuse_select, scope_eval, reuse_eval,
+                          tf_episode_timesteps_ph):
         """
         :param tf_obs_ph: [batch_size, obs_history_len, obs_dim]
         :param get_action_params: how to select actions
@@ -385,7 +389,9 @@ class MACPolicy(TfPolicy, Serializable):
         # self._tf_debug['tf_values_eval'] = tf_values_eval
         # self._tf_debug['tf_get_action_value'] = tf_get_action_value
 
-        return tf_get_action, tf_get_action_value
+        tf_get_action_reset_ops = []
+
+        return tf_get_action, tf_get_action_value, tf_get_action_reset_ops
 
     def _graph_get_action_explore(self, tf_actions, tf_es_ph_dict):
         """
@@ -490,7 +496,7 @@ class MACPolicy(TfPolicy, Serializable):
 
             ### create input output placeholders
             tf_obs_ph, tf_actions_ph, tf_dones_ph, tf_rewards_ph, tf_obs_target_ph, \
-                tf_test_es_ph_dict = self._graph_input_output_placeholders()
+                tf_test_es_ph_dict, tf_episode_timesteps_ph = self._graph_input_output_placeholders()
 
             ### policy
             policy_scope = 'policy'
@@ -511,8 +517,10 @@ class MACPolicy(TfPolicy, Serializable):
                 tf_get_value = tf.reduce_sum(tf_train_values_softmax_test * tf_train_values_test, reduction_indices=1)
 
             ### action selection
-            tf_get_action, tf_get_action_value = self._graph_get_action(tf_obs_ph, self._get_action_test,
-                                                                        policy_scope, True, policy_scope, True)
+            tf_get_action, tf_get_action_value, tf_get_action_reset_ops = \
+                self._graph_get_action(tf_obs_ph, self._get_action_test,
+                                       policy_scope, True, policy_scope, True,
+                                       tf_episode_timesteps_ph)
             ### exploration strategy and logprob
             tf_get_action_explore = self._graph_get_action_explore(tf_get_action, tf_test_es_ph_dict)
 
@@ -529,12 +537,13 @@ class MACPolicy(TfPolicy, Serializable):
                 tf_obs_target_ph_packed = xplatform.concat([tf_obs_target_ph[:, h - self._obs_history_len:h, :]
                                                      for h in range(self._obs_history_len, self._obs_history_len + self._N + 1)],
                                                     0)
-                tf_target_get_action, tf_target_get_action_values = self._graph_get_action(tf_obs_target_ph_packed,
-                                                                                           self._get_action_target,
-                                                                                           scope_select=policy_scope,
-                                                                                           reuse_select=True,
-                                                                                           scope_eval=target_scope,
-                                                                                           reuse_eval=(target_scope == policy_scope))
+                tf_target_get_action, tf_target_get_action_values, _ = self._graph_get_action(tf_obs_target_ph_packed,
+                                                                                              self._get_action_target,
+                                                                                              scope_select=policy_scope,
+                                                                                              reuse_select=True,
+                                                                                              scope_eval=target_scope,
+                                                                                              reuse_eval=(target_scope == policy_scope),
+                                                                                              tf_episode_timesteps_ph=None) # TODO would need to fill in
 
                 tf_target_get_action_values = tf.transpose(tf.reshape(tf_target_get_action_values, (self._N + 1, -1)))[:, 1:]
             else:
@@ -573,11 +582,13 @@ class MACPolicy(TfPolicy, Serializable):
             'rewards_ph': tf_rewards_ph,
             'obs_target_ph': tf_obs_target_ph,
             'test_es_ph_dict': tf_test_es_ph_dict,
+            'episode_timesteps_ph': tf_episode_timesteps_ph,
             'preprocess': tf_preprocess,
             'get_value': tf_get_value,
             'get_action': tf_get_action,
             'get_action_explore': tf_get_action_explore,
             'get_action_value': tf_get_action_value,
+            'get_action_reset_ops': tf_get_action_reset_ops,
             'update_target_fn': tf_update_target_fn,
             'cost': tf_cost,
             'mse': tf_mse,
@@ -664,11 +675,12 @@ class MACPolicy(TfPolicy, Serializable):
     ### Policy methods ###
     ######################
 
-    def get_action(self, step, observation, explore):
-        chosen_actions, chosen_values, action_info = self.get_actions([step], [observation], explore=explore)
+    def get_action(self, step, current_episode_step, observation, explore):
+        chosen_actions, chosen_values, action_info = self.get_actions([step], [current_episode_step] [observation],
+                                                                      explore=explore)
         return chosen_actions[0], chosen_values[0], action_info
 
-    def get_actions(self, steps, observations, explore):
+    def get_actions(self, steps, current_episode_steps, observations, explore):
         d = {}
         # keys = [k for k in self._tf_debug.keys()]
         # vs = self._tf_dict['sess'].run([self._tf_debug[k] for k in keys],
@@ -676,10 +688,11 @@ class MACPolicy(TfPolicy, Serializable):
         # for k, v in zip(keys, vs):
         #     d[k] = v
 
+        feed_dict = {
+            self._tf_dict['obs_ph']: observations,
+            self._tf_dict['episode_timesteps_ph']: current_episode_steps
+        }
         if explore:
-            feed_dict = {
-                self._tf_dict['obs_ph']: observations,
-            }
             if self._gaussian_es:
                 feed_dict[self._tf_dict['test_es_ph_dict']['gaussian']] = [self._gaussian_es.schedule.value(t) for t in steps]
             if self._epsilon_greedy_es:
@@ -690,10 +703,6 @@ class MACPolicy(TfPolicy, Serializable):
                                                          self._tf_dict['get_action_value']],
                                                         feed_dict=feed_dict)
         else:
-            feed_dict = {
-                self._tf_dict['obs_ph']: observations,
-            }
-
             actions, values = self._tf_dict['sess'].run([self._tf_dict['get_action'],
                                                          self._tf_dict['get_action_value']],
                                                         feed_dict=feed_dict)
@@ -719,6 +728,9 @@ class MACPolicy(TfPolicy, Serializable):
         #     d[k] = v
 
         return get_values, d
+
+    def reset(self):
+        self._tf_dict['sess'].run(self._tf_dict['get_action_reset_ops'])
 
     @property
     def recurrent(self):

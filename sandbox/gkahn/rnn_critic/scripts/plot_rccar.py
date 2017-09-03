@@ -1452,6 +1452,43 @@ def plot_1368_1382():
     f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
     plt.close(f_cumreward)
 
+def plot_1384_1431():
+    FILE_NAME = 'rccar_1384_1431'
+
+    all_exps = [load_experiments(range(i, i + 3)) for i in range(1384, 1431, 3)]
+
+    f_cumreward, axes_cumreward = plt.subplots(4, 4, figsize=(16, 16), sharey=True, sharex=True)
+
+    window = 20
+    ylim = (0, 2100)
+    success_cumreward = [500, 1000, 1500, 1750]
+
+    import IPython; IPython.embed()
+
+    for ax_cumreward, exp in zip(axes_cumreward.ravel(), all_exps):
+
+        if not hasattr(exp, '__len__'):
+            exp = [exp]
+
+        if len(exp) > 0:
+            try:
+                plot_cumreward(ax_cumreward, exp, window=window, success_cumreward=success_cumreward, ylim=ylim)
+                params = exp[0].params
+                for ax in (ax_cumreward,):
+                    ax.set_title('{0}, train: {1}, update: {2:.1e}, expl: {3:.1e}, rp: {4}'.format(
+                        params['exp_name'],
+                        params['alg']['train_every_n_steps'],
+                        params['alg']['update_target_every_n_steps'],
+                        params['alg']['exploration_strategies']['GaussianStrategy']['endpoints'][-1][0],
+                        params['alg']['replay_pool_sampling']
+                    ), fontdict={'fontsize': 6})
+            except:
+                pass
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    plt.close(f_cumreward)
+
+
 def plot_test():
     FILE_NAME = 'rccar_test'
 
@@ -1511,5 +1548,6 @@ def plot_test():
 # plot_1339_paths()
 plot_1343_1366()
 plot_1368_1382()
+# plot_1384_1431()
 
 # plot_test()
