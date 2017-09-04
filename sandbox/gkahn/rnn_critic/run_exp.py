@@ -42,7 +42,7 @@ elif args.region == 'us-east-1':
         'key_name': 'rllab-us-east-1',
         'image_id': 'ami-d7a99dac',
         'region_name': 'us-east-1',
-        'subnet_id': 'subnet-ed9e60b7', # TODO
+        'subnet_id': 'subnet-95cc71dd', # TODO
         'security_group_ids': ['sg-9e9e00e0']
     })
 elif args.region == 'us-east-2':
@@ -86,7 +86,6 @@ for exp in args.exps:
                 confirm_remote=args.confirm_remote,
                 dry=args.dry
             )
-            time.sleep(1)
             break
         except ClientError as e:
             print('ClientError: {0}\nSleep for a bit and try again'.format(e))

@@ -6,7 +6,7 @@ from rllab.envs.normalized_env import normalize
 from sandbox.gkahn.rnn_critic.envs.atari_wrappers import wrap_deepmind
 from sandbox.gkahn.rnn_critic.envs.pygame_wrappers import wrap_pygame
 
-def create_env(env_str, seed=None):
+def create_env(env_str, is_normalize=True, seed=None):
     from rllab.envs.gym_env import GymEnv, FixedIntervalVideoSchedule
     from sandbox.gkahn.rnn_critic.envs.premade_gym_env import PremadeGymEnv
     try:
@@ -34,7 +34,9 @@ def create_env(env_str, seed=None):
         PendulumDiscreteDense, PendulumDiscreteSparse, PendulumStochastic
 
     inner_env = eval(env_str)
-    env = TfEnv(normalize(inner_env))
+    if is_normalize:
+        inner_env = normalize(inner_env)
+    env = TfEnv(inner_env)
 
     # set seed
     if seed is not None:

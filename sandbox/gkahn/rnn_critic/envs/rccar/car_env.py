@@ -21,7 +21,6 @@ from panda3d.bullet import BulletHelper
 from panda3d.bullet import BulletRigidBodyNode
 from panda3d.bullet import ZUp
 
-
 class CarEnv(DirectObject):
     def __init__(self, params={}):
         self._params = params
@@ -42,7 +41,7 @@ class CarEnv(DirectObject):
             ShowBase()
         except:
             pass
-
+        
         base.setBackgroundColor(0.0, 0.0, 0.0, 1)
 
         # World
@@ -57,7 +56,7 @@ class CarEnv(DirectObject):
         ts = TransformState.makePos(Point3(0., 0., 0.25))
         self._vehicle_node = BulletRigidBodyNode('Vehicle')
         self._vehicle_node.addShape(shape, ts)
-        self._mass = self._params.get('mass', 10.)
+        self._mass = self._params.get('mass', 10.) 
         self._vehicle_node.setMass(self._mass)
         self._vehicle_node.setDeactivationEnabled(False)
         self._vehicle_node.setCcdSweptSphereRadius(1.0)
@@ -69,9 +68,9 @@ class CarEnv(DirectObject):
         self._vehicle = BulletVehicle(self._world, self._vehicle_node)
         self._vehicle.setCoordinateSystem(ZUp)
         self._world.attachVehicle(self._vehicle)
-        self._addWheel(Point3(0.3, 0.5, 0.07), True, 0.07)
-        self._addWheel(Point3(-0.3, 0.5, 0.07), True, 0.07)
-        self._addWheel(Point3(0.3, -0.5, 0.07), False, 0.07)
+        self._addWheel(Point3( 0.3,  0.5, 0.07), True,  0.07)
+        self._addWheel(Point3(-0.3,  0.5, 0.07), True,  0.07)
+        self._addWheel(Point3( 0.3, -0.5, 0.07), False, 0.07)
         self._addWheel(Point3(-0.3, -0.5, 0.07), False, 0.07)
 
         # Camera
@@ -105,11 +104,11 @@ class CarEnv(DirectObject):
             self._back_camera_node.setPos(0.0, -0.5, 0.375)
             self._back_camera_node.lookAt(0.0, -6.0, 0.0)
             self._back_camera_node.reparentTo(self._vehicle_pointer)
-
+        
         # Car Simulator
         self._des_vel = None
         self._setup()
-
+        
         # Input
         self.accept('escape', self._doExit)
         self.accept('r', self.reset)
@@ -126,10 +125,10 @@ class CarEnv(DirectObject):
         self.accept('d', self._right)
         self.accept('m', self._mark)
 
-        self._steering = 0.0  # degree
+        self._steering = 0.0       # degree
         self._engineForce = 0.0
         self._brakeForce = 0.0
-        self._p = self._params.get('p', 1.25)
+        self._p = self._params.get('p', 1.25) 
         self._d = self._params.get('d', 0.0)
         self._last_err = 0.0
         self._curr_time = 0.0
@@ -187,7 +186,13 @@ class CarEnv(DirectObject):
         if self._use_depth:
             plt.imshow(image[:, :, 0], cmap='gray')
         else:
-            plt.imshow(image)
+            import cv2
+            def rgb2gray(rgb):
+                return np.dot(rgb[..., :3], [0.299, 0.587, 0.114])
+
+            image = rgb2gray(image)
+            im = cv2.resize(image, (64, 36), interpolation=cv2.INTER_AREA)  # TODO how does this deal with aspect ratio
+            plt.imshow(im.astype(np.uint8), cmap='Greys_r')
         plt.show()
 
     def _mark(self):
@@ -257,6 +262,16 @@ class CarEnv(DirectObject):
             self._restart_index = (self._restart_index + 1) % num
             return pos_hpr[:3], pos_hpr[3:]
 
+    def _next_random_restart_pos_hpr(self):
+        num = len(self._restart_pos)
+        if num == 0:
+            return None, None
+        else:
+            index = np.random.randint(num)
+            pos_hpr = self._restart_pos[index]
+            self._restart_index = (self._restart_index + 1) % num
+            return pos_hpr[:3], pos_hpr[3:]
+
     def _setup_light(self):
         alight = AmbientLight('ambientLight')
         alight.setColor(Vec4(0.5, 0.5, 0.5, 1))
@@ -271,8 +286,8 @@ class CarEnv(DirectObject):
     def _default_hpr(self):
         return (0.0, 0.0, 3.14)
 
-    def _default_restart_pos(self):
-        return [self._default_pos() + self._default_hpr]
+    def _default_restart_pos():
+        return [self._default_pos() + self._default_hpr()]
 
     def _get_speed(self):
         vel = self._vehicle.getCurrentSpeedKmHour() / 3.6
@@ -288,14 +303,13 @@ class CarEnv(DirectObject):
 
         if dt >= self._step:
             # TODO maybe change number of timesteps
-            for i in range(int(dt / self._step)):
+            for i in range(int(dt/self._step)):
                 if self._des_vel is not None:
                     vel = self._get_speed()
                     err = self._des_vel - vel
                     d_err = (err - self._last_err) / self._step
                     self._last_err = err
-                    self._engineForce = np.clip(self._p * err + self._d * d_err, -self._accelClamp,
-                                                self._accelClamp) * self._mass
+                    self._engineForce = np.clip(self._p * err + self._d * d_err, -self._accelClamp, self._accelClamp) * self._mass
                 self._vehicle.applyEngineForce(self._engineForce, 0)
                 self._vehicle.applyEngineForce(self._engineForce, 1)
                 self._vehicle.applyEngineForce(self._engineForce, 2)
@@ -308,13 +322,11 @@ class CarEnv(DirectObject):
                 if self._des_vel is not None:
                     vel = self._get_speed()
                     self._mark_d += vel * self._curr_time
-                    # print(vel, self._mark_d, self._is_contact())
-                    print(np.array(self._vehicle_pointer.getPos()))
+                    print(vel, self._mark_d, self._is_contact())
                     err = self._des_vel - vel
                     d_err = (err - self._last_err) / 0.05
                     self._last_err = err
-                    self._engineForce = np.clip(self._p * err + self._d * d_err, -self._accelClamp,
-                                                self._accelClamp) * self._mass
+                    self._engineForce = np.clip(self._p * err + self._d * d_err, -self._accelClamp, self._accelClamp) * self._mass
                 self._curr_time = 0.0
                 self._vehicle.applyEngineForce(self._engineForce, 0)
                 self._vehicle.applyEngineForce(self._engineForce, 1)
@@ -334,10 +346,10 @@ class CarEnv(DirectObject):
         self._vehicle.applyEngineForce(0.0, 1)
         self._vehicle.applyEngineForce(0.0, 2)
         self._vehicle.applyEngineForce(0.0, 3)
-
+        
         if self._des_vel is not None:
             self._des_vel = 0
-
+        
         self._vehicle_node.setLinearVelocity(Vec3(0.0, 0.0, 0.0))
         self._vehicle_node.setAngularVelocity(Vec3(0.0, 0.0, 0.0))
         for i in range(self._vehicle.getNumWheels()):
@@ -394,7 +406,7 @@ class CarEnv(DirectObject):
 
     def _get_done(self):
         return self._collision
-
+    
     def _get_info(self):
         info = {}
         info['pos'] = np.array(self._vehicle_pointer.getPos())
@@ -402,10 +414,10 @@ class CarEnv(DirectObject):
         info['vel'] = self._get_speed()
         info['coll'] = self._collision
         return info
-
+    
     def _back_up(self):
-        assert (self._use_vel)
-        back_up_vel = self._params['back_up'].get('vel', -2.0)
+        assert(self._use_vel)
+        back_up_vel = self._params['back_up'].get('vel', -2.0) 
         self._des_vel = back_up_vel
         back_up_steer = self._params['back_up'].get('steer', (-5.0, 5.0))
         # TODO
@@ -425,14 +437,17 @@ class CarEnv(DirectObject):
 
     # Environment functions
 
-    def reset(self, pos=None, hpr=None, hard_reset=False):
+    def reset(self, pos=None, hpr=None, hard_reset=False, random_reset=False):
         if self._do_back_up and not hard_reset and \
-                        pos is None and hpr is None:
+                pos is None and hpr is None:
             if self._collision:
                 self._back_up()
         else:
             if pos is None and hpr is None:
-                pos, hpr = self._next_restart_pos_hpr()
+                if random_reset:
+                    pos, hpr = self._next_random_restart_pos_hpr()
+                else:
+                    pos, hpr = self._next_restart_pos_hpr()
             self._place_vehicle(pos=pos, hpr=hpr)
         self._collision = False
         return self._get_observation()
@@ -448,15 +463,14 @@ class CarEnv(DirectObject):
             self._des_vel = action[1]
         else:
             self._engineForce = self._engineClamp * \
-                                ((action[1] - 49.5) / 49.5)
-
+                ((action[1] - 49.5) / 49.5)
+        
         self._update(dt=self._dt)
         observation = self._get_observation()
-        reward = self._get_reward()
+        reward = self._get_reward() 
         done = self._get_done()
         info = self._get_info()
         return observation, reward, done, info
-
 
 if __name__ == '__main__':
     params = {'visualize': True, 'run_as_task': True}

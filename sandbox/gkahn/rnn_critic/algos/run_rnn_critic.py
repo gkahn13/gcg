@@ -36,11 +36,13 @@ def run_rnn_critic(params):
     os.environ["CUDA_VISIBLE_DEVICES"] = str(params['policy']['gpu_device'])  # TODO: hack so don't double GPU
     config.USE_TF = True
 
+    normalize_env = params['alg'].pop('normalize_env')
+
     env_str = params['alg'].pop('env')
-    env = create_env(env_str, seed=params['seed'])
+    env = create_env(env_str, is_normalize=normalize_env, seed=params['seed'])
 
     env_eval_str = params['alg'].pop('env_eval', env_str)
-    env_eval = create_env(env_eval_str, seed=params['seed'])
+    env_eval = create_env(env_eval_str, is_normalize=normalize_env, seed=params['seed'])
 
     env.reset()
     env_eval.reset()

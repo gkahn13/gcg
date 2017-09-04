@@ -25,8 +25,17 @@ class CylinderEnv(CarEnv):
             self,
             params=params)
 
-        self.action_space = Box(low=np.array([params['steer_limits'][0], params['speed_limits'][0]]),
-                                high=np.array([params['steer_limits'][1], params['speed_limits'][1]]))
+        self._fixed_speed = (params['speed_limits'][0] == params['speed_limits'][1])
+        assert(self._fixed_speed)
+        self._steer_limits = params['steer_limits']
+        self._speed_limits = params['speed_limits']
+        if self._fixed_speed:
+            self.action_space = Box(low=np.array([-1., 1.]), high=np.array([1., 1.]))
+        else:
+            self.action_space = Box(low=np.array([-1., 1.]), high=np.array([-1., 1.]))
+        self._unnormalized_action_space = Box(low=np.array([self._steer_limits[0], self._speed_limits[0]]),
+                                              high=np.array([self._steer_limits[1], self._speed_limits[1]]))
+
         self.observation_space = Box(low=0, high=255, shape=tuple(self._get_observation().shape))
 
         self._collision_reward_only = params['collision_reward_only']
@@ -42,6 +51,16 @@ class CylinderEnv(CarEnv):
             im = np.expand_dims(im, 2)
 
         return im
+
+    def step(self, action):
+        lb, ub = self._unnormalized_action_space.bounds
+        scaled_action = lb + (action + 1.) * 0.5 * (ub - lb)
+        scaled_action = np.clip(scaled_action, lb, ub)
+
+        if self._fixed_speed:
+            scaled_action[1] = self._speed_limits[0]
+
+        return CarEnv.step(self, scaled_action)
 
     @staticmethod
     def process_depth(image, obs_shape):

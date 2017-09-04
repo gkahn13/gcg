@@ -23,7 +23,7 @@ def load_experiments(indices):
     for i in indices:
         try:
             exps.append(AnalyzeRNNCritic(os.path.join(EXP_FOLDER, 'rccar{0:03d}'.format(i)),
-                                         clear_obs=False,
+                                         clear_obs=True,
                                          create_new_envs=False,
                                          load_train_rollouts=False,
                                          load_eval_rollouts=True))
@@ -1463,8 +1463,6 @@ def plot_1384_1431():
     ylim = (0, 2100)
     success_cumreward = [500, 1000, 1500, 1750]
 
-    import IPython; IPython.embed()
-
     for ax_cumreward, exp in zip(axes_cumreward.ravel(), all_exps):
 
         if not hasattr(exp, '__len__'):
@@ -1488,6 +1486,63 @@ def plot_1384_1431():
     f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
     plt.close(f_cumreward)
 
+def plot_1433_1492():
+    FILE_NAME = 'rccar_1433_1492'
+
+    all_exps = [load_experiments(range(i, i + 3)) for i in range(1433, 1448, 3)] + \
+               [[load_probcoll_experiments('/home/gkahn/code/rllab/data/s3/sim-rccar/', i) for i in range(667, 667 + 3)]] + \
+               [load_experiments(range(i, i + 3)) for i in range(1448, 1463, 3)] + \
+               [[load_probcoll_experiments('/home/gkahn/code/rllab/data/s3/sim-rccar/', i) for i in
+                 range(670, 670 + 3)]] + \
+               [load_experiments(range(i, i + 3)) for i in range(1463, 1478, 3)] + \
+               [[load_probcoll_experiments('/home/gkahn/code/rllab/data/s3/sim-rccar/', i) for i in
+                 range(673, 673 + 3)]] + \
+               [load_experiments(range(i, i + 3)) for i in range(1478, 1493, 3)] + \
+               [[load_probcoll_experiments('/home/gkahn/code/rllab/data/s3/sim-rccar/', i) for i in
+                 range(676, 676 + 3)]]
+
+    import IPython; IPython.embed()
+
+    f_cumreward, axes_cumreward = plt.subplots(4, 6, figsize=(18, 12), sharey=True, sharex=False)
+
+    window = 20
+    probcoll_window = 4
+    ylim = (0, 2100)
+    success_cumreward = [500, 1000, 1500, 1750]
+
+    for ax_cumreward, exp in zip(axes_cumreward.ravel(), all_exps):
+
+        if not hasattr(exp, '__len__'):
+            exp = [exp]
+
+        if len(exp) > 0:
+            try:
+                if type(exp[0]) is dict:
+                    plot_cumreward_probcoll(ax_cumreward, exp, window=probcoll_window, success_cumreward=success_cumreward, ylim=ylim)
+                    for ax in (ax_cumreward,):
+                        ax.set_title('probcoll {0}'.format(exp[0]['exp_num']),
+                                     fontdict={'fontsize': 6})
+                else:
+                    plot_cumreward(ax_cumreward, exp, window=window, success_cumreward=success_cumreward, ylim=ylim)
+                    params = exp[0].params
+                    for ax in (ax_cumreward,):
+                        ax.set_title('{0}, {1}, {2}, N: {3}, H: {4}'.format(
+                            params['exp_name'],
+                            params['alg']['env'].split('(params=')[0].split('"')[-1],
+                            params['policy']['class'],
+                            params['policy']['N'],
+                            params['policy']['H'],
+                        ), fontdict={'fontsize': 6})
+            except:
+                pass
+
+    for i, xmax in enumerate([1e5, 2e5, 2e5, 4e5]):
+        for ax in axes_cumreward[i, :]:
+            ax.set_xlim((0, xmax))
+
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    plt.close(f_cumreward)
 
 def plot_test():
     FILE_NAME = 'rccar_test'
@@ -1546,8 +1601,9 @@ def plot_test():
 # plot_comparison_1319()
 # plot_1321_1341()
 # plot_1339_paths()
-plot_1343_1366()
-plot_1368_1382()
+# plot_1343_1366()
+# plot_1368_1382()
 # plot_1384_1431()
+plot_1433_1492()
 
 # plot_test()
