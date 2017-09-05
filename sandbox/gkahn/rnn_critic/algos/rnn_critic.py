@@ -11,87 +11,84 @@ from sandbox.gkahn.rnn_critic.utils.utils import timeit
 
 class RNNCritic(RLAlgorithm):
 
-    def __init__(self,
-                 env,
-                 env_eval,
-                 policy,
-                 max_path_length,
-                 total_steps,
-                 sample_after_n_steps,
-                 learn_after_n_steps,
-                 train_every_n_steps,
-                 eval_every_n_steps,
-                 save_every_n_steps,
-                 update_target_after_n_steps,
-                 update_target_every_n_steps,
-                 update_preprocess_every_n_steps,
-                 log_every_n_steps,
-                 batch_size,
-                 onpolicy_after_n_steps=-1,
-                 n_envs=1,
-                 replay_pool_size=int(1e6),
-                 replay_pool_sampling='uniform',
-                 save_rollouts=False,
-                 save_rollouts_observations=True,
-                 save_eval_rollouts_observations=False,
-                 save_env_infos=False,
-                 offpolicy=None,
-                 num_offpolicy=np.inf,
-                 render=False,
-                 env_str=None):
-        assert(learn_after_n_steps % n_envs == 0)
-        if train_every_n_steps >= 1:
-            assert(int(train_every_n_steps) % n_envs == 0)
-        assert(save_every_n_steps % n_envs == 0)
-        assert(update_target_every_n_steps % n_envs == 0)
-        assert(update_preprocess_every_n_steps % n_envs == 0)
+    def __init__(self, **kwargs):
 
-        self._policy = policy
-        self._max_path_length = int(max_path_length)
-        self._total_steps = int(total_steps)
-        self._sample_after_n_steps = int(sample_after_n_steps)
-        self._onpolicy_after_n_steps = int(onpolicy_after_n_steps)
-        self._learn_after_n_steps = int(learn_after_n_steps)
-        self._train_every_n_steps = train_every_n_steps
-        self._eval_every_n_steps = int(eval_every_n_steps)
-        self._save_every_n_steps = int(save_every_n_steps)
-        self._update_target_after_n_steps = int(update_target_after_n_steps)
-        self._update_target_every_n_steps = int(update_target_every_n_steps)
-        self._update_preprocess_every_n_steps = int(update_preprocess_every_n_steps)
-        self._log_every_n_steps = int(log_every_n_steps)
-        self._batch_size = batch_size
-        self._save_rollouts = save_rollouts
-        self._save_rollouts_observations = save_rollouts_observations
+        self._policy = kwargs['policy']
+
+        self._batch_size = kwargs['batch_size']
+        self._save_rollouts = kwargs['save_rollouts']
+        self._save_rollouts_observations = kwargs['save_rollouts_observations']
 
         self._sampler = RNNCriticSampler(
-            policy=policy,
-            env=env,
-            n_envs=n_envs,
-            replay_pool_size=replay_pool_size,
-            max_path_length=max_path_length,
-            sampling_method=replay_pool_sampling,
-            save_rollouts=save_rollouts,
-            save_rollouts_observations=save_rollouts_observations,
-            save_env_infos=save_env_infos,
-            env_str=env_str
+            policy=kwargs['policy'],
+            env=kwargs['env'],
+            n_envs=kwargs['n_envs'],
+            replay_pool_size=kwargs['replay_pool_size'],
+            max_path_length=kwargs['max_path_length'],
+            sampling_method=kwargs['replay_pool_sampling'],
+            save_rollouts=kwargs['save_rollouts'],
+            save_rollouts_observations=kwargs['save_rollouts_observations'],
+            save_env_infos=kwargs['save_env_infos'],
+            env_str=kwargs['env_str']
         )
 
         self._eval_sampler = RNNCriticSampler(
-            policy=policy,
-            env=env_eval,
+            policy=kwargs['policy'],
+            env=kwargs['env_eval'],
             n_envs=1,
-            replay_pool_size=int(np.ceil(1.5 * max_path_length) + 1),
-            max_path_length=max_path_length,
-            sampling_method=replay_pool_sampling,
+            replay_pool_size=int(np.ceil(1.5 * kwargs['max_path_length']) + 1),
+            max_path_length=kwargs['max_path_length'],
+            sampling_method=kwargs['replay_pool_sampling'],
             save_rollouts=True,
-            save_rollouts_observations=save_eval_rollouts_observations,
-            save_env_infos=save_env_infos,
+            save_rollouts_observations=kwargs.get('save_eval_rollouts_observations', False),
+            save_env_infos=kwargs['save_env_infos'],
         )
 
-        if offpolicy is not None:
-            assert(os.path.exists(offpolicy))
-            logger.log('Loading offpolicy data from {0}'.format(offpolicy))
-            self._sampler.add_offpolicy(offpolicy, int(num_offpolicy))
+        if kwargs.get('offpolicy', None) is not None:
+            assert(os.path.exists(kwargs['offpolicy']))
+            logger.log('Loading offpolicy data from {0}'.format(kwargs['offpolicy']))
+            self._sampler.add_offpolicy(kwargs['offpolicy'], int(kwargs['num_offpolicy']))
+
+        self._alg_type = kwargs['type']
+        alg_args = kwargs[self._alg_type]
+        if self._alg_type == 'interleave':
+            self._total_steps = int(alg_args['total_steps'])
+            self._sample_after_n_steps = int(alg_args['sample_after_n_steps'])
+            self._onpolicy_after_n_steps = int(alg_args['onpolicy_after_n_steps'])
+            self._learn_after_n_steps = int(alg_args['learn_after_n_steps'])
+            self._train_every_n_steps = alg_args['train_every_n_steps']
+            self._eval_every_n_steps = int(alg_args['eval_every_n_steps'])
+            self._save_every_n_steps = int(alg_args['save_every_n_steps'])
+            self._update_target_after_n_steps = int(alg_args['update_target_after_n_steps'])
+            self._update_target_every_n_steps = int(alg_args['update_target_every_n_steps'])
+            self._update_preprocess_every_n_steps = int(alg_args['update_preprocess_every_n_steps'])
+            self._log_every_n_steps = int(alg_args['log_every_n_steps'])
+            assert (self._learn_after_n_steps % self._sampler.n_envs == 0)
+            if self._train_every_n_steps >= 1:
+                assert (int(self._train_every_n_steps) % self._sampler.n_envs == 0)
+            assert (self._save_every_n_steps % self._sampler.n_envs == 0)
+            assert (self._update_target_every_n_steps % self._sampler.n_envs == 0)
+            assert (self._update_preprocess_every_n_steps % self._sampler.n_envs == 0)
+        elif self._alg_type == 'batch':
+            self._total_batches = alg_args['total_batches']
+            self._steps_per_batch = alg_args['steps_per_batch']
+
+            self._sample_after_n_batches = alg_args['sample_after_n_batches']
+            self._onpolicy_after_n_batches = alg_args['onpolicy_after_n_batches']
+            self._learn_after_n_batches = alg_args['learn_after_n_batches']
+            self._train_steps_per_batch = alg_args['train_steps_per_batch']
+
+            self._eval_every_n_batches = alg_args['eval_every_n_batches']
+            self._eval_samples_per_batch = alg_args['eval_samples_per_batch']
+
+            self._update_target_after_n_batches = alg_args['update_target_after_n_batches']
+            self._update_target_every_n_batches = alg_args['update_target_every_n_batches']
+            self._update_preprocess_every_n_batches = alg_args['update_preprocess_every_n_batches']
+
+            self._save_every_n_batches = alg_args['save_every_n_batches']
+            self._log_every_n_batches = alg_args['log_every_n_batches']
+        else:
+            raise NotImplementedError
 
     ####################
     ### Save methods ###
@@ -122,6 +119,96 @@ class RNNCritic(RLAlgorithm):
 
     @overrides
     def train(self):
+        if self._alg_type == 'interleave':
+            self._train_interleave()
+        elif self._alg_type == 'batch':
+            self._train_batch()
+        else:
+            raise NotImplementedError
+
+    def _train_batch(self):
+        save_itr = 0
+        target_updated = False
+        eval_rollouts = []
+        sampler_step = 0
+
+        for batch in range(self._total_batches):
+            timeit.reset()
+            timeit.start('total')
+
+            ### sample and add to buffer
+            if batch >= self._sample_after_n_batches:
+                timeit.start('sample')
+                for _ in range(self._steps_per_batch):
+                    self._sampler.step(sampler_step,
+                                       take_random_actions=(batch <= self._learn_after_n_batches or
+                                                            batch <= self._onpolicy_after_n_batches),
+                                       explore=True)
+                    sampler_step += 1
+                timeit.stop('sample')
+
+            if batch >= self._learn_after_n_batches:
+                ### train model
+                for _ in range(self._train_steps_per_batch):
+                    timeit.start('batch')
+                    sample_batch = self._sampler.sample(self._batch_size)
+                    timeit.stop('batch')
+                    timeit.start('train')
+                    self._policy.train_step(sampler_step, *sample_batch, use_target=target_updated)
+                    timeit.stop('train')
+
+                ### update target network
+                if batch >= self._update_target_after_n_batches and batch % self._update_target_every_n_batches == 0:
+                    # logger.log('Updating target network')
+                    self._policy.update_target()
+                    target_updated = True
+
+                ### update preprocess
+                if batch % self._update_preprocess_every_n_batches == 0:
+                    # logger.log('Updating preprocess')
+                    self._policy.update_preprocess(self._sampler.statistics)
+
+                ### sample and DON'T add to buffer (for validation)
+                if batch % self._eval_every_n_batches == 0:
+                    # logger.log('Evaluating')
+                    timeit.start('eval')
+                    eval_rollouts_step = []
+                    eval_step = len(self._sampler)
+                    while len(eval_rollouts_step) < self._eval_samples_per_batch:
+                        self._eval_sampler.step(eval_step, explore=False)
+                        eval_rollouts_step += self._eval_sampler.get_recent_paths()
+                        eval_step += 1
+                    eval_rollouts += eval_rollouts_step
+                    timeit.stop('eval')
+
+                ### log
+                if batch % self._log_every_n_batches == 0:
+                    step = len(self._sampler)
+                    logger.log('step %.3e' % step)
+                    logger.record_tabular('Step', step)
+                    self._sampler.log()
+                    self._eval_sampler.log(prefix='Eval')
+                    self._policy.log()
+                    logger.dump_tabular(with_prefix=False)
+                    timeit.stop('total')
+                    logger.log('\n' + str(timeit))
+                    timeit.reset()
+                    timeit.start('total')
+
+            ### save model
+            if batch > 0 and batch % self._save_every_n_batches == 0:
+                logger.log('Saving files')
+                self._save_params(save_itr,
+                                  train_rollouts=self._sampler.get_recent_paths(),
+                                  eval_rollouts=eval_rollouts)
+                save_itr += 1
+                eval_rollouts = []
+
+        self._save_params(save_itr,
+                          train_rollouts=self._sampler.get_recent_paths(),
+                          eval_rollouts=eval_rollouts)
+
+    def _train_interleave(self):
         save_itr = 0
         target_updated = False
         eval_rollouts = []

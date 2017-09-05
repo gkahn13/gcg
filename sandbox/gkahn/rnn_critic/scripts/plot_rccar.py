@@ -1544,6 +1544,97 @@ def plot_1433_1492():
     f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
     plt.close(f_cumreward)
 
+def plot_1494_1553():
+    FILE_NAME = 'rccar_1494_1553'
+
+    all_exps = [load_experiments(range(i, i + 3)) for i in range(1494, 1509, 3)] + \
+               [[load_probcoll_experiments('/home/gkahn/code/rllab/data/s3/sim-rccar/', i) for i in range(680, 680+ 3)]] + \
+               [load_experiments(range(i, i + 3)) for i in range(1509, 1524, 3)] + \
+               [[load_probcoll_experiments('/home/gkahn/code/rllab/data/s3/sim-rccar/', i) for i in range(683, 683+ 3)]] + \
+               [load_experiments(range(i, i + 3)) for i in range(1524, 1539, 3)] + \
+               [[load_probcoll_experiments('/home/gkahn/code/rllab/data/s3/sim-rccar/', i) for i in range(686, 686+ 3)]] + \
+               [load_experiments(range(i, i + 3)) for i in range(1539, 1554, 3)] + \
+               [[load_probcoll_experiments('/home/gkahn/code/rllab/data/s3/sim-rccar/', i) for i in range(689, 689+ 3)]]
+
+    import IPython; IPython.embed()
+
+    f_cumreward, axes_cumreward = plt.subplots(4, 6, figsize=(18, 12), sharey=True, sharex=False)
+
+    window = 20
+    probcoll_window = 4
+    ylim = (0, 2100)
+    success_cumreward = [500, 1000, 1500, 1750]
+
+    for ax_cumreward, exp in zip(axes_cumreward.ravel(), all_exps):
+
+        if not hasattr(exp, '__len__'):
+            exp = [exp]
+
+        if len(exp) > 0:
+            try:
+                if type(exp[0]) is dict:
+                    plot_cumreward_probcoll(ax_cumreward, exp, window=probcoll_window, success_cumreward=success_cumreward, ylim=ylim)
+                    for ax in (ax_cumreward,):
+                        ax.set_title('probcoll {0}'.format(exp[0]['exp_num']),
+                                     fontdict={'fontsize': 6})
+                else:
+                    plot_cumreward(ax_cumreward, exp, window=window, success_cumreward=success_cumreward, ylim=ylim)
+                    params = exp[0].params
+                    for ax in (ax_cumreward,):
+                        ax.set_title('{0}, {1}, {2}, N: {3}, H: {4}'.format(
+                            params['exp_name'],
+                            params['alg']['env'].split('(params=')[0].split('"')[-1],
+                            params['policy']['class'],
+                            params['policy']['N'],
+                            params['policy']['H'],
+                        ), fontdict={'fontsize': 6})
+            except:
+                pass
+
+    for i, xmax in enumerate([1e5, 2e5, 2e5, 4e5]):
+        for ax in axes_cumreward[i, :]:
+            ax.set_xlim((0, xmax))
+
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    plt.close(f_cumreward)
+
+def plot_1555_1650():
+    FILE_NAME = 'rccar_1555_1650'
+
+    all_exps = np.array([load_experiments(range(i, i + 3)) for i in range(1555, 1650, 3)])
+
+    import IPython; IPython.embed()
+
+    window = 20
+    ylim = (0, 2100)
+    success_cumreward = [500, 1000, 1500, 1750]
+
+    for i, exps in enumerate(np.split(all_exps, 2)):
+
+        f_cumreward, axes_cumreward = plt.subplots(4, 4, figsize=(15, 15), sharey=True, sharex=True)
+
+        for ax_cumreward, exp in zip(axes_cumreward.ravel(), exps):
+
+            if not hasattr(exp, '__len__'):
+                exp = [exp]
+
+            if len(exp) > 0:
+                plot_cumreward(ax_cumreward, exp, window=window, success_cumreward=success_cumreward, ylim=ylim)
+                params = exp[0].params
+                for ax in (ax_cumreward,):
+                    ax.set_title('{0}, {1}, reg: {2}, train: {3}, lr: {4}'.format(
+                        params['exp_name'],
+                        params['policy']['get_action_test']['type'],
+                        params['policy']['weight_decay'],
+                        params['alg']['train_every_n_steps'],
+                        params['policy']['lr_schedule']['outside_value']
+
+                    ), fontdict={'fontsize': 6})
+
+        f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward_{1}.png'.format(FILE_NAME, i)), bbox_inches='tight', dpi=200)
+        plt.close(f_cumreward)
+
 def plot_test():
     FILE_NAME = 'rccar_test'
 
@@ -1604,6 +1695,9 @@ def plot_test():
 # plot_1343_1366()
 # plot_1368_1382()
 # plot_1384_1431()
-plot_1433_1492()
+# plot_1433_1492()
+
+plot_1494_1553()
+# plot_1555_1650()
 
 # plot_test()

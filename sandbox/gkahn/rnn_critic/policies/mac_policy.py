@@ -224,13 +224,14 @@ class MACPolicy(TfPolicy, Serializable):
             if self._image_graph is not None:
                 obs_shape = [self._obs_history_len] + list(self._env_spec.observation_space.shape)[:2]
                 layer = tf.transpose(tf.reshape(tf_obs_whitened, [-1] + list(obs_shape)), perm=(0, 2, 3, 1))
-                layer, _ = networks.convnn(layer, self._image_graph, is_training=is_training, scope='obs_to_lowd_convnn')
+                layer, _ = networks.convnn(layer, self._image_graph, is_training=is_training, scope='obs_to_lowd_convnn', global_step_tensor=self.global_step)
                 layer = layers.flatten(layer)
             else:
                 layer = layers.flatten(tf_obs_whitened)
 
             ### obs --> internal state
-            tf_obs_lowd, _ = networks.fcnn(layer, self._observation_graph, is_training=is_training, scope='obs_to_lowd_fcnn')
+            tf_obs_lowd, _ = networks.fcnn(layer, self._observation_graph, is_training=is_training,
+                                           scope='obs_to_lowd_fcnn', global_step_tensor=self.global_step)
 
         return tf_obs_lowd
 
@@ -250,7 +251,7 @@ class MACPolicy(TfPolicy, Serializable):
         self._action_graph.update({'output_dim': self._observation_graph['output_dim']})
         action_dim = tf_actions_ph.get_shape()[2].value
         actions = tf.reshape(tf_actions_ph, (-1, action_dim))
-        rnn_inputs, _ = networks.fcnn(actions, self._action_graph, is_training=is_training, scope='fcnn_actions', T=H)
+        rnn_inputs, _ = networks.fcnn(actions, self._action_graph, is_training=is_training, scope='fcnn_actions', T=H, global_step_tensor=self.global_step)
         rnn_inputs = tf.reshape(rnn_inputs, (-1, H, self._action_graph['output_dim']))
 
         rnn_outputs, _ = networks.rnn(rnn_inputs, self._rnn_graph, initial_state=tf_obs_lowd)
@@ -258,8 +259,8 @@ class MACPolicy(TfPolicy, Serializable):
         rnn_outputs = tf.reshape(rnn_outputs, (-1, rnn_output_dim))
 
         self._output_graph.update({'output_dim': 1})
-        tf_nstep_rewards, _ = networks.fcnn(rnn_outputs, self._output_graph, is_training=is_training, scope='fcnn_rewards', T=H)
-        tf_nstep_values, _ = networks.fcnn(rnn_outputs, self._output_graph, is_training=is_training, scope='fcnn_values', T=H)
+        tf_nstep_rewards, _ = networks.fcnn(rnn_outputs, self._output_graph, is_training=is_training, scope='fcnn_rewards', T=H, global_step_tensor=self.global_step)
+        tf_nstep_values, _ = networks.fcnn(rnn_outputs, self._output_graph, is_training=is_training, scope='fcnn_values', T=H, global_step_tensor=self.global_step)
         tf_nstep_rewards = tf.unstack(tf.reshape(tf_nstep_rewards, (-1, H)), axis=1)
         tf_nstep_values = tf.unstack(tf.reshape(tf_nstep_values, (-1, H)), axis=1)
 
@@ -477,7 +478,7 @@ class MACPolicy(TfPolicy, Serializable):
             for i, (grad, var) in enumerate(gradients):
                 if grad is not None:
                     gradients[i] = (tf.clip_by_norm(grad, self._grad_clip_norm), var)
-            tf_opt = optimizer.apply_gradients(gradients)
+            tf_opt = optimizer.apply_gradients(gradients, global_step=self.global_step)
         return tf_opt, tf_lr_ph
 
     def _graph_init_vars(self, tf_sess):
@@ -497,6 +498,7 @@ class MACPolicy(TfPolicy, Serializable):
             ### create input output placeholders
             tf_obs_ph, tf_actions_ph, tf_dones_ph, tf_rewards_ph, tf_obs_target_ph, \
                 tf_test_es_ph_dict, tf_episode_timesteps_ph = self._graph_input_output_placeholders()
+            self.global_step = tf.Variable(0, trainable=False, name='global_step')
 
             ### policy
             policy_scope = 'policy'
@@ -595,6 +597,8 @@ class MACPolicy(TfPolicy, Serializable):
             'opt': tf_opt,
             'lr_ph': tf_lr_ph,
         }
+
+    # self.global_step = tf.Variable(0, trainable=False, name='global_step')
 
     ################
     ### Training ###

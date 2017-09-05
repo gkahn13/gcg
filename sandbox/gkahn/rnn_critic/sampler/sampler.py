@@ -64,6 +64,9 @@ class RNNCriticSampler(object):
     def statistics(self):
         return RNNCriticReplayPool.statistics_pools(self._replay_pools)
 
+    def __len__(self):
+        return sum([len(rp) for rp in self._replay_pools])
+
     ####################
     ### Add to pools ###
     ####################
