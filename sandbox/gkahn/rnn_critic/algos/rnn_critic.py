@@ -130,7 +130,6 @@ class RNNCritic(RLAlgorithm):
         save_itr = 0
         target_updated = False
         eval_rollouts = []
-        sampler_step = 0
 
         for batch in range(self._total_batches):
             timeit.reset()
@@ -140,11 +139,10 @@ class RNNCritic(RLAlgorithm):
             if batch >= self._sample_after_n_batches:
                 timeit.start('sample')
                 for _ in range(self._steps_per_batch):
-                    self._sampler.step(sampler_step,
+                    self._sampler.step(len(self._sampler),
                                        take_random_actions=(batch <= self._learn_after_n_batches or
                                                             batch <= self._onpolicy_after_n_batches),
                                        explore=True)
-                    sampler_step += 1
                 timeit.stop('sample')
 
             if batch >= self._learn_after_n_batches:
@@ -154,7 +152,7 @@ class RNNCritic(RLAlgorithm):
                     sample_batch = self._sampler.sample(self._batch_size)
                     timeit.stop('batch')
                     timeit.start('train')
-                    self._policy.train_step(sampler_step, *sample_batch, use_target=target_updated)
+                    self._policy.train_step(len(self._sampler), *sample_batch, use_target=target_updated)
                     timeit.stop('train')
 
                 ### update target network
@@ -173,11 +171,9 @@ class RNNCritic(RLAlgorithm):
                     # logger.log('Evaluating')
                     timeit.start('eval')
                     eval_rollouts_step = []
-                    eval_step = len(self._sampler)
                     while len(eval_rollouts_step) < self._eval_samples_per_batch:
-                        self._eval_sampler.step(eval_step, explore=False)
+                        self._eval_sampler.step(len(self._sampler), explore=False)
                         eval_rollouts_step += self._eval_sampler.get_recent_paths()
-                        eval_step += 1
                     eval_rollouts += eval_rollouts_step
                     timeit.stop('eval')
 

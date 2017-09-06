@@ -57,48 +57,69 @@ def load_probcoll_experiments(exp_folder, num):
 
 def plot_cumreward(ax, analyze_group, color='k', label=None, window=20, success_cumreward=None, ylim=(10, 60)):
     data_interp = DataAverageInterpolation()
-    min_step = max_step = None
-    for i, analyze in enumerate(analyze_group):
-        # steps = np.array(analyze.progress['Step'])
-        # values = np.array(analyze.progress['EvalCumRewardMean'])
+    if analyze_group[0].params['alg']['type'] == 'interleave':
+        min_step = max_step = None
+        for i, analyze in enumerate(analyze_group):
+            steps = np.array([r['steps'][0] for r in itertools.chain(*analyze.eval_rollouts_itrs)])
+            values = np.array([np.sum(r['rewards']) for r in itertools.chain(*analyze.eval_rollouts_itrs)])
 
-        steps = np.array([r['steps'][0] for r in itertools.chain(*analyze.eval_rollouts_itrs)])
-        values = np.array([np.sum(r['rewards']) for r in itertools.chain(*analyze.eval_rollouts_itrs)])
-        all_steps, all_values = zip(*sorted(zip(steps, values), key=lambda k: k[0]))
-        steps, values = [], []
-        for s, v in zip(all_steps, all_values):
-            if len(steps) == 0 or steps[-1] != s:
-                steps.append(s)
-                values.append(v)
+            steps, values = zip(*sorted(zip(steps, values), key=lambda k: k[0]))
+            steps, values = zip(*[(s, v) for s, v in zip(steps, values) if np.isfinite(v)])
 
-        steps, values = zip(*[(s, v) for s, v in zip(steps, values) if np.isfinite(v)])
+            def moving_avg_std(idxs, data, window):
+                avg_idxs, means, stds = [], [], []
+                for i in range(window, len(data)):
+                    avg_idxs.append(np.mean(idxs[i - window:i]))
+                    means.append(np.mean(data[i - window:i]))
+                    stds.append(np.std(data[i - window:i]))
+                return avg_idxs, np.asarray(means), np.asarray(stds)
 
-        def moving_avg_std(idxs, data, window):
-            avg_idxs, means, stds = [], [], []
-            for i in range(window, len(data)):
-                avg_idxs.append(np.mean(idxs[i - window:i]))
-                means.append(np.mean(data[i - window:i]))
-                stds.append(np.std(data[i - window:i]))
-            return avg_idxs, np.asarray(means), np.asarray(stds)
+            steps, values, _ = moving_avg_std(steps, values, window=window)
 
-        steps, values, _ = moving_avg_std(steps, values, window=window)
+            ax.plot(steps, values, color='r', alpha=np.linspace(1., 0.4, len(analyze_group))[i])
 
-        ax.plot(steps, values, color='r', alpha=np.linspace(1., 0.4, len(analyze_group))[i])
+            try:
+                data_interp.add_data(steps, values)
+            except:
+                continue
+            if min_step is None:
+                min_step = steps[0]
+            if max_step is None:
+                max_step = steps[-1]
+            min_step = max(min_step, steps[0])
+            max_step = min(max_step, steps[-1])
 
-        try:
-            data_interp.add_data(steps, values)
-        except:
-            continue
-        if min_step is None:
-            min_step = steps[0]
-        if max_step is None:
-            max_step = steps[-1]
-        min_step = max(min_step, steps[0])
-        max_step = min(max_step, steps[-1])
+        steps = np.r_[min_step:max_step:50.][1:-1]
+        values_mean, values_std = data_interp.eval(steps)
+        # steps -= min_step
 
-    steps = np.r_[min_step:max_step:50.][1:-1]
-    values_mean, values_std = data_interp.eval(steps)
-    # steps -= min_step
+    elif analyze_group[0].params['alg']['type'] == 'batch':
+        all_steps = []
+        values_mean = []
+        values_std = []
+        for i, analyze in enumerate(analyze_group):
+            steps = np.array([r['steps'][0] for r in itertools.chain(*analyze.eval_rollouts_itrs)])
+            values = np.array([np.sum(r['rewards']) for r in itertools.chain(*analyze.eval_rollouts_itrs)])
+
+            eval_batch_size = analyze.params['alg']['batch']['eval_samples_per_batch']
+            steps = np.reshape(steps, (-1, eval_batch_size))
+            values = np.reshape(values, (-1, eval_batch_size))
+
+            assert((steps.std(axis=1) == 0).all())
+
+            ax.plot(steps[:, 0], values.mean(axis=1), color='r', alpha=np.linspace(1., 0.4, len(analyze_group))[i])
+
+            all_steps.append(steps)
+            values_mean.append(values.mean(axis=1))
+            values_std.append(values.std(axis=1))
+
+        min_num_batches = min([len(s) for s in all_steps])
+        steps = all_steps[0][:min_num_batches, 0]
+        values_mean = np.mean([v[:min_num_batches] for v in values_mean], axis=0)
+        values_std = np.mean([v[:min_num_batches] for v in values_std], axis=0)
+
+    else:
+        raise NotImplementedError
 
     ax.plot(steps, values_mean, color=color, label=label)
     ax.fill_between(steps, values_mean - values_std, values_mean + values_std,
@@ -1556,7 +1577,7 @@ def plot_1494_1553():
                [load_experiments(range(i, i + 3)) for i in range(1539, 1554, 3)] + \
                [[load_probcoll_experiments('/home/gkahn/code/rllab/data/s3/sim-rccar/', i) for i in range(689, 689+ 3)]]
 
-    import IPython; IPython.embed()
+    # import IPython; IPython.embed()
 
     f_cumreward, axes_cumreward = plt.subplots(4, 6, figsize=(18, 12), sharey=True, sharex=False)
 
@@ -1635,6 +1656,121 @@ def plot_1555_1650():
         f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward_{1}.png'.format(FILE_NAME, i)), bbox_inches='tight', dpi=200)
         plt.close(f_cumreward)
 
+def plot_1652_1795():
+    FILE_NAME = 'rccar_1652_1795'
+
+    all_exps = np.array([load_experiments(range(i, i + 3)) for i in range(1652, 1795, 3)])
+
+    import IPython; IPython.embed()
+
+    window = 20
+    ylim = (0, 2100)
+    success_cumreward = [500, 1000, 1500, 1750]
+
+    for i, exps in enumerate(np.split(all_exps, 4)):
+
+        f_cumreward, axes_cumreward = plt.subplots(4, 3, figsize=(9, 12), sharey=True, sharex=True)
+
+        for ax_cumreward, exp in zip(axes_cumreward.ravel(), exps):
+
+            if not hasattr(exp, '__len__'):
+                exp = [exp]
+
+            if len(exp) > 0:
+                plot_cumreward(ax_cumreward, exp, window=window, success_cumreward=success_cumreward, ylim=ylim)
+                params = exp[0].params
+                for ax in (ax_cumreward,):
+                    ax.set_title('{0}, {1}, train every: {2},\ncell: {3}, norm: {4}, reg: {5:.1e}'.format(
+                        params['exp_name'],
+                        params['alg']['type'],
+                        params['alg']['interleave']['train_every_n_steps'] if params['alg']['type'] == 'interleave' else '',
+                        params['policy']['MACPolicy']['rnn_graph']['cell_type'],
+                        params['policy']['MACPolicy']['image_graph']['normalizer'],
+                        params['policy']['weight_decay']
+                    ), fontdict={'fontsize': 6})
+
+        f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward_{1}.png'.format(FILE_NAME, i)), bbox_inches='tight',
+                            dpi=200)
+        plt.close(f_cumreward)
+
+def plot_1797_1904():
+    FILE_NAME = 'rccar_1797_1904'
+
+    all_exps = np.array([load_experiments(range(i, i + 3)) for i in range(1797, 1904, 3)])
+
+    import IPython; IPython.embed()
+
+    window = 20
+    ylim = (0, 2100)
+    success_cumreward = [500, 1000, 1500, 1750]
+
+    for i, exps in enumerate(np.split(all_exps, 3)):
+
+        f_cumreward, axes_cumreward = plt.subplots(3, 4, figsize=(12, 9), sharey=True, sharex=True)
+
+        for ax_cumreward, exp in zip(axes_cumreward.ravel(), exps):
+
+            if not hasattr(exp, '__len__'):
+                exp = [exp]
+
+            if len(exp) > 0:
+                # try:
+                plot_cumreward(ax_cumreward, exp, window=window, success_cumreward=success_cumreward, ylim=ylim)
+                # except:
+                #     pass
+                params = exp[0].params
+                for ax in (ax_cumreward,):
+                    ax.set_title('{0}, {1}, total batches: {2}, steps per: {3},\ntrain steps per: {4}, reg: {5:.1e}'.format(
+                        params['exp_name'],
+                        params['alg']['type'],
+                        params['alg']['batch']['total_batches'],
+                        params['alg']['batch']['steps_per_batch'],
+                        params['alg']['batch']['train_steps_per_batch'],
+                        params['policy']['weight_decay']
+                    ), fontdict={'fontsize': 6})
+
+        f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward_{1}.png'.format(FILE_NAME, i)), bbox_inches='tight',
+                            dpi=200)
+        plt.close(f_cumreward)
+
+def plot_compare_1494_1905():
+    FILE_NAME = 'rccar_1905_1494_compare'
+
+    all_exps = [load_experiments(range(1494, 1494 + 3)), load_experiments(range(1496, 1496 + 3)),
+                load_experiments(range(1905, 1905 + 3)), load_experiments(range(1908, 1908 + 3))]
+
+    # import IPython; IPython.embed()
+
+    f_cumreward, axes_cumreward = plt.subplots(2, 2, figsize=(10, 5), sharey=True, sharex=True)
+
+    window = 20
+    ylim = (0, 2100)
+    success_cumreward = [500, 1000, 1500, 1750]
+
+    for ax_cumreward, exp in zip(axes_cumreward.ravel(), all_exps):
+
+        if not hasattr(exp, '__len__'):
+            exp = [exp]
+
+        if len(exp) > 0:
+            plot_cumreward(ax_cumreward, exp, window=window, success_cumreward=success_cumreward, ylim=ylim)
+            params = exp[0].params
+            for ax in (ax_cumreward,):
+                ax.set_title('{0}'.format(
+                    params['exp_name'],
+                ), fontdict={'fontsize': 8})
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    plt.close(f_cumreward)
+
+def plot_1912_2055():
+    FILE_NAME = 'rccar_1912_2055'
+
+    all_exps = np.array([load_experiments(range(i, i + 3)) for i in range(1912, 2055, 3)])
+
+    import IPython; IPython.embed()
+
+
 def plot_test():
     FILE_NAME = 'rccar_test'
 
@@ -1697,7 +1833,13 @@ def plot_test():
 # plot_1384_1431()
 # plot_1433_1492()
 
-plot_1494_1553()
+# plot_1494_1553()
 # plot_1555_1650()
+
+# plot_1652_1795()
+
+# plot_1797_1904()
+plot_compare_1494_1905()
+# plot_1912_2055()
 
 # plot_test()
