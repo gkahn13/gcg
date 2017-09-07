@@ -430,6 +430,7 @@ class RCcarMACPolicy(MACPolicy, Serializable):
                     tf_update_target_fn.append(var_target.assign(var))
                 tf_update_target_fn = tf.group(*tf_update_target_fn)
             else:
+                tf_target_vars = None
                 tf_update_target_fn = None
 
             ### optimization
@@ -462,6 +463,8 @@ class RCcarMACPolicy(MACPolicy, Serializable):
             'mse': tf_mse,
             'opt': tf_opt,
             'lr_ph': tf_lr_ph,
+            'policy_vars': tf_policy_vars,
+            'target_vars': tf_target_vars
         }
 
     ################

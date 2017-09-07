@@ -57,7 +57,7 @@ def load_probcoll_experiments(exp_folder, num):
 
 def plot_cumreward(ax, analyze_group, color='k', label=None, window=20, success_cumreward=None, ylim=(10, 60)):
     data_interp = DataAverageInterpolation()
-    if analyze_group[0].params['alg']['type'] == 'interleave':
+    if 'type' not in analyze_group[0].params['alg'] or analyze_group[0].params['alg']['type'] == 'interleave':
         min_step = max_step = None
         for i, analyze in enumerate(analyze_group):
             steps = np.array([r['steps'][0] for r in itertools.chain(*analyze.eval_rollouts_itrs)])
@@ -1698,7 +1698,7 @@ def plot_1797_1904():
 
     all_exps = np.array([load_experiments(range(i, i + 3)) for i in range(1797, 1904, 3)])
 
-    import IPython; IPython.embed()
+    # import IPython; IPython.embed()
 
     window = 20
     ylim = (0, 2100)
@@ -1770,6 +1770,79 @@ def plot_1912_2055():
 
     import IPython; IPython.embed()
 
+    window = 20
+    ylim = (0, 2100)
+    success_cumreward = [500, 1000, 1500, 1750]
+
+    for i, exps in enumerate(np.split(all_exps, 2)):
+
+        f_cumreward, axes_cumreward = plt.subplots(6, 4, figsize=(8, 12), sharey=True, sharex=True)
+
+        for ax_cumreward, exp in zip(axes_cumreward.ravel(), exps):
+
+            if not hasattr(exp, '__len__'):
+                exp = [exp]
+
+            if len(exp) > 0:
+                try:
+                    plot_cumreward(ax_cumreward, exp, window=window, success_cumreward=success_cumreward, ylim=ylim)
+                except:
+                    pass
+                params = exp[0].params
+                for ax in (ax_cumreward,):
+                    ax.set_title('{0}, {1}, total batches: {2}, steps per: {3},\ntrain steps per: {4}, norm: {5}, reg: {6:.1e}'.format(
+                        params['exp_name'],
+                        params['alg']['type'],
+                        params['alg']['batch']['total_batches'],
+                        params['alg']['batch']['steps_per_batch'],
+                        params['alg']['batch']['train_steps_per_batch'],
+                        params['policy']['MACPolicy']['image_graph']['normalizer'],
+                        params['policy']['weight_decay']
+                    ), fontdict={'fontsize': 4})
+
+        f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward_{1}.png'.format(FILE_NAME, i)), bbox_inches='tight',
+                            dpi=200)
+        plt.close(f_cumreward)
+
+def plot_2057_2128():
+    FILE_NAME = 'rccar_2057_2128'
+
+    all_exps = np.array([load_experiments(range(i, i + 3)) for i in range(2057, 2128, 3)])
+
+    # import IPython; IPython.embed()
+
+    window = 20
+    ylim = (0, 2100)
+    success_cumreward = [500, 1000, 1500, 1750]
+
+    for i, exps in enumerate(np.split(all_exps, 3)):
+
+        f_cumreward, axes_cumreward = plt.subplots(2, 4, figsize=(12, 6), sharey=True, sharex=True)
+
+        for ax_cumreward, exp in zip(axes_cumreward.ravel(), exps):
+
+            if not hasattr(exp, '__len__'):
+                exp = [exp]
+
+            if len(exp) > 0:
+                try:
+                    plot_cumreward(ax_cumreward, exp, window=window, success_cumreward=success_cumreward, ylim=ylim)
+                except:
+                    pass
+                params = exp[0].params
+                for ax in (ax_cumreward,):
+                    ax.set_title('{0}, {1}, reset: {2},\nnorm: {3}, reg: {4:.1e}'.format(
+                        params['exp_name'],
+                        params['alg']['type'],
+                        params['alg']['batch']['reset_every_n_batches'],
+                        params['policy']['MACPolicy']['image_graph']['normalizer'],
+                        params['policy']['weight_decay']
+                    ), fontdict={'fontsize': 7})
+
+        f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward_{1}.png'.format(FILE_NAME, i)), bbox_inches='tight',
+                            dpi=200)
+        plt.close(f_cumreward)
+
 
 def plot_test():
     FILE_NAME = 'rccar_test'
@@ -1839,7 +1912,9 @@ def plot_test():
 # plot_1652_1795()
 
 # plot_1797_1904()
-plot_compare_1494_1905()
+# plot_compare_1494_1905()
 # plot_1912_2055()
+
+plot_2057_2128()
 
 # plot_test()

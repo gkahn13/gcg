@@ -102,7 +102,7 @@ class RNNCriticSampler(object):
         next_observations, rewards, dones, env_infos = self._vec_env.step(actions)
 
         if np.any(dones):
-            self._policy.reset()
+            self._policy.reset_get_action()
 
         ### add to replay pool
         for replay_pool, action, reward, done, env_info, est_value, logprob in \

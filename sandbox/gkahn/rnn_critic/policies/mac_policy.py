@@ -11,7 +11,7 @@ import rllab.misc.logger as logger
 from rllab.misc import ext
 
 from sandbox.rocky.tf.spaces.discrete import Discrete
-from sandbox.gkahn.tf.policies.base import Policy as TfPolicy
+from sandbox.gkahn.tf.core.parameterized import Parameterized
 from sandbox.gkahn.tf.core import xplatform
 from sandbox.gkahn.rnn_critic.utils import schedules, tf_utils
 from sandbox.gkahn.rnn_critic.tf import networks
@@ -20,7 +20,7 @@ from sandbox.gkahn.rnn_critic.tf import networks
 from sandbox.gkahn.rnn_critic.exploration_strategies.epsilon_greedy_strategy import EpsilonGreedyStrategy
 from sandbox.gkahn.rnn_critic.exploration_strategies.gaussian_strategy import GaussianStrategy
 
-class MACPolicy(TfPolicy, Serializable):
+class MACPolicy(Parameterized, Serializable):
     def __init__(self, **kwargs):
         Serializable.quick_init(self, locals())
 
@@ -77,7 +77,7 @@ class MACPolicy(TfPolicy, Serializable):
         ### logging
         self._log_stats = defaultdict(list)
 
-        TfPolicy.__init__(self, self._env_spec, sess=self._tf_dict['sess'])
+        Parameterized.__init__(self, sess=self._tf_dict['sess'])
 
         assert((self._N == 1 and self._H == 1) or
                (self._N > 1 and self._H == 1) or
@@ -564,6 +564,7 @@ class MACPolicy(TfPolicy, Serializable):
                     tf_update_target_fn.append(var_target.assign(var))
                 tf_update_target_fn = tf.group(*tf_update_target_fn)
             else:
+                tf_target_vars = None
                 tf_update_target_fn = None
 
             ### optimization
@@ -596,9 +597,9 @@ class MACPolicy(TfPolicy, Serializable):
             'mse': tf_mse,
             'opt': tf_opt,
             'lr_ph': tf_lr_ph,
+            'policy_vars': tf_policy_vars,
+            'target_vars': tf_target_vars
         }
-
-    # self.global_step = tf.Variable(0, trainable=False, name='global_step')
 
     ################
     ### Training ###
@@ -675,6 +676,11 @@ class MACPolicy(TfPolicy, Serializable):
         self._log_stats['Cost'].append(cost)
         self._log_stats['mse/cost'].append(mse / cost)
 
+    def reset_weights(self):
+        self._tf_dict['sess'].run([v.initializer for v in self._tf_dict['policy_vars']])
+        if self._tf_dict['target_vars'] is not None:
+            self._tf_dict['sess'].run([v.initializer for v in self._tf_dict['target_vars']])
+
     ######################
     ### Policy methods ###
     ######################
@@ -733,7 +739,7 @@ class MACPolicy(TfPolicy, Serializable):
 
         return get_values, d
 
-    def reset(self):
+    def reset_get_action(self):
         self._tf_dict['sess'].run(self._tf_dict['get_action_reset_ops'])
 
     @property

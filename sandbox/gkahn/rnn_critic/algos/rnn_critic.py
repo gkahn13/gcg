@@ -76,7 +76,10 @@ class RNNCritic(RLAlgorithm):
             self._sample_after_n_batches = alg_args['sample_after_n_batches']
             self._onpolicy_after_n_batches = alg_args['onpolicy_after_n_batches']
             self._learn_after_n_batches = alg_args['learn_after_n_batches']
+
             self._train_steps_per_batch = alg_args['train_steps_per_batch']
+            self._reset_every_n_batches = alg_args['reset_every_n_batches'] # None if no resets
+            self._reset_train_steps_per_batch = alg_args['reset_train_steps_per_batch']
 
             self._eval_every_n_batches = alg_args['eval_every_n_batches']
             self._eval_samples_per_batch = alg_args['eval_samples_per_batch']
@@ -146,8 +149,15 @@ class RNNCritic(RLAlgorithm):
                 timeit.stop('sample')
 
             if batch >= self._learn_after_n_batches:
+                if batch == self._learn_after_n_batches or \
+                        (self._reset_every_n_batches is not None and batch % self._reset_every_n_batches == 0):
+                    self._policy.reset_weights()
+                    train_steps = self._reset_train_steps_per_batch
+                else:
+                    train_steps = self._train_steps_per_batch
+
                 ### train model
-                for _ in range(self._train_steps_per_batch):
+                for _ in range(train_steps):
                     timeit.start('batch')
                     sample_batch = self._sampler.sample(self._batch_size)
                     timeit.stop('batch')
