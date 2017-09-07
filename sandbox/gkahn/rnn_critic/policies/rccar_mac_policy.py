@@ -29,7 +29,8 @@ class RCcarMACPolicy(MACPolicy, Serializable):
     ### TF graph operations ###
     ###########################
 
-    def _graph_inference(self, tf_obs_lowd, tf_actions_ph, values_softmax, tf_preprocess, is_training, add_reg=True):
+    def _graph_inference(self, tf_obs_lowd, tf_actions_ph, values_softmax, tf_preprocess, is_training,
+                         add_reg=True, num_dp=1):
         """
         :param tf_obs_lowd: [batch_size, self._rnn_state_dim]
         :param tf_actions_ph: [batch_size, H, action_dim]
@@ -46,15 +47,17 @@ class RCcarMACPolicy(MACPolicy, Serializable):
         self._action_graph.update({'output_dim': self._observation_graph['output_dim']})
         action_dim = tf_actions_ph.get_shape()[2].value
         actions = tf.reshape(tf_actions_ph, (-1, action_dim))
-        rnn_inputs, _ = networks.fcnn(actions, self._action_graph, is_training=is_training, scope='fcnn_actions', T=H, global_step_tensor=self.global_step)
+        rnn_inputs, _ = networks.fcnn(actions, self._action_graph, is_training=is_training, scope='fcnn_actions',
+                                      T=H, global_step_tensor=self.global_step, num_dp=num_dp)
         rnn_inputs = tf.reshape(rnn_inputs, (-1, H, self._action_graph['output_dim']))
 
-        rnn_outputs, _ = networks.rnn(rnn_inputs, self._rnn_graph, initial_state=tf_obs_lowd)
+        rnn_outputs, _ = networks.rnn(rnn_inputs, self._rnn_graph, initial_state=tf_obs_lowd, num_dp=num_dp)
         rnn_output_dim = rnn_outputs.get_shape()[2].value
         rnn_outputs = tf.reshape(rnn_outputs, (-1, rnn_output_dim))
 
         self._output_graph.update({'output_dim': 1})
-        tf_values, _ = networks.fcnn(rnn_outputs, self._output_graph, is_training=is_training, scope='fcnn_values', T=H, global_step_tensor=self.global_step)
+        tf_values, _ = networks.fcnn(rnn_outputs, self._output_graph, is_training=is_training, scope='fcnn_values',
+                                     T=H, global_step_tensor=self.global_step, num_dp=num_dp)
         tf_values = tf.reshape(tf_values, (-1, H))
 
         if self._probcoll_strictly_increasing:
@@ -143,11 +146,11 @@ class RCcarMACPolicy(MACPolicy, Serializable):
         with tf.variable_scope(scope_select, reuse=reuse_select):
             tf_values_all_select, tf_values_softmax_all_select, _, _ = \
                 self._graph_inference(tf_obs_lowd_repeat_select, tf_actions, get_action_params['values_softmax'],
-                                      tf_preprocess_select, is_training=False, add_reg=False)  # [num_obs*k, H]
+                                      tf_preprocess_select, is_training=False, add_reg=False, num_dp=K)  # [num_obs*k, H]
         with tf.variable_scope(scope_eval, reuse=reuse_eval):
             tf_values_all_eval, tf_values_softmax_all_eval, _, _ = \
                 self._graph_inference(tf_obs_lowd_repeat_eval, tf_actions, get_action_params['values_softmax'],
-                                      tf_preprocess_eval, is_training=False, add_reg=False)  # [num_obs*k, H]
+                                      tf_preprocess_eval, is_training=False, add_reg=False, num_dp=K)  # [num_obs*k, H]
         if self._is_classification:
             ### convert pre-activation to post-activation
             tf_values_all_select = -tf.sigmoid(tf_values_all_select)
@@ -215,7 +218,7 @@ class RCcarMACPolicy(MACPolicy, Serializable):
                     tf_values_all_select, tf_values_softmax_all_select, _, _ = \
                         self._graph_inference(tf_obs_lowd_repeat_select, tf_actions,
                                               get_action_params['values_softmax'],
-                                              tf_preprocess_select, is_training=False, add_reg=False)  # [num_obs*k, H]
+                                              tf_preprocess_select, is_training=False, add_reg=False, num_dp=M)  # [num_obs*k, H]
 
                 if self._is_classification:
                     tf_values_all_select = -tf.sigmoid(tf_values_all_select) # convert pre-activation to post-activation

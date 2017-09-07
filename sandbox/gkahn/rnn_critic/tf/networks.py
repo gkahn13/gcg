@@ -242,7 +242,7 @@ def fcnn(
                     # Shape is not well defined without reshaping
                     shape = tf.shape(next_layer_input)
                     if num_dp > 1:
-                        sample = distribution.sample(shape[0] / num_dp, dim)
+                        sample = distribution.sample(tf.stack((shape[0] // num_dp, dim)))
                         sample = tf.concat([sample] * num_dp, axis=0)
                     else:
                         sample = distribution.sample(shape)
@@ -324,7 +324,7 @@ def rnn(
                     dp = dp_masks[i]
                 else:
                     if num_dp > 1:
-                        sample = distribution.sample((tf.shape(inputs)[0] / num_dp, num_units))
+                        sample = distribution.sample(tf.stack((tf.shape(inputs)[0] // num_dp, num_units)))
                         sample = tf.concat([sample] * num_dp, axis=0)
                     else:
                         sample = distribution.sample((tf.shape(inputs)[0], num_units))
