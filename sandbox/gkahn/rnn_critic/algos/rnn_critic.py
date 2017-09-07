@@ -152,9 +152,15 @@ class RNNCritic(RLAlgorithm):
                 if batch == self._learn_after_n_batches or \
                         (self._reset_every_n_batches is not None and batch % self._reset_every_n_batches == 0):
                     self._policy.reset_weights()
+                    self._policy.update_preprocess(self._sampler.statistics)
                     train_steps = self._reset_train_steps_per_batch
                 else:
                     train_steps = self._train_steps_per_batch
+
+                ### update preprocess
+                if batch % self._update_preprocess_every_n_batches == 0:
+                    # logger.log('Updating preprocess')
+                    self._policy.update_preprocess(self._sampler.statistics)
 
                 ### train model
                 for _ in range(train_steps):
@@ -170,11 +176,6 @@ class RNNCritic(RLAlgorithm):
                     # logger.log('Updating target network')
                     self._policy.update_target()
                     target_updated = True
-
-                ### update preprocess
-                if batch % self._update_preprocess_every_n_batches == 0:
-                    # logger.log('Updating preprocess')
-                    self._policy.update_preprocess(self._sampler.statistics)
 
                 ### sample and DON'T add to buffer (for validation)
                 if batch % self._eval_every_n_batches == 0:
@@ -244,7 +245,12 @@ class RNNCritic(RLAlgorithm):
                 eval_rollouts += eval_rollouts_step
                 timeit.stop('eval')
 
-            if step > self._learn_after_n_steps:
+            if step >= self._learn_after_n_steps:
+                ### update preprocess
+                if step == self._learn_after_n_steps or step % self._update_preprocess_every_n_steps == 0:
+                    # logger.log('Updating preprocess')
+                    self._policy.update_preprocess(self._sampler.statistics)
+
                 ### training step
                 if self._train_every_n_steps >= 1:
                     if step % int(self._train_every_n_steps) == 0:
@@ -268,11 +274,6 @@ class RNNCritic(RLAlgorithm):
                     # logger.log('Updating target network')
                     self._policy.update_target()
                     target_updated = True
-
-                ### update preprocess
-                if step % self._update_preprocess_every_n_steps == 0:
-                    # logger.log('Updating preprocess')
-                    self._policy.update_preprocess(self._sampler.statistics)
 
                 ### log
                 if step % self._log_every_n_steps == 0:

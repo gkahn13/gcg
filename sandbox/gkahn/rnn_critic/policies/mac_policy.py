@@ -677,9 +677,13 @@ class MACPolicy(Parameterized, Serializable):
         self._log_stats['mse/cost'].append(mse / cost)
 
     def reset_weights(self):
-        self._tf_dict['sess'].run([v.initializer for v in self._tf_dict['policy_vars']])
-        if self._tf_dict['target_vars'] is not None:
-            self._tf_dict['sess'].run([v.initializer for v in self._tf_dict['target_vars']])
+        tf_sess = self._tf_dict['sess']
+        tf_graph = tf_sess.graph
+        with tf_sess.as_default(), tf_graph.as_default():
+            self._graph_init_vars(tf_sess)
+        # self._tf_dict['sess'].run([v.initializer for v in self._tf_dict['policy_vars']])
+        # if self._tf_dict['target_vars'] is not None:
+        #     self._tf_dict['sess'].run([v.initializer for v in self._tf_dict['target_vars']])
 
     ######################
     ### Policy methods ###
