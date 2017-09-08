@@ -337,11 +337,66 @@ def plot_paths(axes, analyze_group):
 
             for pos in positions_i[::len(positions_i)//10]:
                 ax.plot(pos[:, 0], pos[:, 1], color=color, linewidth=1.)
-                if len(pos) < 23:
+                if len(pos) < 998:
                     ax.plot([pos[-1, 0]], [pos[-1, 1]], color=color, marker='d')
 
-            ax.set_xlim([-4.5, 4.5])
-            ax.set_ylim([-7.5, 7.5])
+            ax.set_xlim([-22.5, 22.5])
+            ax.set_ylim([-22.5, 22.5])
+
+def plot_paths(axes, analyze_group):
+
+    def get_rollout_positions(exp):
+        start_steps = []
+        positions = []
+        for rollout in itertools.chain(*exp.eval_rollouts_itrs):
+            start_steps.append(rollout['steps'][0])
+
+            p = np.array([d['pos'][:2] for d in rollout['env_infos']])
+            positions.append(p)
+
+        return start_steps, positions
+
+    group_start_steps, group_positions = zip(*[get_rollout_positions(exp) for exp in analyze_group])
+    colors = [cm.rainbow(i) for i in np.linspace(0, 1, len(group_positions))]
+
+    for start_steps, positions, color in zip(group_start_steps, group_positions, colors):
+        start_steps_list = np.array_split(start_steps, len(axes))
+        positions_list = np.array_split(positions, len(axes))
+        for ax, start_steps_i, positions_i in zip(axes, start_steps_list, positions_list):
+            ax.set_title('[{0:.2e}, {1:.2e}]'.format(min(start_steps_i), max(start_steps_i)),
+                         fontdict={'fontsize': 6})
+
+            for pos in positions_i[::len(positions_i) // 10]:
+                ax.plot(pos[:, 0], pos[:, 1], color=color, linewidth=1.)
+                if len(pos) < 998:
+                    ax.plot([pos[-1, 0]], [pos[-1, 1]], color=color, marker='d')
+
+            ax.set_xlim([-22.5, 22.5])
+            ax.set_ylim([-22.5, 22.5])
+
+def plot_paths_batch(exp, fname):
+    eval_batch_size = exp.params['alg']['batch']['eval_samples_per_batch']
+    all_rollouts = np.array(list(itertools.chain(*exp.eval_rollouts_itrs))).reshape(-1, eval_batch_size)
+
+    for i, rollouts in enumerate(all_rollouts):
+        divisors = [j for j in range(1, len(rollouts) + 1) if len(rollouts) % j == 0]
+        rows = divisors[len(divisors)//2]
+        cols = len(rollouts) // rows
+        f, axes = plt.subplots(rows, cols, figsize=(2*cols, 2*rows), sharex=True, sharey=True)
+
+        for ax, rollout in zip(axes.ravel(), rollouts):
+            pos = np.array([d['pos'][:2] for d in rollout['env_infos']])
+            is_collision = (len(pos) < 998) # TODO: hack
+            color = 'r' if is_collision else 'b'
+            ax.plot(pos[:, 0], pos[:, 1], color=color)
+            ax.plot(pos[0, 0], pos[0, 1], color=color, marker='o')
+
+            ax.set_xlim([-22.5, 22.5])
+            ax.set_ylim([-22.5, 22.5])
+
+        f.savefig(os.path.join(SAVE_FOLDER, '{0}_{1}_paths.png'.format(fname, i)), bbox_inches='tight', dpi=150)
+        plt.close(f)
+
 
 ############################
 ### Specific experiments ###
@@ -1843,41 +1898,80 @@ def plot_2057_2128():
                             dpi=200)
         plt.close(f_cumreward)
 
+def plot_2130_2201():
+    FILE_NAME = 'rccar_2130_2201'
 
-def plot_test():
-    FILE_NAME = 'rccar_test'
+    all_exps = np.array([load_experiments(range(i, i + 3)) for i in range(2130, 2201, 3)])
 
-    exps = [[AnalyzeRNNCritic('/home/gkahn/code/rllab/data/local/rnn-critic/test_rccar',
-                     clear_obs=False,
-                     create_new_envs=False,
-                     load_train_rollouts=False,
-                     load_eval_rollouts=True)],
-            load_experiments(range(994, 994 + 3))]
-    probcoll_exp = load_probcoll_experiments('/home/gkahn/code/probcoll/experiments/sim_rccar/test/analysis_images')
+    # import IPython; IPython.embed()
 
+    window = 20
+    ylim = (0, 2100)
+    success_cumreward = [500, 1000, 1500, 1750]
+
+    for i, exps in enumerate(np.split(all_exps, 2)):
+
+        f_cumreward, axes_cumreward = plt.subplots(4, 3, figsize=(9, 12), sharey=True, sharex=True)
+
+        for ax_cumreward, exp in zip(axes_cumreward.ravel(), exps):
+
+            if not hasattr(exp, '__len__'):
+                exp = [exp]
+
+            if len(exp) > 0:
+                try:
+                    plot_cumreward(ax_cumreward, exp, window=window, success_cumreward=success_cumreward, ylim=ylim)
+                except:
+                    pass
+                params = exp[0].params
+                for ax in (ax_cumreward,):
+                    ax.set_title('{0}, {1}, reset: {2},\ndropout: {3}, reg: {4:.1e}'.format(
+                        params['exp_name'],
+                        params['alg']['type'],
+                        params['alg']['batch']['reset_every_n_batches'],
+                        params['policy']['MACPolicy']['observation_graph']['dropout'],
+                        params['policy']['weight_decay']
+                    ), fontdict={'fontsize': 7})
+
+        f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward_{1}.png'.format(FILE_NAME, i)), bbox_inches='tight',
+                            dpi=200)
+        plt.close(f_cumreward)
+
+
+def plot_compare():
+    FILE_NAME = 'rccar_compare'
+
+    exps = [load_experiments(range(1497, 1497 + 3)),
+            load_experiments(range(2108, 2108 + 3))]
+
+    import IPython; IPython.embed()
 
     ### cumreward
-    f_cumreward, ax_cumreward = plt.subplots(1, 1, figsize=(20, 10), sharey=True, sharex=True)
+    f_cumreward, ax_cumreward = plt.subplots(1, 2, figsize=(20, 10), sharey=True, sharex=True)
 
-    plot_cumreward(ax_cumreward, exps[0], window=8, success_cumreward=40., color='r')
-    plot_cumreward(ax_cumreward, exps[1], window=8, success_cumreward=40., color='k')
-    plot_cumreward_probcoll(ax_cumreward, probcoll_exp)
+    window = 20
+    ylim = (0, 2100)
+    success_cumreward = [500, 1000, 1500, 1750]
 
-    ax_cumreward.set_xlim((0, 1e4))
+    plot_cumreward(ax_cumreward[0], exps[0], window=window, success_cumreward=success_cumreward, color='k', ylim=ylim)
+    plot_cumreward(ax_cumreward[1], exps[1], window=window, success_cumreward=success_cumreward, color='b', ylim=ylim)
 
     f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
     plt.close(f_cumreward)
 
     ### paths
-    paths_cols = 6
-    f_paths, axes_paths = plt.subplots(len(exps), paths_cols, figsize=(2*paths_cols, 2*len(exps)), sharey=True, sharex=True)
-    if len(axes_paths.shape) == 1:
-        axes_paths = np.array([axes_paths])
+    # paths_cols = 6
+    # f_paths, axes_paths = plt.subplots(len(exps), paths_cols, figsize=(2*paths_cols, 2*len(exps)), sharey=True, sharex=True)
+    # if len(axes_paths.shape) == 1:
+    #     axes_paths = np.array([axes_paths])
+    #
+    # for axes_row, exp in zip(axes_paths, exps):
+    #     plot_paths(axes_row, exp)
+    #
+    # f_paths.savefig(os.path.join(SAVE_FOLDER, '{0}_paths.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    # plt.close(f_paths)
 
-    plot_paths(axes_paths[0], exps[0])
-
-    f_paths.savefig(os.path.join(SAVE_FOLDER, '{0}_paths.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
-    plt.close(f_paths)
+    plot_paths_batch(exps[1][0], 'rccar_compare_batch')
 
 # plot_554_590()
 # plot_592_627()
@@ -1915,6 +2009,7 @@ def plot_test():
 # plot_compare_1494_1905()
 # plot_1912_2055()
 
-plot_2057_2128()
+# plot_2057_2128()
+# plot_2130_2201()
 
-# plot_test()
+plot_compare()

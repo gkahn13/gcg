@@ -10,7 +10,7 @@ from sandbox.gkahn.rnn_critic.utils.utils import timeit
 class RNNCriticReplayPool(object):
 
     def __init__(self, env_spec, env_horizon, N, gamma, size, obs_history_len, sampling_method,
-                 save_rollouts=False, save_rollouts_observations=True, save_env_infos=False):
+                 save_rollouts=False, save_rollouts_observations=True, save_env_infos=False, replay_pool_params={}):
         """
         :param env_spec: for observation/action dimensions
         :param N: horizon length
@@ -30,6 +30,7 @@ class RNNCriticReplayPool(object):
         self._save_rollouts = save_rollouts
         self._save_rollouts_observations = save_rollouts_observations
         self._save_env_infos = save_env_infos
+        self._replay_pool_params = replay_pool_params # TODO: hack
 
         ### buffer
         obs_shape = self._env_spec.observation_space.shape
@@ -259,14 +260,15 @@ class RNNCriticReplayPool(object):
                 if start_index not in false_indices:
                     start_indices.append(start_index)
         elif self._sampling_method == 'nonzero' or self._sampling_method == 'terminal':
-            nonzero_indices = np.nonzero(self._sampling_indices[:len(self) - self._N])[0]
+            nonzero_indices = np.nonzero(self._sampling_indices[:len(self) - self._N])[0] # terminal
             zero_indices = np.nonzero(self._sampling_indices[:len(self) - self._N] == 0)[0]
+            frac_terminal = self._replay_pool_params['terminal']['frac']
 
             while len(start_indices) < batch_size:
                 if len(nonzero_indices) == 0 or len(zero_indices) == 0:
                     start_index = np.random.randint(low=0, high=len(self) - self._N)
                 else:
-                    if len(start_indices) < batch_size // 2:
+                    if len(start_indices) < frac_terminal * batch_size:
                         start_index = np.random.choice(nonzero_indices)
                     else:
                         start_index = np.random.choice(zero_indices)

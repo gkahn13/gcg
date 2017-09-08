@@ -29,7 +29,8 @@ class RNNCritic(RLAlgorithm):
             save_rollouts=kwargs['save_rollouts'],
             save_rollouts_observations=kwargs['save_rollouts_observations'],
             save_env_infos=kwargs['save_env_infos'],
-            env_str=kwargs['env_str']
+            env_str=kwargs['env_str'],
+            replay_pool_params=kwargs['replay_pool_params']
         )
 
         self._eval_sampler = RNNCriticSampler(
@@ -42,6 +43,7 @@ class RNNCritic(RLAlgorithm):
             save_rollouts=True,
             save_rollouts_observations=kwargs.get('save_eval_rollouts_observations', False),
             save_env_infos=kwargs['save_env_infos'],
+            replay_pool_params=kwargs['replay_pool_params']
         )
 
         if kwargs.get('offpolicy', None) is not None:

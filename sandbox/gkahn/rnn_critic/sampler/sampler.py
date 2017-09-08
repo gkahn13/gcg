@@ -19,7 +19,7 @@ from sandbox.rocky.tf.spaces.box import Box
 
 class RNNCriticSampler(object):
     def __init__(self, policy, env, n_envs, replay_pool_size, max_path_length, sampling_method,
-                 save_rollouts=False, save_rollouts_observations=True, save_env_infos=False, env_str=None):
+                 save_rollouts=False, save_rollouts_observations=True, save_env_infos=False, env_str=None, replay_pool_params={}):
         self._policy = policy
         self._n_envs = n_envs
 
@@ -34,7 +34,8 @@ class RNNCriticSampler(object):
                                                   sampling_method=sampling_method,
                                                   save_rollouts=save_rollouts,
                                                   save_rollouts_observations=save_rollouts_observations,
-                                                  save_env_infos=save_env_infos)
+                                                  save_env_infos=save_env_infos,
+                                                  replay_pool_params=replay_pool_params)
                               for _ in range(n_envs)]
 
         try:
