@@ -383,7 +383,8 @@ class RCcarMACPolicy(MACPolicy, Serializable):
                 tf_train_values_test, tf_train_values_softmax_test, _, _ = \
                     self._graph_inference(tf_obs_lowd, tf_actions_ph[:, :self._get_action_test['H'], :],
                                           self._values_softmax, tf_preprocess, is_training=False)
-                tf_get_value = tf.reduce_sum(tf_train_values_softmax_test * tf_train_values_test, reduction_indices=1)
+                # tf_get_value = tf.reduce_sum(tf_train_values_softmax_test * tf_train_values_test, reduction_indices=1)
+                tf_get_value = -tf.sigmoid(tf_train_values_test) if self._is_classification else -tf_train_values_test
 
             ### action selection
             tf_get_action, tf_get_action_value, tf_get_action_reset_ops = \

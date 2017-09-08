@@ -9,6 +9,7 @@ import matplotlib.cm as cm
 from analyze_experiment import AnalyzeRNNCritic
 from sandbox.gkahn.rnn_critic.utils.utils import DataAverageInterpolation
 
+from sandbox.gkahn.rnn_critic.policies.mac_policy import MACPolicy
 from robots.sim_rccar.analysis.analyze_sim_rccar import AnalyzeSimRCcar
 
 EXP_FOLDER = '/media/gkahn/ExtraDrive1/rllab/s3/rnn-critic'
@@ -18,13 +19,13 @@ SAVE_FOLDER = '/media/gkahn/ExtraDrive1/rllab/rnn_critic/final_plots'
 ### Load experiments ###
 ########################
 
-def load_experiments(indices):
+def load_experiments(indices, create_new_envs=False):
     exps = []
     for i in indices:
         try:
             exps.append(AnalyzeRNNCritic(os.path.join(EXP_FOLDER, 'rccar{0:03d}'.format(i)),
                                          clear_obs=True,
-                                         create_new_envs=False,
+                                         create_new_envs=create_new_envs,
                                          load_train_rollouts=False,
                                          load_eval_rollouts=True))
             print(i)
@@ -1937,27 +1938,67 @@ def plot_2130_2201():
                             dpi=200)
         plt.close(f_cumreward)
 
+def plot_2203_2346():
+    FILE_NAME = 'rccar_2203_2346'
 
-def plot_compare():
-    FILE_NAME = 'rccar_compare'
+    all_exps = np.array([load_experiments(range(i, i + 3)) for i in range(2203, 2346, 3)])
 
-    exps = [load_experiments(range(1497, 1497 + 3)),
-            load_experiments(range(2108, 2108 + 3))]
-
-    import IPython; IPython.embed()
-
-    ### cumreward
-    f_cumreward, ax_cumreward = plt.subplots(1, 2, figsize=(20, 10), sharey=True, sharex=True)
+    # import IPython; IPython.embed()
 
     window = 20
     ylim = (0, 2100)
     success_cumreward = [500, 1000, 1500, 1750]
 
-    plot_cumreward(ax_cumreward[0], exps[0], window=window, success_cumreward=success_cumreward, color='k', ylim=ylim)
-    plot_cumreward(ax_cumreward[1], exps[1], window=window, success_cumreward=success_cumreward, color='b', ylim=ylim)
+    for i, exps in enumerate(np.split(all_exps, 4)):
 
-    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
-    plt.close(f_cumreward)
+        f_cumreward, axes_cumreward = plt.subplots(3, 4, figsize=(12, 9), sharey=True, sharex=True)
+
+        for ax_cumreward, exp in zip(axes_cumreward.ravel(), exps):
+
+            if not hasattr(exp, '__len__'):
+                exp = [exp]
+
+            if len(exp) > 0:
+                try:
+                    plot_cumreward(ax_cumreward, exp, window=window, success_cumreward=success_cumreward, ylim=ylim)
+                except:
+                    pass
+                params = exp[0].params
+                for ax in (ax_cumreward,):
+                    ax.set_title('{0}, {1}, H: {2}, {3}, frac: {4},\nclip: {5}, reg: {6:.1e}'.format(
+                        params['exp_name'],
+                        params['alg']['type'],
+                        params['policy']['H'],
+                        params['policy']['get_action_test']['type'],
+                        params['alg']['replay_pool_params']['terminal']['frac'],
+                        params['policy']['clip_cost_target_with_dones'],
+                        params['policy']['weight_decay']
+                    ), fontdict={'fontsize': 6})
+
+        f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward_{1}.png'.format(FILE_NAME, i)), bbox_inches='tight',
+                            dpi=200)
+        plt.close(f_cumreward)
+
+def plot_compare():
+    FILE_NAME = 'rccar_compare'
+
+    # exps = [load_experiments(range(1497, 1497 + 3)),
+    #         load_experiments(range(2108, 2108 + 3), create_new_envs=True)]
+
+    # import IPython; IPython.embed()
+
+    ### cumreward
+    # f_cumreward, ax_cumreward = plt.subplots(1, 2, figsize=(20, 10), sharey=True, sharex=True)
+    #
+    # window = 20
+    # ylim = (0, 2100)
+    # success_cumreward = [500, 1000, 1500, 1750]
+    #
+    # plot_cumreward(ax_cumreward[0], exps[0], window=window, success_cumreward=success_cumreward, color='k', ylim=ylim)
+    # plot_cumreward(ax_cumreward[1], exps[1], window=window, success_cumreward=success_cumreward, color='b', ylim=ylim)
+    #
+    # f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    # plt.close(f_cumreward)
 
     ### paths
     # paths_cols = 6
@@ -1971,7 +2012,112 @@ def plot_compare():
     # f_paths.savefig(os.path.join(SAVE_FOLDER, '{0}_paths.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
     # plt.close(f_paths)
 
-    plot_paths_batch(exps[1][0], 'rccar_compare_batch')
+    exp = load_experiments(range(2108, 2108 + 1), create_new_envs=True)[0] # exps[1][0]
+    # plot_paths_batch(exp, 'rccar_compare_batch')
+
+    eval_batch_size = exp.params['alg']['batch']['eval_samples_per_batch']
+    all_rollouts = np.array(list(itertools.chain(*exp.eval_rollouts_itrs))).reshape(-1, eval_batch_size)
+
+    sess, graph = MACPolicy.create_session_and_graph(gpu_device=0, gpu_frac=0.9)
+    with graph.as_default(), sess.as_default():
+        policy = exp._load_itr_policy(3)
+
+        rollout = all_rollouts[19, 0]
+        env_infos = rollout['env_infos']
+        num_obs = 4
+        states = [(ei['pos'] + [0., 0, 0], ei['hpr']) for ei in env_infos[-policy.N-num_obs:-policy.N]]
+        env = exp.env.wrapped_env.wrapped_env
+        observations = [env.reset(pos=pos, hpr=hpr) for pos, hpr in states]
+        flat_obs = np.array(observations).reshape(num_obs, -1)
+
+        K = 4096
+        actions = np.array([policy._env_spec.action_space.sample() for _ in range(K * (policy.N + 1))]).reshape(K, policy.N + 1, -1)
+
+        values, _ = policy.get_values([flat_obs] * K, actions)
+        action_positions = []
+
+        for action_sequence in actions:
+            positions = [states[-1][0]]
+            env.reset(pos=states[-1][0], hpr=states[-1][1])
+            for a in action_sequence[:-1]:
+                _, _, done, env_info = env.step(a)
+                positions.append(env_info['pos'])
+                if done:
+                    break
+            action_positions.append(positions)
+
+        action_positions, values = zip(*sorted([(p, v) for p, v in zip(action_positions, values)], key=lambda x: x[1].mean()))
+        # indices = np.linspace(0, K - 1, 100, dtype=np.int32)
+        indices = np.linspace(K - 25 - 1, K - 1, 25, dtype=np.int32)
+
+        import IPython; IPython.embed()
+
+        f, ax = plt.subplots(1, 1, figsize=(5, 5))
+        for i in indices:
+            positions = np.array(action_positions[i])
+            value = values[i]
+            color = cm.Greys(-0.8 * value.mean() + 0.2)
+
+            ax.plot(positions[:, 0], positions[:, 1], color=color)
+            if len(positions) <= policy.N:
+                ax.plot(positions[-1, 0], positions[-1, 1], color='r', marker='x')
+
+            # marker = 'x' if len(positions) <= policy.N else 'o'
+            # ax.plot(positions[-1, 0], positions[-1, 1], color=color, marker=marker, markersize=1.5)
+
+        best_index = np.array(values).mean(axis=1).argmax()
+        positions = np.array(action_positions[best_index])
+        ax.plot(positions[:, 0], positions[:, 1], color='g')
+
+        f.savefig(os.path.join(SAVE_FOLDER, '{0}_cost.png'.format(FILE_NAME)), bbox_inches='tight', dpi=200)
+        plt.close(f)
+
+        f, ax = plt.subplots(1, 1, figsize=(5, 5))
+        ax.imshow(observations[-1][:, :, 0], cmap='Greys_r')
+        f.savefig(os.path.join(SAVE_FOLDER, '{0}_cost_image.png'.format(FILE_NAME)), bbox_inches='tight', dpi=200)
+        plt.close(f)
+
+def plot_2348_2443():
+    FILE_NAME = 'rccar_2348_2443'
+
+    all_exps = np.array([load_experiments(range(i, i + 3)) for i in range(2348, 2443, 3)])
+
+    import IPython; IPython.embed()
+
+    window = 20
+    ylim = (0, 2100)
+    success_cumreward = [500, 1000, 1500, 1750]
+
+    for i, exps in enumerate(np.split(all_exps, 2)):
+
+        f_cumreward, axes_cumreward = plt.subplots(4, 4, figsize=(12, 12), sharey=True, sharex=True)
+
+        for ax_cumreward, exp in zip(axes_cumreward.ravel(), exps):
+
+            if not hasattr(exp, '__len__'):
+                exp = [exp]
+
+            if len(exp) > 0:
+                try:
+                    plot_cumreward(ax_cumreward, exp, window=window, success_cumreward=success_cumreward, ylim=ylim)
+                except:
+                    pass
+                params = exp[0].params
+                for ax in (ax_cumreward,):
+                    ax.set_title('{0}, {1}, H: {2},\n{3}, norm: {4}, reg: {5:.1e}'.format(
+                        params['exp_name'],
+                        params['alg']['type'],
+                        params['policy']['H'],
+                        params['policy']['get_action_test']['type'],
+                        params['policy']['MACPolicy']['observation_graph']['normalizer'],
+                        params['policy']['weight_decay']
+                    ), fontdict={'fontsize': 6})
+
+        f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward_{1}.png'.format(FILE_NAME, i)),
+                            bbox_inches='tight',
+                            dpi=200)
+        plt.close(f_cumreward)
+
 
 # plot_554_590()
 # plot_592_627()
@@ -2012,4 +2158,8 @@ def plot_compare():
 # plot_2057_2128()
 # plot_2130_2201()
 
-plot_compare()
+# plot_2203_2346()
+
+plot_2348_2443()
+
+# plot_compare()

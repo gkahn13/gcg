@@ -203,7 +203,15 @@ def fcnn(
                 raise NotImplementedError(
                     'Normalizer {0} is not valid'.format(normalizer))
 
-            if T is None or normalizer != 'batch_norm':
+            if normalizer == 'weight_norm':
+                next_layer_input = fully_connected_weight_norm(
+                    inputs=next_layer_input,
+                    num_outputs=dim,
+                    activation_fn=activation,
+                    trainable=True,
+                    global_step_tensor=global_step_tensor
+                )
+            elif T is None or normalizer != 'batch_norm':
                 next_layer_input = tf.contrib.layers.fully_connected(
                     inputs=next_layer_input,
                     num_outputs=dim,
@@ -214,14 +222,6 @@ def fcnn(
                     biases_initializer=tf.constant_initializer(0., dtype=dtype),
                     weights_regularizer=tf.contrib.layers.l2_regularizer(0.5),
                     trainable=True)
-            elif normalizer == 'weight_norm':
-                next_layer_input = fully_connected_weight_norm(
-                    inputs=next_layer_input,
-                    num_outputs=dim,
-                    activation_fn=activation,
-                    trainable=True,
-                    global_step_tensor=global_step_tensor
-                )
             else:
                 fc_out = tf.contrib.layers.fully_connected(
                     inputs=next_layer_input,
