@@ -19,7 +19,7 @@ SAVE_FOLDER = '/media/gkahn/ExtraDrive1/rllab/rnn_critic/final_plots'
 ### Load experiments ###
 ########################
 
-def load_experiments(indices, create_new_envs=False):
+def load_experiments(indices, create_new_envs=False, load_eval_rollouts=True):
     exps = []
     for i in indices:
         try:
@@ -27,7 +27,7 @@ def load_experiments(indices, create_new_envs=False):
                                          clear_obs=True,
                                          create_new_envs=create_new_envs,
                                          load_train_rollouts=False,
-                                         load_eval_rollouts=True))
+                                         load_eval_rollouts=load_eval_rollouts))
             print(i)
         except:
             pass
@@ -51,6 +51,17 @@ def load_probcoll_experiments(exp_folder, num):
 
     return {'exp_num': num, 'steps': steps, 'samples': samples, 'rewards': rewards}
 
+############
+### Misc ###
+############
+
+def moving_avg_std(idxs, data, window):
+    avg_idxs, means, stds = [], [], []
+    for i in range(window, len(data)):
+        avg_idxs.append(np.mean(idxs[i - window:i]))
+        means.append(np.mean(data[i - window:i]))
+        stds.append(np.std(data[i - window:i]))
+    return avg_idxs, np.asarray(means), np.asarray(stds)
 
 ############
 ### Plot ###
@@ -63,21 +74,19 @@ def plot_cumreward(ax, analyze_group, color='k', label=None, window=20, success_
         for i, analyze in enumerate(analyze_group):
 
             try:
-                steps = np.array([r['steps'][0] for r in itertools.chain(*analyze.eval_rollouts_itrs)])
-                values = np.array([np.sum(r['rewards']) for r in itertools.chain(*analyze.eval_rollouts_itrs)])
+                steps = np.asarray(analyze.progress['Step'], dtype=np.float32)
+                values = np.asarray(analyze.progress['EvalCumRewardMean'])
+                num_episodes = int(np.median(np.asarray(analyze.progress['EvalNumEpisodes'])))
+                steps, values, _ = moving_avg_std(steps, values, window=window//num_episodes)
 
-                steps, values = zip(*sorted(zip(steps, values), key=lambda k: k[0]))
-                steps, values = zip(*[(s, v) for s, v in zip(steps, values) if np.isfinite(v)])
 
-                def moving_avg_std(idxs, data, window):
-                    avg_idxs, means, stds = [], [], []
-                    for i in range(window, len(data)):
-                        avg_idxs.append(np.mean(idxs[i - window:i]))
-                        means.append(np.mean(data[i - window:i]))
-                        stds.append(np.std(data[i - window:i]))
-                    return avg_idxs, np.asarray(means), np.asarray(stds)
-
-                steps, values, _ = moving_avg_std(steps, values, window=window)
+                # steps = np.array([r['steps'][0] for r in itertools.chain(*analyze.eval_rollouts_itrs)])
+                # values = np.array([np.sum(r['rewards']) for r in itertools.chain(*analyze.eval_rollouts_itrs)])
+                #
+                # steps, values = zip(*sorted(zip(steps, values), key=lambda k: k[0]))
+                # steps, values = zip(*[(s, v) for s, v in zip(steps, values) if np.isfinite(v)])
+                #
+                # steps, values, _ = moving_avg_std(steps, values, window=window)
 
                 ax.plot(steps, values, color='r', alpha=np.linspace(1., 0.4, len(analyze_group))[i])
 
@@ -2126,9 +2135,9 @@ def plot_2348_2443():
 def plot_2445_2516():
     FILE_NAME = 'rccar_2445_2516'
 
-    all_exps = [load_experiments(range(i, i + 3)) for i in range(2445, 2516, 3)]
+    all_exps = [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2445, 2516, 3)]
 
-    import IPython; IPython.embed()
+    # import IPython; IPython.embed()
 
     f_cumreward, axes_cumreward = plt.subplots(4, 6, figsize=(18, 12), sharey=True, sharex=False)
 
@@ -2156,7 +2165,7 @@ def plot_2445_2516():
                     params['policy']['H'],
                 ), fontdict={'fontsize': 6})
 
-    for i, xmax in enumerate([1e5, 2e5, 2e5, 4e5]):
+    for i, xmax in enumerate([2e5, 4e5, 4e5, 8e5]):
         for ax in axes_cumreward[i, :]:
             ax.set_xlim((0, xmax))
 
@@ -2166,13 +2175,13 @@ def plot_2445_2516():
 def plot_2518_2577():
     FILE_NAME = 'rccar_2518_2577'
 
-    all_exps = [load_experiments(range(i, i + 3)) for i in range(2518, 2577, 3)]
+    all_exps = [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2518, 2577, 3)]
 
-    import IPython; IPython.embed()
+    # import IPython; IPython.embed()
 
     f_cumreward, axes_cumreward = plt.subplots(5, 4, figsize=(12, 15), sharey=True, sharex=True)
 
-    window = 8
+    window = 16
     ylim = (0, 2100)
     success_cumreward = [500, 1000, 1500, 1750]
 
@@ -2248,4 +2257,4 @@ def plot_2518_2577():
 # plot_compare()
 
 plot_2445_2516()
-# plot_2518_2577()
+plot_2518_2577()

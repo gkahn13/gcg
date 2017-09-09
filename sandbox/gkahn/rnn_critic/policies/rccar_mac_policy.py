@@ -11,7 +11,6 @@ from sandbox.gkahn.rnn_critic.tf import networks
 
 from sandbox.rocky.tf.spaces.discrete import Discrete
 
-
 class RCcarMACPolicy(MACPolicy, Serializable):
     def __init__(self, **kwargs):
         Serializable.quick_init(self, locals())

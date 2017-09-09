@@ -236,7 +236,7 @@ class MACPolicy(Parameterized, Serializable):
         return tf_obs_lowd
 
     def _graph_inference(self, tf_obs_lowd, tf_actions_ph, values_softmax, tf_preprocess, is_training,
-                         add_reg=True, num_dp=1):
+                         add_reg=True, num_dp=1, N=None):
         """
         :param tf_obs_lowd: [batch_size, self._rnn_state_dim]
         :param tf_actions_ph: [batch_size, H, action_dim]
@@ -246,7 +246,7 @@ class MACPolicy(Parameterized, Serializable):
         """
         batch_size = tf.shape(tf_obs_lowd)[0]
         H = tf_actions_ph.get_shape()[1].value
-        N = self._N
+        N = self._N if N is None else N
         # tf.assert_equal(tf.shape(tf_obs_lowd)[0], tf.shape(tf_actions_ph)[0])
 
         self._action_graph.update({'output_dim': self._observation_graph['output_dim']})
@@ -308,7 +308,7 @@ class MACPolicy(Parameterized, Serializable):
         return tf_actions
 
     def _graph_get_action(self, tf_obs_ph, get_action_params, scope_select, reuse_select, scope_eval, reuse_eval,
-                          tf_episode_timesteps_ph):
+                          tf_episode_timesteps_ph, N=None):
         """
         :param tf_obs_ph: [batch_size, obs_history_len, obs_dim]
         :param get_action_params: how to select actions
@@ -317,7 +317,8 @@ class MACPolicy(Parameterized, Serializable):
         :return: tf_get_action [batch_size, action_dim], tf_get_action_value [batch_size]
         """
         H = get_action_params['H']
-        assert(H <= self._N)
+        N = self._N if N is None else N
+        assert(H <= N)
         get_action_type = get_action_params['type']
         num_obs = tf.shape(tf_obs_ph)[0]
         action_dim = self._env_spec.action_space.flat_dim
@@ -360,11 +361,11 @@ class MACPolicy(Parameterized, Serializable):
         with tf.variable_scope(scope_select, reuse=reuse_select):
             tf_values_all_select, tf_values_softmax_all_select, _, _ = \
                 self._graph_inference(tf_obs_lowd_repeat_select, tf_actions, get_action_params['values_softmax'],
-                                      tf_preprocess_select, is_training=False, add_reg=False)  # [num_obs*k, H]
+                                      tf_preprocess_select, is_training=False, add_reg=False, N=N)  # [num_obs*k, H]
         with tf.variable_scope(scope_eval, reuse=reuse_eval):
             tf_values_all_eval, tf_values_softmax_all_eval, _, _ = \
                 self._graph_inference(tf_obs_lowd_repeat_eval, tf_actions, get_action_params['values_softmax'],
-                                      tf_preprocess_eval, is_training=False, add_reg=False)  # [num_obs*k, H]
+                                      tf_preprocess_eval, is_training=False, add_reg=False, N=N)  # [num_obs*k, H]
         ### get_action based on select (policy)
         tf_values_select = tf.reduce_sum(tf_values_all_select * tf_values_softmax_all_select, reduction_indices=1)  # [num_obs*K]
         tf_values_select = tf.reshape(tf_values_select, (num_obs, K))  # [num_obs, K]
@@ -382,17 +383,6 @@ class MACPolicy(Parameterized, Serializable):
         tf.assert_equal(tf.shape(tf_get_action)[0], num_obs)
         tf.assert_equal(tf.shape(tf_get_action_value)[0], num_obs)
         assert(tf_get_action.get_shape()[1].value == action_dim)
-
-        # if 'tf_actions' not in self._tf_debug:
-        # self._tf_debug['tf_obs'] = tf_utils.repeat_2d(tf_obs_ph[:, 0, :], K, 0) # MATCH
-        # self._tf_debug['tf_actions'] = tf_actions # MATCH
-        # self._tf_debug['tf_values_all_select'] = tf_values_all_select
-        # self._tf_debug['tf_values_softmax_all_select'] = tf_values_softmax_all_select
-        # self._tf_debug['tf_values_select'] = tf_values_select
-        # self._tf_debug['tf_values_argmax_select'] = tf_values_argmax_select
-        # self._tf_debug['tf_get_action'] = tf_get_action
-        # self._tf_debug['tf_values_eval'] = tf_values_eval
-        # self._tf_debug['tf_get_action_value'] = tf_get_action_value
 
         tf_get_action_reset_ops = []
 
@@ -423,7 +413,7 @@ class MACPolicy(Parameterized, Serializable):
         return tf_actions_explore
 
     def _graph_cost(self, tf_train_values, tf_train_values_softmax, tf_rewards_ph, tf_dones_ph,
-                    tf_target_get_action_values):
+                    tf_target_get_action_values, N=None):
         """
         :param tf_train_values: [None, self._N]
         :param tf_train_values_softmax: [None, self._N]
@@ -432,6 +422,13 @@ class MACPolicy(Parameterized, Serializable):
         :param tf_target_get_action_values: [None, self._N]
         :return: tf_cost, tf_mse
         """
+        N = self._N if N is None else N
+        assert(tf_train_values.get_shape()[1].value == N)
+        assert(tf_train_values_softmax.get_shape()[1].value == N)
+        assert(tf_rewards_ph.get_shape()[1].value == N)
+        assert(tf_dones_ph.get_shape()[1].value == N)
+        assert(tf_target_get_action_values.get_shape()[1].value == N)
+
         batch_size = tf.shape(tf_dones_ph)[0]
         tf_dones = tf.cast(tf_dones_ph, tf.float32)
 
@@ -440,7 +437,7 @@ class MACPolicy(Parameterized, Serializable):
         tf.assert_equal(tf.reduce_sum(tf_train_values_softmax, 1), 1.)
 
         tf_values_desired = []
-        for n in range(self._N):
+        for n in range(N):
             tf_sum_rewards_n = tf.reduce_sum(np.power(self._gamma * np.ones(n + 1), np.arange(n + 1)) *
                                              tf_rewards_ph[:, :n + 1],
                                              reduction_indices=1)
@@ -460,7 +457,7 @@ class MACPolicy(Parameterized, Serializable):
         else:
             mask = tf.ones(tf.shape(tf_rewards_ph), dtype=tf.float32)
         values_softmax = mask * tf_train_values_softmax
-        values_softmax = values_softmax / tf.tile(tf.reduce_sum(values_softmax, axis=1, keep_dims=True), (1, self._N))
+        values_softmax = values_softmax / tf.tile(tf.reduce_sum(values_softmax, axis=1, keep_dims=True), (1, N))
 
 
         tf_mse = tf.reduce_sum(tf_weights * values_softmax * tf.square(tf_train_values - tf_values_desired))
@@ -676,8 +673,6 @@ class MACPolicy(Parameterized, Serializable):
                                                   self._tf_dict['mse'],
                                                   self._tf_dict['opt']],
                                                  feed_dict=feed_dict)
-        if not np.isfinite(cost):
-            import IPython; IPython.embed()
         assert(np.isfinite(cost))
 
         self._log_stats['Cost'].append(cost)
