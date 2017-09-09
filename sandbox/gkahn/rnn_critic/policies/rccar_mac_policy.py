@@ -326,10 +326,6 @@ class RCcarMACPolicy(MACPolicy, Serializable):
             mask = tf.ones(tf.shape(tf_labels), dtype=tf.float32)
         mask /= tf.reduce_sum(mask)
 
-        if not self._is_classification:
-            return MACPolicy._graph_cost(self, tf_train_values, tf_train_values_softmax, tf_rewards_ph, tf_dones_ph,
-                                         tf_target_get_action_values, mask=mask)
-
         ### desired values
         assert(not self._use_target)
         # if self._use_target:
@@ -346,8 +342,12 @@ class RCcarMACPolicy(MACPolicy, Serializable):
         control_dependencies += [tf.assert_greater_equal(tf_labels, 0., name='cost_assert_2')]
         control_dependencies += [tf.assert_less_equal(tf_labels, 1., name='cost_assert_3')]
         with tf.control_dependencies(control_dependencies):
-            cross_entropies = tf.nn.sigmoid_cross_entropy_with_logits(logits=tf_train_values, labels=tf_labels)
-            cost = tf.reduce_sum(mask * cross_entropies)
+            if self._is_classification:
+                cross_entropies = tf.nn.sigmoid_cross_entropy_with_logits(logits=tf_train_values, labels=tf_labels)
+                cost = tf.reduce_sum(mask * cross_entropies)
+            else:
+                mses = tf.square(tf_train_values - tf_labels)
+                cost = tf.reduce_sum(mask * mses)
             weight_decay = self._weight_decay * tf.add_n(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
 
         return cost + weight_decay, cost
@@ -478,6 +478,7 @@ class RCcarMACPolicy(MACPolicy, Serializable):
 
     def train_step(self, step, steps, observations, actions, rewards, values, dones, logprobs, use_target):
         # always True use_target so dones is passed in
+        assert(not self._use_target)
         return MACPolicy.train_step(self, step, steps, observations, actions, rewards, values, dones, logprobs,
-                                    self._is_classification or use_target)
+                                    use_target=True) # to keep dones to true
 

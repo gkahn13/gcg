@@ -61,34 +61,39 @@ def plot_cumreward(ax, analyze_group, color='k', label=None, window=20, success_
     if 'type' not in analyze_group[0].params['alg'] or analyze_group[0].params['alg']['type'] == 'interleave':
         min_step = max_step = None
         for i, analyze in enumerate(analyze_group):
-            steps = np.array([r['steps'][0] for r in itertools.chain(*analyze.eval_rollouts_itrs)])
-            values = np.array([np.sum(r['rewards']) for r in itertools.chain(*analyze.eval_rollouts_itrs)])
-
-            steps, values = zip(*sorted(zip(steps, values), key=lambda k: k[0]))
-            steps, values = zip(*[(s, v) for s, v in zip(steps, values) if np.isfinite(v)])
-
-            def moving_avg_std(idxs, data, window):
-                avg_idxs, means, stds = [], [], []
-                for i in range(window, len(data)):
-                    avg_idxs.append(np.mean(idxs[i - window:i]))
-                    means.append(np.mean(data[i - window:i]))
-                    stds.append(np.std(data[i - window:i]))
-                return avg_idxs, np.asarray(means), np.asarray(stds)
-
-            steps, values, _ = moving_avg_std(steps, values, window=window)
-
-            ax.plot(steps, values, color='r', alpha=np.linspace(1., 0.4, len(analyze_group))[i])
 
             try:
+                steps = np.array([r['steps'][0] for r in itertools.chain(*analyze.eval_rollouts_itrs)])
+                values = np.array([np.sum(r['rewards']) for r in itertools.chain(*analyze.eval_rollouts_itrs)])
+
+                steps, values = zip(*sorted(zip(steps, values), key=lambda k: k[0]))
+                steps, values = zip(*[(s, v) for s, v in zip(steps, values) if np.isfinite(v)])
+
+                def moving_avg_std(idxs, data, window):
+                    avg_idxs, means, stds = [], [], []
+                    for i in range(window, len(data)):
+                        avg_idxs.append(np.mean(idxs[i - window:i]))
+                        means.append(np.mean(data[i - window:i]))
+                        stds.append(np.std(data[i - window:i]))
+                    return avg_idxs, np.asarray(means), np.asarray(stds)
+
+                steps, values, _ = moving_avg_std(steps, values, window=window)
+
+                ax.plot(steps, values, color='r', alpha=np.linspace(1., 0.4, len(analyze_group))[i])
+
                 data_interp.add_data(steps, values)
             except:
                 continue
+
             if min_step is None:
                 min_step = steps[0]
             if max_step is None:
                 max_step = steps[-1]
             min_step = max(min_step, steps[0])
             max_step = min(max_step, steps[-1])
+
+        if len(data_interp.xs) == 0:
+            return
 
         steps = np.r_[min_step:max_step:50.][1:-1]
         values_mean, values_std = data_interp.eval(steps)
@@ -2118,6 +2123,84 @@ def plot_2348_2443():
                             dpi=200)
         plt.close(f_cumreward)
 
+def plot_2445_2516():
+    FILE_NAME = 'rccar_2445_2516'
+
+    all_exps = [load_experiments(range(i, i + 3)) for i in range(2445, 2516, 3)]
+
+    import IPython; IPython.embed()
+
+    f_cumreward, axes_cumreward = plt.subplots(4, 6, figsize=(18, 12), sharey=True, sharex=False)
+
+    window = 16
+    ylim = (0, 2100)
+    success_cumreward = [500, 1000, 1500, 1750]
+
+    for ax_cumreward, exp in zip(axes_cumreward.ravel(), all_exps):
+
+        if not hasattr(exp, '__len__'):
+            exp = [exp]
+
+        if len(exp) > 0:
+            try:
+                plot_cumreward(ax_cumreward, exp, window=window, success_cumreward=success_cumreward, ylim=ylim)
+            except:
+                pass
+            params = exp[0].params
+            for ax in (ax_cumreward,):
+                ax.set_title('{0}, {1}, {2}, N: {3}, H: {4}'.format(
+                    params['exp_name'],
+                    params['alg']['env'].split('(params=')[0].split('"')[-1],
+                    params['policy']['class'],
+                    params['policy']['N'],
+                    params['policy']['H'],
+                ), fontdict={'fontsize': 6})
+
+    for i, xmax in enumerate([1e5, 2e5, 2e5, 4e5]):
+        for ax in axes_cumreward[i, :]:
+            ax.set_xlim((0, xmax))
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    plt.close(f_cumreward)
+
+def plot_2518_2577():
+    FILE_NAME = 'rccar_2518_2577'
+
+    all_exps = [load_experiments(range(i, i + 3)) for i in range(2518, 2577, 3)]
+
+    import IPython; IPython.embed()
+
+    f_cumreward, axes_cumreward = plt.subplots(5, 4, figsize=(12, 15), sharey=True, sharex=True)
+
+    window = 8
+    ylim = (0, 2100)
+    success_cumreward = [500, 1000, 1500, 1750]
+
+    for ax_cumreward, exp in zip(axes_cumreward.ravel(), all_exps):
+
+        if len(exp) > 0:
+            # try:
+            plot_cumreward(ax_cumreward, exp, window=window, success_cumreward=success_cumreward, ylim=ylim)
+            # except:
+            #     pass
+            params = exp[0].params
+            for ax in (ax_cumreward,):
+                title = '{0}, {1}, {2}, H: {3},\ntarg: {4}, classif: {5}, incr: {6}, rp: {7}, clip: {8}'.format(
+                    params['exp_name'],
+                    params['alg']['env'].split('(params=')[0].split('"')[-1],
+                    params['policy']['class'],
+                    params['policy']['H'],
+                    params['policy']['use_target'],
+                    params['policy']['RCcarMACPolicy']['is_classification'] if params['policy']['class'] == 'RCcarMACPolicy' else '',
+                    params['policy']['RCcarMACPolicy']['probcoll_strictly_increasing'] if params['policy']['class'] == 'RCcarMACPolicy' else '',
+                    params['alg']['replay_pool_sampling'],
+                    params['policy']['clip_cost_target_with_dones'],
+                )
+
+                ax.set_title(title, fontdict={'fontsize': 5})
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    plt.close(f_cumreward)
 
 # plot_554_590()
 # plot_592_627()
@@ -2160,6 +2243,9 @@ def plot_2348_2443():
 
 # plot_2203_2346()
 
-plot_2348_2443()
+# plot_2348_2443()
 
 # plot_compare()
+
+plot_2445_2516()
+# plot_2518_2577()
