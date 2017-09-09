@@ -9,5 +9,5 @@ class SquareClutteredEnv(SquareEnv):
         SquareEnv.__init__(self, params=params)
 
 if __name__ == '__main__':
-    params = {'visualize': True, 'run_as_task': True}
+    params = {'visualize': True, 'run_as_task': True, 'do_back_up': False, 'hfov': 120}
     env = SquareClutteredEnv(params)

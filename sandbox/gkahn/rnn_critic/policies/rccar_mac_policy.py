@@ -302,10 +302,6 @@ class RCcarMACPolicy(MACPolicy, Serializable):
 
     def _graph_cost(self, tf_train_values, tf_train_values_softmax, tf_rewards_ph, tf_dones_ph,
                     tf_target_get_action_values):
-        if not self._is_classification:
-            return MACPolicy._graph_cost(self, tf_train_values, tf_train_values_softmax, tf_rewards_ph, tf_dones_ph,
-                                         tf_target_get_action_values)
-
         tf_dones = tf.cast(tf_dones_ph, tf.int32)
         tf_labels = tf.cast(tf.cumsum(tf_rewards_ph, axis=1) < -0.5, tf.float32)
 
@@ -330,15 +326,20 @@ class RCcarMACPolicy(MACPolicy, Serializable):
             mask = tf.ones(tf.shape(tf_labels), dtype=tf.float32)
         mask /= tf.reduce_sum(mask)
 
+        if not self._is_classification:
+            return MACPolicy._graph_cost(self, tf_train_values, tf_train_values_softmax, tf_rewards_ph, tf_dones_ph,
+                                         tf_target_get_action_values, mask=mask)
+
         ### desired values
-        if self._use_target:
-            control_dependencies = []
-            control_dependencies += [tf.assert_greater_equal(tf_target_get_action_values, -1., name='cost_assert_0')]
-            control_dependencies += [tf.assert_less_equal(tf_target_get_action_values, 0., name='cost_assert_1')]
-            with tf.control_dependencies(control_dependencies):
-                tf_labels = tf.clip_by_value(tf_labels +
-                                             (1 - tf.cast(tf_dones, tf.float32)) * -tf.round(tf_target_get_action_values),
-                                             0., 1.)
+        assert(not self._use_target)
+        # if self._use_target:
+        #     control_dependencies = []
+        #     control_dependencies += [tf.assert_greater_equal(tf_target_get_action_values, -1., name='cost_assert_0')]
+        #     control_dependencies += [tf.assert_less_equal(tf_target_get_action_values, 0., name='cost_assert_1')]
+        #     with tf.control_dependencies(control_dependencies):
+        #         tf_labels = tf.clip_by_value(tf_labels +
+        #                                      (1 - tf.cast(tf_dones, tf.float32)) * -tf.round(tf_target_get_action_values),
+        #                                      0., 1.)
 
         ### cost
         control_dependencies = []

@@ -65,12 +65,10 @@ class RNNCriticReplayPool(object):
         return self._curr_size
 
     def _get_indices(self, start, end):
-        if start < end:
+        if start <= end:
             return list(range(start, end))
         elif start > end:
             return list(range(start, len(self))) + list(range(end))
-        else:
-            raise Exception
 
     def _get_prev_indices(self, end, length):
         if end - (length - 1) >= 0:

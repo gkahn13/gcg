@@ -2084,7 +2084,7 @@ def plot_2348_2443():
 
     import IPython; IPython.embed()
 
-    window = 20
+    window = 4
     ylim = (0, 2100)
     success_cumreward = [500, 1000, 1500, 1750]
 

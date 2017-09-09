@@ -423,7 +423,7 @@ class MACPolicy(Parameterized, Serializable):
         return tf_actions_explore
 
     def _graph_cost(self, tf_train_values, tf_train_values_softmax, tf_rewards_ph, tf_dones_ph,
-                    tf_target_get_action_values):
+                    tf_target_get_action_values, mask=None):
         """
         :param tf_train_values: [None, self._N]
         :param tf_train_values_softmax: [None, self._N]
@@ -450,17 +450,19 @@ class MACPolicy(Parameterized, Serializable):
             tf_values_desired.append(tf_sum_rewards_n + tf_target_values_n)
         tf_values_desired = tf.stack(tf_values_desired, 1)
 
-        ### cut off post-done labels (debugged, all good)
-        if self._clip_cost_target_with_dones:
-            lengths = tf.reduce_sum(1 - tf_dones, axis=1) + 1
-            mask = tf.sequence_mask(
-                tf.cast(lengths, tf.int32),
-                maxlen=self._H,
-                dtype=tf.float32)
-            values_softmax = mask * tf_train_values_softmax
-            values_softmax = values_softmax / tf.tile(tf.reduce_sum(values_softmax, axis=1, keep_dims=True), (1, self._N))
-        else:
-            values_softmax = tf_train_values_softmax
+        ### cut off post-done labels
+        if mask is None:
+            if self._clip_cost_target_with_dones:
+                lengths = tf.reduce_sum(1 - tf_dones, axis=1) + 1
+                mask = tf.sequence_mask(
+                    tf.cast(lengths, tf.int32),
+                    maxlen=self._H,
+                    dtype=tf.float32)
+            else:
+                mask = tf.ones(tf.shape(tf_rewards_ph), dtype=tf.float32)
+        values_softmax = mask * tf_train_values_softmax
+        values_softmax = values_softmax / tf.tile(tf.reduce_sum(values_softmax, axis=1, keep_dims=True), (1, self._N))
+
 
         tf_mse = tf.reduce_sum(tf_weights * values_softmax * tf.square(tf_train_values - tf_values_desired))
 
