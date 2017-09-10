@@ -42,7 +42,7 @@ elif args.region == 'us-east-1':
         'key_name': 'rllab-us-east-1',
         'image_id': 'ami-d7a99dac',
         'region_name': 'us-east-1',
-        'subnet_id': 'subnet-95cc71dd', # TODO
+        'subnet_id': 'subnet-ed9e60b7', # TODO
         'security_group_ids': ['sg-9e9e00e0']
     })
 elif args.region == 'us-east-2':
@@ -51,7 +51,7 @@ elif args.region == 'us-east-2':
         # 'key_name': 'rllab-us-east-2',
         'image_id': 'ami-8b86a6ee',
         'region_name': 'us-east-2',
-        'subnet_id': 'subnet-2e14ef63',  # TODO
+        'subnet_id': 'subnet-24ad045f',  # TODO
         'security_group_ids': ['sg-ee707e87']
     })
 else:

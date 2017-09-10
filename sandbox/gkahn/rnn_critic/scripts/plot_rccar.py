@@ -2211,6 +2211,123 @@ def plot_2518_2577():
     f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
     plt.close(f_cumreward)
 
+def plot_2578_2637():
+    FILE_NAME = 'rccar_2578_2637'
+
+    all_exps = [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2578, 2637, 3)]
+
+    # import IPython; IPython.embed()
+
+    f_cumreward, axes_cumreward = plt.subplots(5, 4, figsize=(12, 15), sharey=True, sharex=True)
+
+    window = 16
+    ylim = (0, 2100)
+    success_cumreward = [500, 1000, 1500, 1750]
+
+    for ax_cumreward, exp in zip(axes_cumreward.ravel(), all_exps):
+
+        if len(exp) > 0:
+            # try:
+            plot_cumreward(ax_cumreward, exp, window=window, success_cumreward=success_cumreward, ylim=ylim)
+            # except:
+            #     pass
+            params = exp[0].params
+            for ax in (ax_cumreward,):
+                title = '{0}, {1}, {2}, H: {3},\ntarg: {4}, classif: {5}, incr: {6}, rp: {7}, clip: {8}'.format(
+                    params['exp_name'],
+                    params['alg']['env'].split('(params=')[0].split('"')[-1],
+                    params['policy']['class'],
+                    params['policy']['H'],
+                    params['policy']['use_target'],
+                    params['policy']['RCcarMACPolicy']['is_classification'] if params['policy']['class'] == 'RCcarMACPolicy' else '',
+                    params['policy']['RCcarMACPolicy']['probcoll_strictly_increasing'] if params['policy']['class'] == 'RCcarMACPolicy' else '',
+                    params['alg']['replay_pool_sampling'],
+                    params['policy']['clip_cost_target_with_dones'],
+                )
+
+                ax.set_title(title, fontdict={'fontsize': 5})
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    plt.close(f_cumreward)
+
+def plot_2638_2697():
+    FILE_NAME = 'rccar_2638_2697'
+
+    all_exps = [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2638, 2697, 3)]
+
+    # import IPython; IPython.embed()
+
+    f_cumreward, axes_cumreward = plt.subplots(5, 4, figsize=(12, 15), sharey=True, sharex=True)
+
+    window = 16
+    ylim = (0, 2100)
+    success_cumreward = [500, 1000, 1500, 1750]
+
+    for ax_cumreward, exp in zip(axes_cumreward.ravel(), all_exps):
+
+        if len(exp) > 0:
+            # try:
+            plot_cumreward(ax_cumreward, exp, window=window, success_cumreward=success_cumreward, ylim=ylim)
+            # except:
+            #     pass
+            params = exp[0].params
+            for ax in (ax_cumreward,):
+                title = '{0}, {1}, {2}, H: {3},\ntarg: {4}, classif: {5}, incr: {6}, rp: {7}, clip: {8}'.format(
+                    params['exp_name'],
+                    params['alg']['env'].split('(params=')[0].split('"')[-1],
+                    params['policy']['class'],
+                    params['policy']['H'],
+                    params['policy']['use_target'],
+                    params['policy']['RCcarMACPolicy']['is_classification'] if params['policy']['class'] == 'RCcarMACPolicy' else '',
+                    params['policy']['RCcarMACPolicy']['probcoll_strictly_increasing'] if params['policy']['class'] == 'RCcarMACPolicy' else '',
+                    params['alg']['replay_pool_sampling'],
+                    params['policy']['clip_cost_target_with_dones'],
+                )
+
+                ax.set_title(title, fontdict={'fontsize': 5})
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    plt.close(f_cumreward)
+
+def plot_2698_2757():
+    FILE_NAME = 'rccar_2698_2757'
+
+    all_exps = [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2698, 2757, 3)]
+
+    # import IPython; IPython.embed()
+
+    f_cumreward, axes_cumreward = plt.subplots(5, 4, figsize=(12, 15), sharey=True, sharex=True)
+
+    window = 16
+    ylim = (0, 2100)
+    success_cumreward = [500, 1000, 1500, 1750]
+
+    for ax_cumreward, exp in zip(axes_cumreward.ravel(), all_exps):
+
+        if len(exp) > 0:
+            try:
+                plot_cumreward(ax_cumreward, exp, window=window, success_cumreward=success_cumreward, ylim=ylim)
+            except:
+                pass
+            params = exp[0].params
+            for ax in (ax_cumreward,):
+                title = '{0}, {1}, {2}, H: {3},\ntarg: {4}, classif: {5}, incr: {6}, rp: {7}, clip: {8}'.format(
+                    params['exp_name'],
+                    params['alg']['env'].split('(params=')[0].split('"')[-1],
+                    params['policy']['class'],
+                    params['policy']['H'],
+                    params['policy']['use_target'],
+                    params['policy']['RCcarMACPolicy']['is_classification'] if params['policy']['class'] == 'RCcarMACPolicy' else '',
+                    params['policy']['RCcarMACPolicy']['probcoll_strictly_increasing'] if params['policy']['class'] == 'RCcarMACPolicy' else '',
+                    params['alg']['replay_pool_sampling'],
+                    params['policy']['clip_cost_target_with_dones'],
+                )
+
+                ax.set_title(title, fontdict={'fontsize': 5})
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    plt.close(f_cumreward)
+
 # plot_554_590()
 # plot_592_627()
 # plot_629_664()
@@ -2258,3 +2375,6 @@ def plot_2518_2577():
 
 plot_2445_2516()
 plot_2518_2577()
+plot_2578_2637()
+plot_2638_2697()
+plot_2698_2757()

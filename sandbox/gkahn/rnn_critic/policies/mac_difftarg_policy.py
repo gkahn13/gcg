@@ -16,7 +16,7 @@ class MACDifftargPolicy(MACPolicy, Serializable):
         assert(self._use_target)
         assert(self._separate_target_params)
         assert(self._get_action_test['H'] == self._H)
-        assert(self._get_action_target['H'] < self._H)
+        assert(self._get_action_target['H'] <= self._H)
 
     ###########################
     ### TF graph operations ###
@@ -116,7 +116,7 @@ class MACDifftargPolicy(MACPolicy, Serializable):
             tf_target_vars_nobatchnorm = list(filter(lambda v: 'biased' not in v.name and 'local_step' not in v.name,
                                                      tf_target_vars))
             tf_target_target_vars = sorted(tf.get_collection(xplatform.global_variables_collection_name(),
-                                                      scope=target_target_scope), key=lambda v: v.name)
+                                                             scope=target_target_scope), key=lambda v: v.name)
             assert (len(tf_target_vars_nobatchnorm) == len(tf_target_target_vars))
             tf_update_target_fn = []
             for var, var_target in zip(tf_target_vars_nobatchnorm, tf_target_target_vars):
