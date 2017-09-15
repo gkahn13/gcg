@@ -24,6 +24,10 @@ def create_env(env_str, is_normalize=True, seed=None):
         from sandbox.gkahn.rnn_critic.envs.rccar.cylinder_env import CylinderEnv
     except:
         pass
+    try:
+        from sandbox.gkahn.rnn_critic.envs.rw_rccar.rw_rccar_env import RWRCcarEnv
+    except:
+        print('Could not import RWRCcarEnv')
     from rllab.envs.mujoco.swimmer_env import SwimmerEnv
     from sandbox.gkahn.rnn_critic.envs.point_env import PointEnv
     from sandbox.gkahn.rnn_critic.envs.sparse_point_env import SparsePointEnv

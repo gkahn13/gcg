@@ -326,15 +326,15 @@ class RCcarMACPolicy(MACPolicy, Serializable):
         mask /= tf.reduce_sum(mask)
 
         ### desired values
-        assert(not self._use_target)
-        # if self._use_target:
-        #     control_dependencies = []
-        #     control_dependencies += [tf.assert_greater_equal(tf_target_get_action_values, -1., name='cost_assert_0')]
-        #     control_dependencies += [tf.assert_less_equal(tf_target_get_action_values, 0., name='cost_assert_1')]
-        #     with tf.control_dependencies(control_dependencies):
-        #         tf_labels = tf.clip_by_value(tf_labels +
-        #                                      (1 - tf.cast(tf_dones, tf.float32)) * -tf.round(tf_target_get_action_values),
-        #                                      0., 1.)
+        # assert(not self._use_target)
+        if self._use_target:
+            target_labels = tf.stop_gradient(-tf_target_get_action_values)
+            control_dependencies = []
+            control_dependencies += [tf.assert_greater_equal(target_labels, 0., name='cost_assert_0')]
+            control_dependencies += [tf.assert_less_equal(target_labels, 1., name='cost_assert_1')]
+            with tf.control_dependencies(control_dependencies):
+                tf_labels = tf.cast(tf_dones_ph, tf.float32) * tf_labels + \
+                            (1 - tf.cast(tf_dones_ph, tf.float32)) * tf.maximum(tf_labels, target_labels)
 
         ### cost
         control_dependencies = []
@@ -406,15 +406,16 @@ class RCcarMACPolicy(MACPolicy, Serializable):
                 target_scope = 'target' if self._separate_target_params else 'policy'
                 ### action selection
                 tf_obs_target_ph_packed = xplatform.concat([tf_obs_target_ph[:, h - self._obs_history_len:h, :]
-                                                     for h in range(self._obs_history_len, self._obs_history_len + self._N + 1)],
-                                                    0)
+                                                            for h in range(self._obs_history_len, self._obs_history_len + self._N + 1)],
+                                                           0)
                 tf_target_get_action, tf_target_get_action_values, _ = self._graph_get_action(tf_obs_target_ph_packed,
                                                                                               self._get_action_target,
                                                                                               scope_select=policy_scope,
                                                                                               reuse_select=True,
                                                                                               scope_eval=target_scope,
                                                                                               reuse_eval=(target_scope == policy_scope),
-                                                                                              tf_episode_timesteps_ph=None) # TODO: would need to fill in
+                                                                                              tf_episode_timesteps_ph=None, # TODO: would need to fill in
+                                                                                              add_speed_cost=False)
 
                 tf_target_get_action_values = tf.transpose(tf.reshape(tf_target_get_action_values, (self._N + 1, -1)))[:, 1:]
             else:
@@ -477,7 +478,7 @@ class RCcarMACPolicy(MACPolicy, Serializable):
 
     def train_step(self, step, steps, observations, actions, rewards, values, dones, logprobs, use_target):
         # always True use_target so dones is passed in
-        assert(not self._use_target)
+        # assert(not self._use_target)
         return MACPolicy.train_step(self, step, steps, observations, actions, rewards, values, dones, logprobs,
-                                    use_target=True) # to keep dones to true
+                                    use_target=self._use_target) # True: to keep dones to true
 

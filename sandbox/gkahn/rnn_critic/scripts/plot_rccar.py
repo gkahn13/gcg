@@ -2,9 +2,13 @@ import os, pickle
 import numpy as np
 import itertools
 
+import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib import ticker
 import matplotlib.cm as cm
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+import matplotlib.patches as mpatches
+import matplotlib.lines as mlines
 
 from analyze_experiment import AnalyzeRNNCritic
 from sandbox.gkahn.rnn_critic.utils.utils import DataAverageInterpolation
@@ -67,7 +71,8 @@ def moving_avg_std(idxs, data, window):
 ### Plot ###
 ############
 
-def plot_cumreward(ax, analyze_group, color='k', label=None, window=20, success_cumreward=None, ylim=(10, 60)):
+def plot_cumreward(ax, analyze_group, color='k', label=None, window=20, success_cumreward=None, ylim=(10, 60),
+                   plot_indiv=True, convert_to_time=False, xmax=None):
     data_interp = DataAverageInterpolation()
     if 'type' not in analyze_group[0].params['alg'] or analyze_group[0].params['alg']['type'] == 'interleave':
         min_step = max_step = None
@@ -79,7 +84,6 @@ def plot_cumreward(ax, analyze_group, color='k', label=None, window=20, success_
                 num_episodes = int(np.median(np.asarray(analyze.progress['EvalNumEpisodes'])))
                 steps, values, _ = moving_avg_std(steps, values, window=window//num_episodes)
 
-
                 # steps = np.array([r['steps'][0] for r in itertools.chain(*analyze.eval_rollouts_itrs)])
                 # values = np.array([np.sum(r['rewards']) for r in itertools.chain(*analyze.eval_rollouts_itrs)])
                 #
@@ -88,7 +92,9 @@ def plot_cumreward(ax, analyze_group, color='k', label=None, window=20, success_
                 #
                 # steps, values, _ = moving_avg_std(steps, values, window=window)
 
-                ax.plot(steps, values, color='r', alpha=np.linspace(1., 0.4, len(analyze_group))[i])
+                if plot_indiv:
+                    assert(not convert_to_time)
+                    ax.plot(steps, values, color='r', alpha=np.linspace(1., 0.4, len(analyze_group))[i])
 
                 data_interp.add_data(steps, values)
             except:
@@ -136,16 +142,25 @@ def plot_cumreward(ax, analyze_group, color='k', label=None, window=20, success_
     else:
         raise NotImplementedError
 
+    if convert_to_time:
+        steps = (0.25 / 3600.) * steps
+
     ax.plot(steps, values_mean, color=color, label=label)
     ax.fill_between(steps, values_mean - values_std, values_mean + values_std,
                     color=color, alpha=0.4)
 
-    ax.set_xticks(np.arange(0, max(steps), 1e3), minor=True)
+    xmax = xmax if xmax is not None else max(steps)
+    ax.set_xticks(np.arange(0, xmax, 1e4 if not convert_to_time else 1), minor=True)
+    # ax.set_xticks(np.arange(0, max(steps), 3e4 if not convert_to_time else 3), minor=False)
+    # import IPython; IPython.embed()
+    # ax.set_xticks(np.arange(0, max(steps), max(steps) // 18), minor=True)
+    ax.set_xticks(np.arange(0, xmax, 3e4 if not convert_to_time else xmax // 4), minor=False)
     ax.grid(which='minor', alpha=0.2)
     ax.grid(which='major', alpha=0.5)
-    xfmt = ticker.ScalarFormatter()
-    xfmt.set_powerlimits((0, 0))
-    ax.xaxis.set_major_formatter(xfmt)
+    if not convert_to_time:
+        xfmt = ticker.ScalarFormatter()
+        xfmt.set_powerlimits((0, 0))
+        ax.xaxis.set_major_formatter(xfmt)
     if ylim is not None:
         ax.set_ylim(ylim)
 
@@ -156,8 +171,70 @@ def plot_cumreward(ax, analyze_group, color='k', label=None, window=20, success_
         for i, sc in enumerate(success_cumreward):
             if values_mean.max() >= sc:
                 thresh_step = steps[(values_mean >= sc).argmax()]
-                ax.vlines(thresh_step, *ax.get_ylim(),
-                          color=cm.viridis(i / float(len(success_cumreward))), linestyle='--')
+                # color = cm.viridis(i / float(len(success_cumreward)))
+                color = ['b', 'm', 'c', 'r'][i]
+                ax.vlines(thresh_step, *ax.get_ylim(), color=color, linestyle='--')
+
+def get_threshold_steps_and_final_performance(analyze_group, success_cumreward, convert_to_time=False, window=20):
+    data_interp = DataAverageInterpolation()
+    if 'type' not in analyze_group[0].params['alg'] or analyze_group[0].params['alg']['type'] == 'interleave':
+        min_step = max_step = None
+        for i, analyze in enumerate(analyze_group):
+
+            try:
+                steps = np.asarray(analyze.progress['Step'], dtype=np.float32)
+                values = np.asarray(analyze.progress['EvalCumRewardMean'])
+                num_episodes = int(np.median(np.asarray(analyze.progress['EvalNumEpisodes'])))
+                steps, values, _ = moving_avg_std(steps, values, window=window//num_episodes)
+
+                # steps = np.array([r['steps'][0] for r in itertools.chain(*analyze.eval_rollouts_itrs)])
+                # values = np.array([np.sum(r['rewards']) for r in itertools.chain(*analyze.eval_rollouts_itrs)])
+                #
+                # steps, values = zip(*sorted(zip(steps, values), key=lambda k: k[0]))
+                # steps, values = zip(*[(s, v) for s, v in zip(steps, values) if np.isfinite(v)])
+                #
+                # steps, values, _ = moving_avg_std(steps, values, window=window)
+
+                data_interp.add_data(steps, values)
+            except:
+                continue
+
+            if min_step is None:
+                min_step = steps[0]
+            if max_step is None:
+                max_step = steps[-1]
+            min_step = max(min_step, steps[0])
+            max_step = min(max_step, steps[-1])
+
+        if len(data_interp.xs) == 0:
+            return
+
+        steps = np.r_[min_step:max_step:50.][1:-1]
+        values_mean, values_std = data_interp.eval(steps)
+        # steps -= min_step
+
+    else:
+        raise NotImplementedError
+
+    if convert_to_time:
+        steps = (0.25 / 3600.) * steps
+
+    if not hasattr(success_cumreward, '__iter__'):
+        success_cumreward = [success_cumreward]
+
+    threshold_steps = []
+    for i, sc in enumerate(success_cumreward):
+        if values_mean.max() >= sc:
+            thresh_step = steps[(values_mean >= sc).argmax()]
+        else:
+            thresh_step = -1
+
+        threshold_steps.append(thresh_step)
+
+    final_step = steps[-1]
+    final_value = values_mean[-1]
+
+    return threshold_steps, final_step, final_value
 
 def plot_cumreward_probcoll(ax, analyze_group, color='k', label=None, window=20, success_cumreward=None, ylim=(10, 60)):
     data_interp = DataAverageInterpolation()
@@ -2172,14 +2249,17 @@ def plot_2445_2516():
     f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
     plt.close(f_cumreward)
 
-def plot_2518_2577():
-    FILE_NAME = 'rccar_2518_2577'
+def plot_2518_2577_and_2796_2819():
+    FILE_NAME = 'rccar_2518_2577_and_2769_2819'
 
     all_exps = [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2518, 2577, 3)]
+    all_exps = all_exps[:4] + \
+               [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2796, 2819, 3)] + \
+               all_exps[4:]
 
     # import IPython; IPython.embed()
 
-    f_cumreward, axes_cumreward = plt.subplots(5, 4, figsize=(12, 15), sharey=True, sharex=True)
+    f_cumreward, axes_cumreward = plt.subplots(7, 4, figsize=(12, 21), sharey=True, sharex=True)
 
     window = 16
     ylim = (0, 2100)
@@ -2211,14 +2291,17 @@ def plot_2518_2577():
     f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
     plt.close(f_cumreward)
 
-def plot_2578_2637():
-    FILE_NAME = 'rccar_2578_2637'
+def plot_2578_2637_and_2820_2843():
+    FILE_NAME = 'rccar_2578_2637_and_2820_2843'
 
     all_exps = [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2578, 2637, 3)]
+    all_exps = all_exps[:4] + \
+               [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2820, 2843, 3)] + \
+               all_exps[4:]
 
     # import IPython; IPython.embed()
 
-    f_cumreward, axes_cumreward = plt.subplots(5, 4, figsize=(12, 15), sharey=True, sharex=True)
+    f_cumreward, axes_cumreward = plt.subplots(7, 4, figsize=(12, 21), sharey=True, sharex=True)
 
     window = 16
     ylim = (0, 2100)
@@ -2250,14 +2333,17 @@ def plot_2578_2637():
     f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
     plt.close(f_cumreward)
 
-def plot_2638_2697():
-    FILE_NAME = 'rccar_2638_2697'
+def plot_2638_2697_and_2844_2867():
+    FILE_NAME = 'rccar_2638_2697_and_2844_2867'
 
     all_exps = [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2638, 2697, 3)]
+    all_exps = all_exps[:4] + \
+               [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2844, 2867, 3)] + \
+               all_exps[4:]
 
     # import IPython; IPython.embed()
 
-    f_cumreward, axes_cumreward = plt.subplots(5, 4, figsize=(12, 15), sharey=True, sharex=True)
+    f_cumreward, axes_cumreward = plt.subplots(7, 4, figsize=(12, 21), sharey=True, sharex=True)
 
     window = 16
     ylim = (0, 2100)
@@ -2289,14 +2375,17 @@ def plot_2638_2697():
     f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
     plt.close(f_cumreward)
 
-def plot_2698_2757():
-    FILE_NAME = 'rccar_2698_2757'
+def plot_2698_2757_and_2868_2891():
+    FILE_NAME = 'rccar_2698_2757_and_2868_2891'
 
     all_exps = [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2698, 2757, 3)]
+    all_exps = all_exps[:4] + \
+               [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2868, 2891, 3)] + \
+               all_exps[4:]
 
     # import IPython; IPython.embed()
 
-    f_cumreward, axes_cumreward = plt.subplots(5, 4, figsize=(12, 15), sharey=True, sharex=True)
+    f_cumreward, axes_cumreward = plt.subplots(7, 4, figsize=(12, 21), sharey=True, sharex=True)
 
     window = 16
     ylim = (0, 2100)
@@ -2328,53 +2417,847 @@ def plot_2698_2757():
     f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
     plt.close(f_cumreward)
 
-# plot_554_590()
-# plot_592_627()
-# plot_629_664()
-# plot_666_701()
-# plot_703_714()
-# plot_716_727()
-# plot_729_740()
-# plot_742_753()
-# plot_755_766()
-# plot_768_911()
-# plot_913_930()
-# plot_932_949()
-# plot_951_974()
-# plot_976_1002()
-# plot_1004_1147()
-# plot_1149_1154()
-# plot_1156_1200()
-# plot_1202_1297()
-# plot_1299_1319()
-# plot_comparison_1319()
-# plot_1321_1341()
-# plot_1339_paths()
-# plot_1343_1366()
-# plot_1368_1382()
-# plot_1384_1431()
-# plot_1433_1492()
+def plot_2759_2794():
+    FILE_NAME = 'rccar_2759_2794'
 
-# plot_1494_1553()
-# plot_1555_1650()
+    all_exps = [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2759, 2794, 3)]
 
-# plot_1652_1795()
+    # import IPython; IPython.embed()
 
-# plot_1797_1904()
-# plot_compare_1494_1905()
-# plot_1912_2055()
+    f_cumreward, axes_cumreward = plt.subplots(4, 3, figsize=(9, 12), sharey=True, sharex=False)
 
-# plot_2057_2128()
-# plot_2130_2201()
+    window = 16
+    ylim = (0, 2100)
+    success_cumreward = [500, 1000, 1500, 1750]
 
-# plot_2203_2346()
+    for ax_cumreward, exp in zip(axes_cumreward.ravel(), all_exps):
 
-# plot_2348_2443()
+        if len(exp) > 0:
+            try:
+                plot_cumreward(ax_cumreward, exp, window=window, success_cumreward=success_cumreward, ylim=ylim)
+            except:
+                pass
+            params = exp[0].params
+            for ax in (ax_cumreward,):
+                title = '{0}, {1}, {2}, backup: {3},\nN: {4}, H: {5}, rp: {6}'.format(
+                    params['exp_name'],
+                    params['alg']['env'].split('(params=')[0].split('"')[-1],
+                    params['alg']['env'].split("'do_back_up':")[1].split(',')[0],
+                    params['policy']['class'],
+                    params['policy']['N'],
+                    params['policy']['H'],
+                    params['alg']['replay_pool_sampling'],
+                )
 
-# plot_compare()
+                ax.set_title(title, fontdict={'fontsize': 5})
 
-plot_2445_2516()
-plot_2518_2577()
-plot_2578_2637()
-plot_2638_2697()
-plot_2698_2757()
+    for i, xmax in enumerate([2e5, 4e5, 4e5, 8e5]):
+        for ax in axes_cumreward[i, :]:
+            ax.set_xlim((0, xmax))
+            for tick in ax.xaxis.get_major_ticks():
+                tick.label.set_fontsize(6)
+                tick.set_visible(True)
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    plt.close(f_cumreward)
+
+def plot_2893_3084():
+    FILE_NAME = 'rccar_2893_3084'
+
+    all_exps = np.array([load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2893, 3084, 3)])
+
+    window = 16
+    ylim = (0, 2100)
+    success_cumreward = [500, 1000, 1500, 1750]
+    xmaxes = (2e5, 4e5, 4e5, 8e5)
+
+    for i, exps in enumerate(np.split(all_exps, 4)):
+
+        f_cumreward, axes_cumreward = plt.subplots(4, 4, figsize=(12, 12), sharey=True, sharex=False)
+
+        for ax_cumreward, exp in zip(axes_cumreward.ravel(), exps):
+
+            if not hasattr(exp, '__len__'):
+                exp = [exp]
+
+            if len(exp) > 0:
+                try:
+                    plot_cumreward(ax_cumreward, exp, window=window, success_cumreward=success_cumreward, ylim=ylim,
+                                   xmax=xmaxes[i])
+                except:
+                    pass
+                params = exp[0].params
+                title = '{0}, {1}, backup: {2},\nH: {3}, H targ: {4}, incr: {5}, clip: {6}'.format(
+                    params['exp_name'],
+                    params['alg']['env'].split('(params=')[0].split('"')[-1],
+                    params['alg']['env'].split("'do_back_up':")[1].split(',')[0],
+                    params['policy']['H'],
+                    params['policy']['get_action_target']['H'],
+                    params['policy']['RCcarMACPolicy']['probcoll_strictly_increasing'],
+                    params['policy']['clip_cost_target_with_dones']
+                )
+                ax_cumreward.set_title(title, fontdict={'fontsize': 6})
+
+        for ax in axes_cumreward.ravel():
+            ax.set_xlim((0, xmaxes[i]))
+            for tick in ax.xaxis.get_major_ticks():
+                tick.label.set_fontsize(6)
+
+        f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}_cumreward_{1}.png'.format(FILE_NAME, i)),
+                            bbox_inches='tight',
+                            dpi=200)
+        plt.close(f_cumreward)
+
+###################
+### Final plots ###
+###################
+
+FINAL_DEBUG = False
+font = {'family' : 'serif',
+        'weight': 'normal',
+        'size'   : 12}
+matplotlib.rc('font', **font)
+# matplotlib.rc('text', usetex=True)
+
+def plot_env_type(FILE_NAME, all_exps, titles, xmax_timesteps, show_title, show_xlabel, plot_title, xtext=0):
+    f_cumreward, axes_cumreward = plt.subplots(1, len(all_exps), figsize=(2*len(all_exps), 2), sharey=False, sharex=True)
+
+    window = 16
+    ylim = (0, 2100)
+    success_cumreward = [500, 1000, 1500, 1750]
+
+    for ax_cumreward, exp, title in zip(axes_cumreward.ravel(), all_exps, titles):
+
+        if len(exp) > 0:
+            plot_cumreward(ax_cumreward, exp, window=window, success_cumreward=success_cumreward, ylim=ylim,
+                           plot_indiv=False, convert_to_time=True)
+            params = exp[0].params
+
+            if FINAL_DEBUG:
+                title = '{0}, {1}, {2}, backup: {3},\nN: {4}, H: {5}, rp: {6}'.format(
+                    params['exp_name'],
+                    params['alg']['env'].split('(params=')[0].split('"')[-1],
+                    params['alg']['env'].split("'do_back_up':")[1].split(',')[0],
+                    params['policy']['class'],
+                    params['policy']['N'],
+                    params['policy']['H'],
+                    params['alg']['replay_pool_sampling'],
+                    )
+
+            if show_title:
+                ax_cumreward.set_title(title, fontdict=font)#, fontdict={'fontsize': 5})
+
+    # set same x-axis
+    xmax = xmax_timesteps * (0.25 / 3600.)
+    for ax in axes_cumreward:
+        ax.set_ylim(ylim)
+        ax.set_xlim((0, xmax))
+        ax.yaxis.set_ticks(np.arange(0, 2100, 500))
+        ax.set_yticklabels([''] * len(ax.get_yticklabels()))
+        ax.yaxis.set_ticks_position('both')
+        # for tick in ax.xaxis.get_major_ticks():
+        #     tick.label.set_fontsize(6)
+
+    if show_xlabel:
+        f_cumreward.text(0.5, -0.12, 'Time (hours)', ha='center', fontdict=font)
+
+    ax = axes_cumreward[0]
+    ax.set_yticklabels(['', '250', '500', '750', '1000', ''])
+    ax.set_ylabel('Distance (m)', fontdict=font)
+
+    ax = axes_cumreward[-1]
+    ax.yaxis.tick_right()
+    ax.set_yticklabels(['', '3', '6', '9', '12', ''])
+    ax.set_ylabel('Hallway lengths', fontdict=font)
+    ax.yaxis.set_label_position("right")
+
+    # add y-axis on right side which is hallway lengths
+    if plot_title:
+        f_cumreward.text(xtext, 0.5, plot_title, va='center', ha='center', rotation=90, fontdict=font)
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}.png'.format(FILE_NAME)), bbox_inches='tight', dpi=200)
+    plt.close(f_cumreward)
+
+def plot_empty_hallway_reset():
+    FILE_NAME = 'rccar_paper_empty_hallway_reset'
+    # all_exps = [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2445, 2463, 3)]
+    all_exps = [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2445, 2460, 3)] + \
+               [load_experiments(range(2557, 2557 + 3), load_eval_rollouts=False)]
+    titles = ['Double\nQ-learning', '5-step Double\nQ-learning', '10-step Double\nQ-learning', '5-step MAQL',
+              '10-step MAQL', 'Collision\nPrediction (ours)']
+
+    plot_env_type(FILE_NAME, all_exps, titles, xmax_timesteps=2e5, show_title=True, show_xlabel=False,
+                  plot_title='(a) Empty hallway\n(reset)')
+
+def plot_empty_hallway_lifelong():
+    FILE_NAME = 'rccar_paper_empty_hallway_lifelong'
+    # all_exps = [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2463, 2481, 3)]
+    all_exps = [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2463, 2478, 3)] + \
+               [load_experiments(range(2617, 2617 + 3), load_eval_rollouts=False)]
+    titles = ['Double\nQ-learning', '5-step Double\nQ-learning', '10-step Double\nQ-learning', '5-step MAQL',
+              '10-step MAQL', 'Collision\nPrediction (ours)']
+
+    plot_env_type(FILE_NAME, all_exps, titles, xmax_timesteps=4e5, show_title=False, show_xlabel=False,
+                  plot_title='(b) Empty hallway\n(lifelong)')
+
+def plot_cluttered_hallway_reset():
+    FILE_NAME = 'rccar_paper_cluttered_hallway_reset'
+    # all_exps = [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2481, 2499, 3)]
+    all_exps = [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2481, 2496, 3)] + \
+               [load_experiments(range(2677, 2677 + 3), load_eval_rollouts=False)]
+    all_exps[1] = [all_exps[1][0], all_exps[1][2]]
+    titles = ['Double\nQ-learning', '5-step Double\nQ-learning', '10-step Double\nQ-learning', '5-step MAQL',
+              '10-step MAQL', 'Collision\nPrediction (ours)']
+
+    plot_env_type(FILE_NAME, all_exps, titles, xmax_timesteps=4e5, show_title=False, show_xlabel=False,
+                  plot_title='(c) Cluttered hallway\n(reset)')
+
+def plot_cluttered_hallway_lifelong():
+    FILE_NAME = 'rccar_paper_cluttered_hallway_lifelong'
+    # all_exps = [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2499, 2517, 3)]
+    all_exps = [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2499, 2514, 3)] + \
+               [load_experiments(range(2737, 2737 + 3), load_eval_rollouts=False)]
+    titles = ['Double\nQ-learning', '5-step Double\nQ-learning', '10-step Double\nQ-learning', '5-step MAQL',
+              '10-step MAQL', 'Collision\nPrediction (ours)']
+
+    plot_env_type(FILE_NAME, all_exps, titles, xmax_timesteps=8e5, show_title=False, show_xlabel=True,
+                  plot_title='(d) Cluttered hallway\n(lifelong)')
+
+def plot_priority_replay_empty_hallway_reset():
+    FILE_NAME = 'rccar_paper_priority_replay_empty_hallway_reset'
+    all_exps = [load_experiments(range(2759, 2759 + 3), load_eval_rollouts=False),
+                load_experiments(range(2762, 2762 + 3), load_eval_rollouts=False),
+                load_experiments(range(2765, 2765 + 3), load_eval_rollouts=False),
+                load_experiments(range(2563, 2563+ 3), load_eval_rollouts=False)]
+    titles = ['Double\nQ-learning', '5-step Double\nQ-learning', '10-step Double\nQ-learning', 'Collision\nPrediction (ours)']
+
+    plot_env_type(FILE_NAME, all_exps, titles, xmax_timesteps=2e5, show_title=True, show_xlabel=False,
+                  plot_title='(a) Empty hallway\n(reset)', xtext=-0.05)
+
+def plot_priority_replay_empty_hallway_lifelong():
+    FILE_NAME = 'rccar_paper_priority_replay_empty_hallway_lifelong'
+    all_exps = [load_experiments(range(2768, 2768 + 3), load_eval_rollouts=False),
+                load_experiments(range(2771, 2771 + 3), load_eval_rollouts=False),
+                load_experiments(range(2774, 2774 + 3), load_eval_rollouts=False),
+                load_experiments(range(2623, 2623 + 3), load_eval_rollouts=False)]
+    titles = ['Double\nQ-learning', '5-step Double\nQ-learning', '10-step Double\nQ-learning', 'Collision\nPrediction (ours)']
+
+    plot_env_type(FILE_NAME, all_exps, titles, xmax_timesteps=4e5, show_title=False, show_xlabel=False,
+                  plot_title='(b) Empty hallway\n(lifelong)', xtext=-0.05)
+
+def plot_priority_replay_cluttered_hallway_reset():
+    FILE_NAME = 'rccar_paper_priority_replay_cluttered_hallway_reset'
+    all_exps = [load_experiments(range(2777, 2777 + 3), load_eval_rollouts=False),
+                load_experiments(range(2780, 2780 + 3), load_eval_rollouts=False),
+                load_experiments(range(2783, 2783 + 3), load_eval_rollouts=False),
+                load_experiments(range(2683, 2683 + 3), load_eval_rollouts=False)]
+    titles = ['Double\nQ-learning', '5-step Double\nQ-learning', '10-step Double\nQ-learning', 'Collision\nPrediction (ours)']
+
+    plot_env_type(FILE_NAME, all_exps, titles, xmax_timesteps=4e5, show_title=False, show_xlabel=False,
+                  plot_title='(c) Cluttered hallway\n(reset)', xtext=-0.05)
+
+def plot_priority_replay_cluttered_hallway_lifelong():
+    FILE_NAME = 'rccar_paper_priority_replay_cluttered_hallway_lifelong'
+    all_exps = [load_experiments(range(2786, 2786 + 3), load_eval_rollouts=False),
+                load_experiments(range(2789, 2789 + 3), load_eval_rollouts=False),
+                load_experiments(range(2792, 2792 + 3), load_eval_rollouts=False),
+                load_experiments(range(2743, 2743 + 3), load_eval_rollouts=False)]
+    titles = ['Double\nQ-learning', '5-step Double\nQ-learning', '10-step Double\nQ-learning', 'Collision\nPrediction (ours)']
+
+    plot_env_type(FILE_NAME, all_exps, titles, xmax_timesteps=8e5, show_title=False, show_xlabel=True,
+                  plot_title='(d) Cluttered hallway\n(lifelong)', xtext=-0.05)
+
+def plot_design_decisions(FILE_NAME, all_exps):
+    assert(len(all_exps) == 28)
+    f_cumreward, axes_cumreward = plt.subplots(7, 4, figsize=(8, 14), sharey=True, sharex=True)
+
+    window = 16
+    ylim = (0, 2100)
+    success_cumreward = [500, 1000, 1500, 1750]
+
+    for ax_cumreward, exp in zip(axes_cumreward.ravel(), all_exps):
+
+        if len(exp) > 0:
+            try:
+                plot_cumreward(ax_cumreward, exp, window=window, success_cumreward=success_cumreward, ylim=ylim,
+                               plot_indiv=False, convert_to_time=True)
+            except:
+                pass
+
+            params = exp[0].params
+            if FINAL_DEBUG:
+                title = '{0}, {1}, {2}, H: {3},\ntarg: {4}, classif: {5}, incr: {6}, rp: {7}, clip: {8}'.format(
+                    params['exp_name'],
+                    params['alg']['env'].split('(params=')[0].split('"')[-1],
+                    params['policy']['class'],
+                    params['policy']['H'],
+                    params['policy']['use_target'],
+                    params['policy']['RCcarMACPolicy']['is_classification'] if params['policy']['class'] == 'RCcarMACPolicy' else '',
+                    params['policy']['RCcarMACPolicy']['probcoll_strictly_increasing'] if params['policy']['class'] == 'RCcarMACPolicy' else '',
+                    params['alg']['replay_pool_sampling'],
+                    params['policy']['clip_cost_target_with_dones'],
+                )
+                fontsize = 5
+            else:
+                title = ''
+                if params['policy']['class'] == 'MACPolicy':
+                    if params['policy']['use_target']:
+                        title += 'MAQL, H: {0}, H target: {1}'.format(
+                            params['policy']['H'],
+                            params['policy']['get_action_target']['H']
+                        )
+                    else:
+                        title += 'MAQL, H: {0}, no target'.format(
+                            params['policy']['H'],
+                        )
+                elif params['policy']['class'] == 'RCcarMACPolicy':
+                    title += 'Probcoll, H: {0}'.format(
+                        params['policy']['H']
+                    )
+                else:
+                    raise NotImplementedError
+
+                if params['policy']['class'] == 'RCcarMACPolicy':
+                    title += ', {0}, {1}'.format(
+                        'classification' if params['policy']['RCcarMACPolicy']['is_classification'] else 'regression',
+                        'strictly increasing' if params['policy']['RCcarMACPolicy']['probcoll_strictly_increasing'] else 'not strictly increasing'
+                    )
+
+                title += ',\n{0}, {1}'.format(
+                    'uniform replay' if params['alg']['replay_pool_sampling'] == 'uniform' else 'prioritized replay',
+                    'clip cost' if params['policy']['clip_cost_target_with_dones'] else "don't clip cost"
+                )
+
+                fontsize = 8
+
+            ax_cumreward.set_title(title, fontdict={'fontsize': fontsize})
+
+    # set same x-axis
+    for ax in axes_cumreward.ravel():
+        ax.set_ylim(ylim)
+        ax.yaxis.set_ticks(np.arange(0, 2100, 500))
+        ax.set_yticklabels([''] * len(ax.get_yticklabels()))
+        ax.yaxis.set_ticks_position('both')
+
+    for ax in axes_cumreward[:, 0]:
+        ax.set_yticklabels(['', '250', '500', '750', '1000', ''])
+        ax.set_ylabel('Distance (m)', fontdict=font)
+
+    for ax in axes_cumreward[:, -1]:
+        ax.yaxis.tick_right()
+        ax.set_yticklabels(['', '3', '6', '9', '12', ''])
+        ax.set_ylabel('Hallway lengths', fontdict=font)
+        ax.yaxis.set_label_position("right")
+
+    f_cumreward.text(0.5, -0.04, 'Time (hours)', ha='center', fontdict=font)
+
+    f_cumreward.subplots_adjust(top=1.1, bottom=0.0, left=-0.2, right=1.2)
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    plt.close(f_cumreward)
+
+def plot_design_decisions_empty_hallway_reset():
+    FILE_NAME = 'rccar_paper_design_decisions_empty_hallway_reset'
+
+    all_exps = [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2518, 2577, 3)]
+    all_exps = all_exps[:4] + \
+               [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2796, 2819, 3)] + \
+               all_exps[4:]
+
+    plot_design_decisions(FILE_NAME, all_exps)
+
+def plot_design_decisions_empty_hallway_lifelong():
+    FILE_NAME = 'rccar_paper_design_decisions_empty_hallway_lifelong'
+
+    all_exps = [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2578, 2637, 3)]
+    all_exps = all_exps[:4] + \
+               [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2820, 2843, 3)] + \
+               all_exps[4:]
+
+    plot_design_decisions(FILE_NAME, all_exps)
+
+def plot_design_decisions_cluttered_hallway_reset():
+    FILE_NAME = 'rccar_paper_design_decisions_cluttered_hallway_reset'
+
+    all_exps = [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2638, 2697, 3)]
+    all_exps = all_exps[:4] + \
+               [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2844, 2867, 3)] + \
+               all_exps[4:]
+
+    plot_design_decisions(FILE_NAME, all_exps)
+
+def plot_design_decisions_cluttered_hallway_lifelong():
+    FILE_NAME = 'rccar_paper_design_decisions_cluttered_hallway_lifelong'
+
+    all_exps = [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2698, 2757, 3)]
+    all_exps = all_exps[:4] + \
+               [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in range(2868, 2891, 3)] + \
+               all_exps[4:]
+
+    plot_design_decisions(FILE_NAME, all_exps)
+
+def plot_baselines_prioritized_replay():
+    pass
+
+def plot_dd_heatmap(FILE_NAME, exp_nums, xmax):
+    all_exps = [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in exp_nums[::-1]]
+
+    window = 16
+    success_cumreward = [500, 1000, 1500, 1750]
+    convert_to_time = True
+
+    if convert_to_time:
+        xmax *= 0.25 / 3600. # times dt and to hours
+
+    ### get thresholds
+    all_threshold_steps = []
+    all_final_step = []
+    all_final_value = []
+    all_names = []
+    for exps in all_exps:
+        threshold_steps, final_step, final_value = \
+            get_threshold_steps_and_final_performance(exps, success_cumreward,
+                                                      convert_to_time=convert_to_time, window=window)
+
+        all_threshold_steps.append(threshold_steps)
+        all_final_step.append(final_step)
+        all_final_value.append(final_value)
+
+        params = exps[0].params
+        # output_name = 'value' if params['policy']['class'] == 'MACPolicy' else 'collision'
+        # bootstrap_name = 'bootstrap' if params['policy']['use_target'] else 'no bootstrap'
+        # if params['policy']['class'] == 'MACPolicy':
+        #     loss_name = 'regression'
+        # else:
+        #     if params['policy']['RCcarMACPolicy']['is_classification']:
+        #         loss_name = 'classification'
+        #     else:
+        #         loss_name = 'regression'
+        # horizon_name = 'short horizon' if params['policy']['H'] == 1 else 'long horizon'
+        output_name = 'v' if params['policy']['class'] == 'MACPolicy' else 'c'
+        bootstrap_name = '+b' if params['policy']['use_target'] else '-b'
+        if params['policy']['class'] == 'MACPolicy':
+            loss_name = 'r'
+        else:
+            if params['policy']['RCcarMACPolicy']['is_classification']:
+                loss_name = 'c'
+            else:
+                loss_name = 'r'
+        horizon_name = 'h' if params['policy']['H'] == 1 else 'H'
+        name = '{0}, {1}, {2}, {3}'.format(output_name, bootstrap_name, loss_name, horizon_name)
+        all_names.append(name)
+
+
+    all_threshold_steps = np.array(all_threshold_steps)
+    all_final_step = np.array(all_final_step)
+    all_final_value = np.array([all_final_value]).T / 2.
+
+    all_threshold_steps[all_threshold_steps < 0] = xmax
+
+    assert (all_threshold_steps.min() >= 0)
+    assert (all_threshold_steps.max() <= xmax)
+
+    ### plot heatmaps
+    f = plt.figure(figsize=(8, 3))
+    gs = matplotlib.gridspec.GridSpec(1, 2, width_ratios=[4, 1])
+    ax_thresh = plt.subplot(gs[0])
+    ax_fv = plt.subplot(gs[1])
+
+    ### plot thresholds
+    heatmap = ax_thresh.pcolor(all_threshold_steps, cmap=cm.magma_r)
+
+    p0 = ax_thresh.get_position().get_points().flatten()
+    ax_cbar = f.add_axes([p0[0], 0.9, p0[2] - p0[0], 0.05])
+    cbar = plt.colorbar(heatmap, cax=ax_cbar, orientation='horizontal')
+
+    for y in range(all_threshold_steps.shape[0]):
+        for x in range(all_threshold_steps.shape[1]):
+            color = 'k' if all_threshold_steps[y, x] < 20 else 'w'
+            if all_threshold_steps[y, x] < xmax:
+                value = '%.1f' % all_threshold_steps[y, x]
+            else:
+                value = 'N/A'
+            ax_thresh.text(x + 0.5, y + 0.5, value,
+                     horizontalalignment='center',
+                     verticalalignment='center',
+                           color=color
+                     )
+
+    cbar.ax.xaxis.set_ticks_position('top')
+    cbar.ax.xaxis.set_label_position('top')
+    cbar.set_label('Hours', labelpad=10, y=1.05, rotation=0)
+
+    ax_thresh.set_xticks(np.r_[0.5:len(success_cumreward):1])
+    ax_thresh.set_xticklabels(['{0}m'.format(sc // 2) for sc in success_cumreward])
+    ax_thresh.set_yticks(np.r_[0.5:len(all_names):1])
+    ax_thresh.set_yticklabels(all_names)
+
+    ### plot final values
+    heatmap = ax_fv.pcolor(all_final_value, vmin=0., vmax=1000., cmap=cm.magma)
+
+    p0 = ax_fv.get_position().get_points().flatten()
+    ax_cbar = f.add_axes([p0[0] + 0.15, p0[1], 0.04, p0[3] - p0[1]])
+    cbar = plt.colorbar(heatmap, cax=ax_cbar)
+
+    for y in range(all_final_value.shape[0]):
+        for x in range(all_final_value.shape[1]):
+            color = 'k' if all_final_value[y, x] > 300 else 'w'
+            ax_fv.text(x + 0.5, y + 0.5, '%d' % all_final_value[y, x],
+                     horizontalalignment='center',
+                     verticalalignment='center',
+                       color=color
+                     )
+
+    ax_fv.set_title('Final performance (m)', loc='left')
+    for ax in (ax_fv,):
+        ax.xaxis.set_visible(False)
+        ax.yaxis.set_visible(False)
+
+    f.savefig(os.path.join(SAVE_FOLDER, '{0}.png'.format(FILE_NAME)), bbox_inches='tight', dpi=150)
+    plt.close(f)
+
+def plot_dd_heatmap_empty_hallway_lifelong():
+    FILE_NAME = 'rccar_paper_dd_heatmap_empty_hallway_lifelong'
+
+    xmax = 4e5
+    exp_nums = [2463, 2472, 2835, 2593, 3046, 3082, 2617]
+
+    plot_dd_heatmap(FILE_NAME, exp_nums, xmax)
+
+def plot_dd_heatmap_cluttered_hallway_lifelong():
+    FILE_NAME = 'rccar_paper_dd_heatmap_cluttered_hallway_lifelong'
+
+    xmax = 8e5
+    exp_nums = [2499, 2508, 2883, 2713, 3046, 3082, 2737]
+
+    plot_dd_heatmap(FILE_NAME, exp_nums, xmax)
+
+def plot_dd_cluttered_hallway_lifelong_outputs_loss():
+    # \textbf{Model outputs and loss function.}
+    # % compare:
+    # %   value + reg         (rccar2883)
+    # %   collision + reg     (rccar2713)
+    # %   collision + classif (rccar2737)
+    # % constants: no bootstrap, long horizon
+    font = {'family': 'serif',
+            'weight': 'normal',
+            'size': 12}
+    matplotlib.rc('font', **font)
+
+    FILE_NAME = 'rccar_paper_dd_cluttered_hallway_lifelong_outputs_loss'
+
+    exp_nums = (2883, 2713, 2737)
+    all_exps = [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in exp_nums]
+    titles = ['value, regression', 'collision, regression', 'collision, classification']
+    colors = ['k', 'r', 'g']
+
+    f_cumreward, axes_cumreward = plt.subplots(1, 1, figsize=(4, 3), sharey=False, sharex=True)
+    if not hasattr(axes_cumreward, '__len__'):
+        axes_cumreward = np.array([axes_cumreward])
+
+    window = 32
+    ylim = (0, 2100)
+    xmax_timesteps = 8e5
+
+    for exp, title, color in zip(all_exps[::-1], titles[::-1], colors[::-1]):
+        # params = exp[0].params
+        # title = '{0}, {1}, {2}, backup: {3},\nN: {4}, H: {5}, rp: {6}'.format(
+        #     params['exp_name'],
+        #     params['alg']['env'].split('(params=')[0].split('"')[-1],
+        #     params['alg']['env'].split("'do_back_up':")[1].split(',')[0],
+        #     params['policy']['class'],
+        #     params['policy']['N'],
+        #     params['policy']['H'],
+        #     params['alg']['replay_pool_sampling'],
+        # )
+
+        plot_cumreward(axes_cumreward[0], exp, window=window, ylim=ylim, plot_indiv=False, convert_to_time=True, label=title, color=color)
+
+    # set same x-axis
+    xmax = xmax_timesteps * (0.25 / 3600.)
+    for ax in axes_cumreward:
+        ax.set_ylim(ylim)
+        ax.set_xlim((0, xmax))
+        ax.yaxis.set_ticks(np.arange(0, 2100, 500))
+        ax.set_yticklabels([''] * len(ax.get_yticklabels()))
+        ax.yaxis.set_ticks_position('both')
+
+        ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.4))
+
+    f_cumreward.text(0.5, -0.05, 'Time (hours)', ha='center', fontdict=font)
+
+    ax = axes_cumreward[0]
+    ax.set_yticklabels(['', '250', '500', '750', '1000', ''])
+    ax.set_ylabel('Distance (m)', fontdict=font)
+
+    # add y-axis on right side which is hallway lengths
+    ax = axes_cumreward[-1]
+    ax_twin = ax.twinx()
+    ax_twin.set_xlim((ax.get_xlim()))
+    ax_twin.set_ylim((ax.get_ylim()))
+    ax_twin.set_yticks(ax.get_yticks())
+    ax_twin.yaxis.tick_right()
+    ax_twin.set_yticklabels(['', '3', '6', '9', '12', ''])
+    ax_twin.set_ylabel('Hallway lengths', fontdict=font)
+    ax_twin.yaxis.set_label_position("right")
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}.png'.format(FILE_NAME)), bbox_inches='tight', dpi=200)
+    plt.close(f_cumreward)
+
+def plot_dd_cluttered_hallway_lifelong_horizon():
+    # \textbf{Model horizon.}
+    # % compare:
+    # %   value short horizon (rccar2499)
+    # %   value long horizon  (rccar2508)
+    # %   coll short horizon  (rccar3046)
+    # %   coll long horizon   (rccar3082)
+    # % constants: yes bootstrapping, reg for value and classif for coll
+    font = {'family': 'serif',
+            'weight': 'normal',
+            'size': 15}
+    matplotlib.rc('font', **font)
+
+    FILE_NAME = 'rccar_paper_dd_cluttered_hallway_lifelong_horizon'
+
+    exp_nums = (2499, 2508, 3046, 3082)
+    all_exps = [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in exp_nums]
+    titles = ['Value', 'Value', 'Collision', 'Collision']
+    labels = ['short horizon', 'long horizon'] * 2
+    colors = ['m', 'r', 'b', 'c']
+
+    f_cumreward, axes_cumreward = plt.subplots(1, 2, figsize=(8, 3), sharey=False, sharex=True)
+    axes_cumreward = np.array([axes_cumreward[0], axes_cumreward[0], axes_cumreward[1], axes_cumreward[1]])
+
+    window = 32
+    ylim = (0, 2100)
+    xmax_timesteps = 8e5
+    xmax = xmax_timesteps * (0.25 / 3600.)
+
+    for ax, exp, title, label, color in zip(axes_cumreward.ravel(), all_exps, titles, labels, colors):
+        # params = exp[0].params
+        # title = '{0}, {1}, {2}, backup: {3},\nN: {4}, H: {5}, rp: {6}'.format(
+        #     params['exp_name'],
+        #     params['alg']['env'].split('(params=')[0].split('"')[-1],
+        #     params['alg']['env'].split("'do_back_up':")[1].split(',')[0],
+        #     params['policy']['class'],
+        #     params['policy']['N'],
+        #     params['policy']['H'],
+        #     params['alg']['replay_pool_sampling'],
+        # )
+
+        plot_cumreward(ax, exp, window=window, ylim=ylim, plot_indiv=False, convert_to_time=True, label=label, color=color,
+                       xmax=xmax)
+        ax.set_title(title)
+
+    # set same x-axis
+    for ax in axes_cumreward:
+        ax.set_ylim(ylim)
+        ax.set_xlim((0, xmax))
+        ax.yaxis.set_ticks(np.arange(0, 2100, 500))
+        ax.set_yticklabels([''] * len(ax.get_yticklabels()))
+        ax.yaxis.set_ticks_position('both')
+
+        # ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.4))
+
+    # patch0 = mpatches.Patch(color='red', lw=0.1)
+    # patch0 = mpatches.Arrow(0, 0, 0.1, 0, color='blue', width=0.5)
+    patches = []
+    patches += [mlines.Line2D([], [], linewidth=3., color=colors[1])]
+    patches += [mlines.Line2D([], [], linewidth=3., color=colors[0])]
+    patches += [mlines.Line2D([], [], linewidth=3., color=colors[3])]
+    patches += [mlines.Line2D([], [], linewidth=3., color=colors[2])]
+
+    leg_labels = ['', '', labels[1], labels[0]]
+    f_cumreward.legend(ncol=2, handles=patches, labels=leg_labels, loc='upper center', bbox_to_anchor=(0.5, 1.4))
+
+    f_cumreward.text(0.5, -0.05, 'Time (hours)', ha='center', fontdict=font)
+
+    ax = axes_cumreward[0]
+    ax.set_yticklabels(['', '250', '500', '750', '1000', ''])
+    ax.set_ylabel('Distance (m)', fontdict=font)
+
+    # add y-axis on right side which is hallway lengths
+    ax = axes_cumreward[-1]
+    ax_twin = ax.twinx()
+    ax_twin.set_xlim((axes_cumreward[0].get_xlim()))
+    ax_twin.set_ylim((axes_cumreward[0].get_ylim()))
+    ax_twin.set_yticks(ax.get_yticks())
+    ax_twin.yaxis.tick_right()
+    ax_twin.set_yticklabels(['', '3', '6', '9', '12', ''])
+    ax_twin.set_ylabel('Hallway lengths', fontdict=font)
+    ax_twin.yaxis.set_label_position("right")
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}.png'.format(FILE_NAME)), bbox_inches='tight', dpi=200)
+    plt.close(f_cumreward)
+
+def plot_dd_cluttered_hallway_lifelong_bootstrapping():
+    # \textbf{Bootstrapping.}
+    # % compare:
+    # %   value -b (rccar2883)
+    # %   value +b (rccar2508)
+    # %   coll -b  (rccar2737)
+    # %   coll +b  (rccar3082)
+    # % constants: horizon (long), reg for value and classif for coll
+    font = {'family': 'serif',
+            'weight': 'normal',
+            'size': 15}
+    matplotlib.rc('font', **font)
+
+    FILE_NAME = 'rccar_paper_dd_cluttered_hallway_lifelong_bootstrapping'
+
+    exp_nums = (2883, 2508, 2737, 3082)
+    all_exps = [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in exp_nums]
+    titles = ['Value', 'Value', 'Collision', 'Collision']
+    labels = ['no bootstrap', 'bootstrap'] * 2
+    colors = ['m', 'r', 'b', 'c']
+
+    f_cumreward, axes_cumreward = plt.subplots(1, 2, figsize=(8, 3), sharey=False, sharex=True)
+    axes_cumreward = np.array([axes_cumreward[0], axes_cumreward[0], axes_cumreward[1], axes_cumreward[1]])
+
+    window = 32
+    ylim = (0, 2100)
+    xmax_timesteps = 8e5
+    xmax = xmax_timesteps * (0.25 / 3600.)
+
+    for ax, exp, title, label, color in zip(axes_cumreward.ravel(), all_exps, titles, labels, colors):
+        # params = exp[0].params
+        # title = '{0}, {1}, {2}, backup: {3},\nN: {4}, H: {5}, rp: {6}'.format(
+        #     params['exp_name'],
+        #     params['alg']['env'].split('(params=')[0].split('"')[-1],
+        #     params['alg']['env'].split("'do_back_up':")[1].split(',')[0],
+        #     params['policy']['class'],
+        #     params['policy']['N'],
+        #     params['policy']['H'],
+        #     params['alg']['replay_pool_sampling'],
+        # )
+
+        plot_cumreward(ax, exp, window=window, ylim=ylim, plot_indiv=False, convert_to_time=True, label=label, color=color,
+                       xmax=xmax)
+        ax.set_title(title)
+
+    # set same x-axis
+    for ax in axes_cumreward:
+        ax.set_ylim(ylim)
+        ax.set_xlim((0, xmax))
+        ax.yaxis.set_ticks(np.arange(0, 2100, 500))
+        ax.set_yticklabels([''] * len(ax.get_yticklabels()))
+        ax.yaxis.set_ticks_position('both')
+
+        # ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.4))
+
+    # patch0 = mpatches.Patch(color='red', lw=0.1)
+    # patch0 = mpatches.Arrow(0, 0, 0.1, 0, color='blue', width=0.5)
+    patches = []
+    patches += [mlines.Line2D([], [], linewidth=3., color=colors[1])]
+    patches += [mlines.Line2D([], [], linewidth=3., color=colors[0])]
+    patches += [mlines.Line2D([], [], linewidth=3., color=colors[3])]
+    patches += [mlines.Line2D([], [], linewidth=3., color=colors[2])]
+
+    leg_labels = ['', '', labels[1], labels[0]]
+    f_cumreward.legend(ncol=2, handles=patches, labels=leg_labels, loc='upper center', bbox_to_anchor=(0.5, 1.4))
+
+    f_cumreward.text(0.5, -0.05, 'Time (hours)', ha='center', fontdict=font)
+
+    ax = axes_cumreward[0]
+    ax.set_yticklabels(['', '250', '500', '750', '1000', ''])
+    ax.set_ylabel('Distance (m)', fontdict=font)
+
+    # add y-axis on right side which is hallway lengths
+    ax = axes_cumreward[-1]
+    ax_twin = ax.twinx()
+    ax_twin.set_xlim((axes_cumreward[0].get_xlim()))
+    ax_twin.set_ylim((axes_cumreward[0].get_ylim()))
+    ax_twin.set_yticks(ax.get_yticks())
+    ax_twin.yaxis.tick_right()
+    ax_twin.set_yticklabels(['', '3', '6', '9', '12', ''])
+    ax_twin.set_ylabel('Hallway lengths', fontdict=font)
+    ax_twin.yaxis.set_label_position("right")
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}.png'.format(FILE_NAME)), bbox_inches='tight', dpi=200)
+    plt.close(f_cumreward)
+
+def plot_cluttered_hallway_lifelong_standalone():
+    font = {'family': 'serif',
+            'weight': 'normal',
+            'size': 15}
+    matplotlib.rc('font', **font)
+
+    FILE_NAME = 'rccar_paper_cluttered_hallway_lifelong_standalone'
+    exp_nums = (2499, 2499 + 3, 2737)
+    all_exps = [load_experiments(range(i, i + 3), load_eval_rollouts=False) for i in exp_nums]
+    titles = ['Double\nQ-learning', '5-step Double\nQ-learning', 'Our\napproach']
+    colors = ['k', 'm', 'g']
+
+    f_cumreward, axes_cumreward = plt.subplots(1, 1, figsize=(6, 3), sharey=False, sharex=True)
+    if not hasattr(axes_cumreward, '__len__'):
+        axes_cumreward = np.array([axes_cumreward])
+
+    window = 32
+    ylim = (0, 2100)
+    xmax_timesteps = 8e5
+
+    for exp, title, color in zip(all_exps, titles, colors):
+        plot_cumreward(axes_cumreward[0], exp, window=window, ylim=ylim, plot_indiv=False, convert_to_time=True, label=title, color=color)
+
+    # set same x-axis
+    xmax = xmax_timesteps * (0.25 / 3600.)
+    for ax in axes_cumreward:
+        ax.set_ylim(ylim)
+        ax.set_xlim((0, xmax))
+        ax.yaxis.set_ticks(np.arange(0, 2100, 500))
+        ax.set_yticklabels([''] * len(ax.get_yticklabels()))
+        ax.yaxis.set_ticks_position('both')
+
+        ax.legend(ncol=len(all_exps), loc='upper center', bbox_to_anchor=(0.5, 1.4))
+
+    f_cumreward.text(0.5, -0.05, 'Time (hours)', ha='center', fontdict=font)
+
+    ax = axes_cumreward[0]
+    ax.set_yticklabels(['', '250', '500', '750', '1000', ''])
+    ax.set_ylabel('Distance (m)', fontdict=font)
+
+    # add y-axis on right side which is hallway lengths
+    ax = axes_cumreward[-1]
+    ax_twin = ax.twinx()
+    ax_twin.set_xlim((ax.get_xlim()))
+    ax_twin.set_ylim((ax.get_ylim()))
+    ax_twin.set_yticks(ax.get_yticks())
+    ax_twin.yaxis.tick_right()
+    ax_twin.set_yticklabels(['', '3', '6', '9', '12', ''])
+    ax_twin.set_ylabel('Hallway lengths', fontdict=font)
+    ax_twin.yaxis.set_label_position("right")
+
+    f_cumreward.savefig(os.path.join(SAVE_FOLDER, '{0}.png'.format(FILE_NAME)), bbox_inches='tight', dpi=200)
+    plt.close(f_cumreward)
+
+# plot_2445_2516()
+# plot_2518_2577_and_2796_2819()
+# plot_2578_2637_and_2820_2843()
+# plot_2638_2697_and_2844_2867()
+# plot_2698_2757_and_2868_2891()
+# plot_2759_2794()
+# plot_2893_3084()
+
+# plot_empty_hallway_reset()
+# plot_empty_hallway_lifelong()
+# plot_cluttered_hallway_reset()
+# plot_cluttered_hallway_lifelong()
+#
+# plot_priority_replay_empty_hallway_reset()
+# plot_priority_replay_empty_hallway_lifelong()
+# plot_priority_replay_cluttered_hallway_reset()
+# plot_priority_replay_cluttered_hallway_lifelong()
+#
+# plot_design_decisions_empty_hallway_reset()
+# plot_design_decisions_empty_hallway_lifelong()
+# plot_design_decisions_cluttered_hallway_reset()
+# plot_design_decisions_cluttered_hallway_lifelong()
+
+# plot_dd_heatmap_empty_hallway_lifelong()
+# plot_dd_heatmap_cluttered_hallway_lifelong()
+
+plot_dd_cluttered_hallway_lifelong_outputs_loss()
+plot_dd_cluttered_hallway_lifelong_horizon()
+plot_dd_cluttered_hallway_lifelong_bootstrapping()
+
+plot_cluttered_hallway_lifelong_standalone()

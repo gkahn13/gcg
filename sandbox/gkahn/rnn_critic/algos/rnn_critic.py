@@ -235,7 +235,7 @@ class RNNCritic(RLAlgorithm):
                 timeit.stop('sample')
 
             ### sample and DON'T add to buffer (for validation)
-            if step % self._eval_every_n_steps == 0:
+            if step > 0 and step % self._eval_every_n_steps == 0:
                 # logger.log('Evaluating')
                 timeit.start('eval')
                 eval_rollouts_step = []
