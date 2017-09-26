@@ -3067,7 +3067,7 @@ def plot_dd_cluttered_hallway_lifelong_horizon():
     patches += [mlines.Line2D([], [], linewidth=3., color=colors[3])]
     patches += [mlines.Line2D([], [], linewidth=3., color=colors[2])]
 
-    leg_labels = ['', '', labels[1], labels[0]]
+    leg_labels = [labels[1], labels[0], labels[1], labels[0]]
     f_cumreward.legend(ncol=2, handles=patches, labels=leg_labels, loc='upper center', bbox_to_anchor=(0.5, 1.4))
 
     f_cumreward.text(0.5, -0.05, 'Time (hours)', ha='center', fontdict=font)
@@ -3153,7 +3153,7 @@ def plot_dd_cluttered_hallway_lifelong_bootstrapping():
     patches += [mlines.Line2D([], [], linewidth=3., color=colors[3])]
     patches += [mlines.Line2D([], [], linewidth=3., color=colors[2])]
 
-    leg_labels = ['', '', labels[1], labels[0]]
+    leg_labels = [labels[1], labels[0], labels[1], labels[0]]
     f_cumreward.legend(ncol=2, handles=patches, labels=leg_labels, loc='upper center', bbox_to_anchor=(0.5, 1.4))
 
     f_cumreward.text(0.5, -0.05, 'Time (hours)', ha='center', fontdict=font)

@@ -4,6 +4,7 @@ import numpy as np
 
 from rllab.misc.ext import get_seed
 from rllab.envs.gym_env import GymEnv
+
 try:
     import gym_ple
 except:

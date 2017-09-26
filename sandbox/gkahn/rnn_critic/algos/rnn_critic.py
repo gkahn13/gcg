@@ -50,6 +50,7 @@ class RNNCritic(RLAlgorithm):
             assert(os.path.exists(kwargs['offpolicy']))
             logger.log('Loading offpolicy data from {0}'.format(kwargs['offpolicy']))
             self._sampler.add_offpolicy(kwargs['offpolicy'], int(kwargs['num_offpolicy']))
+            logger.log('Added {0} samples'.format(len(self._sampler)))
 
         self._alg_type = kwargs['type']
         alg_args = kwargs[self._alg_type]
