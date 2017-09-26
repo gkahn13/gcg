@@ -20,9 +20,7 @@ class EvalExp(object):
         self._num_rollouts = num_rollouts
 
         ### load data
-        # logger.log('AnalyzeRNNCritic: Loading data')
         self.name = os.path.basename(self._folder)
-        # logger.log('AnalyzeRNNCritic: params_file: {0}'.format(self._params_file))
         with open(self._params_file, 'r') as f:
             self.params = yaml.load(f)
 

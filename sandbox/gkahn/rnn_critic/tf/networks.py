@@ -25,8 +25,6 @@ def convnn(
         output_activation = tf.nn.sigmoid
     elif params['output_activation'] == 'softmax':
         output_activation = tf.nn.softmax
-    elif params['output_activation'] == 'spatial_softmax':
-        output_activation = lambda x: tf_utils.spatial_soft_argmax(x, dtype)
     elif params['output_activation'] == 'tanh':
         output_activation = tf.nn.tanh
     elif params['output_activation'] == 'relu':

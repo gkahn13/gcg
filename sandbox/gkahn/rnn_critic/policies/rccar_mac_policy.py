@@ -28,8 +28,7 @@ class RCcarMACPolicy(MACPolicy, Serializable):
     ### TF graph operations ###
     ###########################
 
-    def _graph_inference(self, tf_obs_lowd, tf_actions_ph, values_softmax, tf_preprocess, is_training,
-                         add_reg=True, num_dp=1):
+    def _graph_inference(self, tf_obs_lowd, tf_actions_ph, values_softmax, tf_preprocess, is_training, num_dp=1):
         """
         :param tf_obs_lowd: [batch_size, self._rnn_state_dim]
         :param tf_actions_ph: [batch_size, H, action_dim]
@@ -145,11 +144,11 @@ class RCcarMACPolicy(MACPolicy, Serializable):
         with tf.variable_scope(scope_select, reuse=reuse_select):
             tf_values_all_select, tf_values_softmax_all_select, _, _ = \
                 self._graph_inference(tf_obs_lowd_repeat_select, tf_actions, get_action_params['values_softmax'],
-                                      tf_preprocess_select, is_training=False, add_reg=False, num_dp=K)  # [num_obs*k, H]
+                                      tf_preprocess_select, is_training=False, num_dp=K)  # [num_obs*k, H]
         with tf.variable_scope(scope_eval, reuse=reuse_eval):
             tf_values_all_eval, tf_values_softmax_all_eval, _, _ = \
                 self._graph_inference(tf_obs_lowd_repeat_eval, tf_actions, get_action_params['values_softmax'],
-                                      tf_preprocess_eval, is_training=False, add_reg=False, num_dp=K)  # [num_obs*k, H]
+                                      tf_preprocess_eval, is_training=False, num_dp=K)  # [num_obs*k, H]
         if self._is_classification:
             ### convert pre-activation to post-activation
             tf_values_all_select = -tf.sigmoid(tf_values_all_select)
@@ -217,7 +216,7 @@ class RCcarMACPolicy(MACPolicy, Serializable):
                     tf_values_all_select, tf_values_softmax_all_select, _, _ = \
                         self._graph_inference(tf_obs_lowd_repeat_select, tf_actions,
                                               get_action_params['values_softmax'],
-                                              tf_preprocess_select, is_training=False, add_reg=False, num_dp=M)  # [num_obs*k, H]
+                                              tf_preprocess_select, is_training=False, num_dp=M)  # [num_obs*k, H]
 
                 if self._is_classification:
                     tf_values_all_select = -tf.sigmoid(tf_values_all_select) # convert pre-activation to post-activation
@@ -281,7 +280,7 @@ class RCcarMACPolicy(MACPolicy, Serializable):
                 tf_actions = tf.expand_dims(tf_get_action_seq, 0)
                 tf_values_all_eval, tf_values_softmax_all_eval, _, _ = \
                     self._graph_inference(tf_obs_lowd_eval, tf_actions, get_action_params['values_softmax'],
-                                          tf_preprocess_eval, is_training=False, add_reg=False)  # [num_obs*k, H]
+                                          tf_preprocess_eval, is_training=False)  # [num_obs*k, H]
 
                 if self._is_classification:
                     tf_values_all_eval = -tf.sigmoid(tf_values_all_eval) # convert pre-activation to post-activation

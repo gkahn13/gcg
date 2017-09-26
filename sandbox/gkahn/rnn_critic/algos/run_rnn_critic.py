@@ -1,29 +1,15 @@
-import os, argparse, yaml, shutil
+import os
 
-import numpy as np
-import random
-import tensorflow as tf
-
-from rllab.misc.instrument import run_experiment_lite
 import rllab.misc.logger as logger
-from rllab.misc.ext import set_seed
 from rllab import config
+
 ### environments
 from sandbox.gkahn.rnn_critic.envs.env_utils import create_env
+
 ### RNN critic
 from sandbox.gkahn.rnn_critic.algos.rnn_critic import RNNCritic
 from sandbox.gkahn.rnn_critic.policies.mac_policy import MACPolicy
-from sandbox.gkahn.rnn_critic.policies.mac_mux_policy import MACMuxPolicy
-from sandbox.gkahn.rnn_critic.policies.dqn_policy import DQNPolicy
-from sandbox.gkahn.rnn_critic.policies.cdqn_policy import CDQNPolicy
-from sandbox.gkahn.rnn_critic.policies.feedforward_mac_policy import FeedforwardMACPolicy
-from sandbox.gkahn.rnn_critic.policies.random_mac_policy import RandomMACPolicy
-from sandbox.gkahn.rnn_critic.policies.random_mac_mux_policy import RandomMACMuxPolicy
-from sandbox.gkahn.rnn_critic.policies.notarget_mac_policy import NotargetMACPolicy
-from sandbox.gkahn.rnn_critic.policies.final_mac_policy import FinalMACPolicy
-from sandbox.gkahn.rnn_critic.policies.final_nstep_mac_policy import FinalNstepMACPolicy
 from sandbox.gkahn.rnn_critic.policies.rccar_mac_policy import RCcarMACPolicy
-from sandbox.gkahn.rnn_critic.policies.mac_difftarg_policy import MACDifftargPolicy
 
 def run_rnn_critic(params):
     # copy yaml for posterity
@@ -47,29 +33,6 @@ def run_rnn_critic(params):
 
     env.reset()
     env_eval.reset()
-
-    # import matplotlib.pyplot as plt
-    # f = plt.figure()
-    # done = True
-    # im = None
-    # while True:
-    #     if done:
-    #         o = env.reset()
-    #         r = 0
-    #         done = False
-    #     else:
-    #         o, r, done, _ = env.step(0)
-    #
-    #     if im is None:
-    #         im = plt.imshow(o[:,:,0], cmap='Greys_r')
-    #         plt.show(block=False)
-    #     else:
-    #         im.set_array(o[:,:,0])
-    #     f.canvas.draw()
-    #     plt.pause(0.01)
-    #     input('done: {0}, r: {1}'.format(done, r))
-    #
-    # import IPython; IPython.embed()
 
     #####################
     ### Create policy ###

@@ -199,7 +199,7 @@ class MACPolicy(Parameterized, Serializable):
 
         return tf_preprocess
 
-    def _graph_obs_to_lowd(self, tf_obs_ph, tf_preprocess, is_training, add_reg=True):
+    def _graph_obs_to_lowd(self, tf_obs_ph, tf_preprocess, is_training):
         import tensorflow.contrib.layers as layers
 
         with tf.name_scope('obs_to_lowd'):
@@ -213,7 +213,8 @@ class MACPolicy(Parameterized, Serializable):
                                               tf.tile(tf_preprocess['observations_mean_var'], (1, self._obs_history_len)),
                                               tf.tile(tf_preprocess['observations_orth_var'], (self._obs_history_len,)))
             else:
-                tf_obs_whitened = tf_obs_ph # TODO
+                raise NotImplementedError
+                tf_obs_whitened = tf_obs_ph
                 # tf_obs_whitened = tf.matmul(tf_obs_ph -
                 #                             tf.tile(tf_preprocess['observations_mean_var'], (1, self._obs_history_len)),
                 #                             tf_utils.block_diagonal(
@@ -235,8 +236,7 @@ class MACPolicy(Parameterized, Serializable):
 
         return tf_obs_lowd
 
-    def _graph_inference(self, tf_obs_lowd, tf_actions_ph, values_softmax, tf_preprocess, is_training,
-                         add_reg=True, num_dp=1, N=None):
+    def _graph_inference(self, tf_obs_lowd, tf_actions_ph, values_softmax, tf_preprocess, is_training, num_dp=1, N=None):
         """
         :param tf_obs_lowd: [batch_size, self._rnn_state_dim]
         :param tf_actions_ph: [batch_size, H, action_dim]
@@ -361,11 +361,11 @@ class MACPolicy(Parameterized, Serializable):
         with tf.variable_scope(scope_select, reuse=reuse_select):
             tf_values_all_select, tf_values_softmax_all_select, _, _ = \
                 self._graph_inference(tf_obs_lowd_repeat_select, tf_actions, get_action_params['values_softmax'],
-                                      tf_preprocess_select, is_training=False, add_reg=False, N=N)  # [num_obs*k, H]
+                                      tf_preprocess_select, is_training=False, N=N)  # [num_obs*k, H]
         with tf.variable_scope(scope_eval, reuse=reuse_eval):
             tf_values_all_eval, tf_values_softmax_all_eval, _, _ = \
                 self._graph_inference(tf_obs_lowd_repeat_eval, tf_actions, get_action_params['values_softmax'],
-                                      tf_preprocess_eval, is_training=False, add_reg=False, N=N)  # [num_obs*k, H]
+                                      tf_preprocess_eval, is_training=False, N=N)  # [num_obs*k, H]
         ### get_action based on select (policy)
         tf_values_select = tf.reduce_sum(tf_values_all_select * tf_values_softmax_all_select, reduction_indices=1)  # [num_obs*K]
         tf_values_select = tf.reshape(tf_values_select, (num_obs, K))  # [num_obs, K]
@@ -662,13 +662,6 @@ class MACPolicy(Parameterized, Serializable):
         if self._use_target:
             feed_dict[self._tf_dict['obs_target_ph']] = observations
 
-        # d = {}
-        # keys = [k for k in self._tf_debug.keys()]
-        # vs = self._tf_dict['sess'].run([self._tf_debug[k] for k in keys], feed_dict=feed_dict)
-        # for k, v in zip(keys, vs):
-        #     d[k] = v
-        # import IPython; IPython.embed()
-
         cost, mse, _ = self._tf_dict['sess'].run([self._tf_dict['cost'],
                                                   self._tf_dict['mse'],
                                                   self._tf_dict['opt']],
@@ -683,9 +676,6 @@ class MACPolicy(Parameterized, Serializable):
         tf_graph = tf_sess.graph
         with tf_sess.as_default(), tf_graph.as_default():
             self._graph_init_vars(tf_sess)
-        # self._tf_dict['sess'].run([v.initializer for v in self._tf_dict['policy_vars']])
-        # if self._tf_dict['target_vars'] is not None:
-        #     self._tf_dict['sess'].run([v.initializer for v in self._tf_dict['target_vars']])
 
     ######################
     ### Policy methods ###
@@ -698,12 +688,6 @@ class MACPolicy(Parameterized, Serializable):
 
     def get_actions(self, steps, current_episode_steps, observations, explore):
         d = {}
-        # keys = [k for k in self._tf_debug.keys()]
-        # vs = self._tf_dict['sess'].run([self._tf_debug[k] for k in keys],
-        #                                 feed_dict={self._tf_dict['obs_ph']: observations})
-        # for k, v in zip(keys, vs):
-        #     d[k] = v
-
         feed_dict = {
             self._tf_dict['obs_ph']: observations,
             self._tf_dict['episode_timesteps_ph']: current_episode_steps
@@ -729,21 +713,6 @@ class MACPolicy(Parameterized, Serializable):
             actions = [int(a.argmax()) for a in actions]
 
         return actions, values, logprobs, d
-
-    def get_values(self, observations, actions):
-        get_values = self._tf_dict['sess'].run(self._tf_dict['get_value'],
-                                               feed_dict={self._tf_dict['obs_ph']: observations,
-                                                          self._tf_dict['actions_ph']: actions})
-
-        d = {}
-        # keys = [k for k in self._tf_debug.keys() if 'train' in k]
-        # values = self._tf_dict['sess'].run([self._tf_debug[k] for k in keys],
-        #                                    feed_dict={self._tf_dict['obs_ph']: observations,
-        #                                               self._tf_dict['actions_ph']: actions})
-        # for k, v in zip(keys, values):
-        #     d[k] = v
-
-        return get_values, d
 
     def reset_get_action(self):
         self._tf_dict['sess'].run(self._tf_dict['get_action_reset_ops'])
