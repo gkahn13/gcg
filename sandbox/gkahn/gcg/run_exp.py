@@ -3,7 +3,7 @@ import argparse
 import yaml
 
 from rllab import config
-from sandbox.gkahn.rnn_critic.algos.run_rnn_critic import run_rnn_critic
+from sandbox.gkahn.gcg.algos.gcg import run_gcg
 from rllab.misc.instrument import stub, run_experiment_lite
 
 parser = argparse.ArgumentParser()
@@ -23,11 +23,11 @@ for exp in args.exps:
         params_txt = ''.join(f.readlines())
     params['txt'] = params_txt
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(params['policy']['gpu_device'])  # TODO: hack so don't double GPU
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(params['policy']['gpu_device'])
     config.USE_TF = True
 
     run_experiment_lite(
-        run_rnn_critic,
+        run_gcg,
         snapshot_mode="all",
         exp_name=params['exp_name'],
         exp_prefix=params['exp_prefix'],

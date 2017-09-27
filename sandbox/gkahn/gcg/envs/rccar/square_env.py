@@ -1,6 +1,6 @@
 import os
 
-from sandbox.gkahn.rnn_critic.envs.rccar.cylinder_env import CylinderEnv
+from sandbox.gkahn.gcg.envs.rccar.cylinder_env import CylinderEnv
 
 class SquareEnv(CylinderEnv):
 
@@ -38,18 +38,5 @@ class SquareEnv(CylinderEnv):
         return int(1e3)
 
 if __name__ == '__main__':
-    params = {'visualize': True, 'run_as_task': True, 'hfov': 120}
+    params = {'visualize': True, 'run_as_task': True, 'do_back_up': True, 'hfov': 120}
     env = SquareEnv(params)
-
-    # env = SquareEnv()
-    # done = False
-    # positions = []
-    # collisions = []
-    #
-    # env.reset()
-    # while not done:
-    #     obs, r, done, info = env.step([0., 2.])
-    #     positions.append(info['pos'][:2])
-    #     collisions.append(info['coll'])
-    #
-    # import IPython; IPython.embed()

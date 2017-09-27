@@ -1,7 +1,7 @@
 import tensorflow as tf
 
-from sandbox.gkahn.rnn_critic.tf import rnn_cell
-from sandbox.gkahn.rnn_critic.tf.weight_norm import fully_connected_weight_norm, conv2d_weight_norm
+from sandbox.gkahn.gcg.tf import rnn_cell
+from sandbox.gkahn.gcg.tf.weight_norm import fully_connected_weight_norm, conv2d_weight_norm
 
 def convnn(
         inputs,

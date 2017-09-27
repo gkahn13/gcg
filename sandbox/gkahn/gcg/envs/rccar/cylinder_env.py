@@ -2,7 +2,7 @@ import os
 import numpy as np
 import cv2
 
-from sandbox.gkahn.rnn_critic.envs.rccar.car_env import CarEnv
+from sandbox.gkahn.gcg.envs.rccar.car_env import CarEnv
 
 from rllab.spaces.box import Box
 
@@ -117,7 +117,5 @@ class CylinderEnv(CarEnv):
         return 24
 
 if __name__ == '__main__':
-    params = {'visualize': True, 'run_as_task': True, 'hfov': 100}
+    params = {'visualize': True, 'run_as_task': True, 'do_back_up': False, 'hfov': 120}
     env = CylinderEnv(params)
-    # env = CylinderEnv()
-    # import IPython; IPython.embed()

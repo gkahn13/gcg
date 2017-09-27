@@ -6,10 +6,10 @@ import joblib
 from rllab.misc.ext import set_seed
 import rllab.misc.logger as logger
 
-from sandbox.gkahn.rnn_critic.policies.mac_policy import MACPolicy
-from sandbox.gkahn.rnn_critic.sampler.sampler import RNNCriticSampler
+from sandbox.gkahn.gcg.policies.mac_policy import MACPolicy
+from sandbox.gkahn.gcg.sampler.sampler import RNNCriticSampler
 
-from sandbox.gkahn.rnn_critic.envs.env_utils import create_env
+from sandbox.gkahn.gcg.envs.env_utils import create_env
 
 class EvalExp(object):
     def __init__(self, folder, num_rollouts):
@@ -94,20 +94,9 @@ class EvalExp(object):
                 step += n_envs
                 new_rollouts = sampler.get_recent_paths()
                 if len(new_rollouts) > 0:
-                    while True:
-                        yn = raw_input('Keep rollout?')
-                        if yn[0] == 'y':
-                            logger.log('Keeping rollout')
-                            logger.log('Starting rollout {0}'.format(len(rollouts)))
-                            rollouts += new_rollouts
-                            self.save_eval_rollouts(itr, rollouts)
-                            break
-                        elif yn[0] == 'n':
-                            logger.log('Not keeping rollout')
-                            logger.log('Redoing rollout {0}'.format(len(rollouts)))
-                            break
-                        else:
-                            logger.log('Invalid response')
+                    rollouts += new_rollouts
+                    logger.log('Starting rollout {0}'.format(len(rollouts)))
+                    self.save_eval_rollouts(itr, rollouts)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -116,4 +105,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     eval_exp = EvalExp(args.folder, args.numrollouts)
-    eval_exp.eval_policy(-1, gpu_device=0, gpu_frac=0.4)
+    eval_exp.eval_policy(-1)

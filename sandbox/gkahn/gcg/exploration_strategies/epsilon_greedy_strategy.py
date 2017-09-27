@@ -1,5 +1,5 @@
 from rllab.core.serializable import Serializable
-from sandbox.gkahn.rnn_critic.utils import schedules
+from sandbox.gkahn.gcg.utils import schedules
 
 import numpy as np
 

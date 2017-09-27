@@ -12,9 +12,9 @@ except:
 
 from sandbox.rocky.tf.envs.vec_env_executor import VecEnvExecutor
 
-from sandbox.gkahn.rnn_critic.sampler.replay_pool import RNNCriticReplayPool
-from sandbox.gkahn.rnn_critic.utils import utils
-from sandbox.gkahn.rnn_critic.envs.env_utils import create_env
+from sandbox.gkahn.gcg.sampler.replay_pool import RNNCriticReplayPool
+from sandbox.gkahn.gcg.utils import utils
+from sandbox.gkahn.gcg.envs.env_utils import create_env
 from sandbox.rocky.tf.spaces.discrete import Discrete
 from sandbox.rocky.tf.spaces.box import Box
 

@@ -3,7 +3,7 @@ import numpy as np
 from rllab.core.serializable import Serializable
 from rllab.exploration_strategies.base import ExplorationStrategy
 from sandbox.rocky.tf.spaces.box import Box
-from sandbox.gkahn.rnn_critic.utils import schedules
+from sandbox.gkahn.gcg.utils import schedules
 
 class GaussianStrategy(ExplorationStrategy, Serializable):
     """

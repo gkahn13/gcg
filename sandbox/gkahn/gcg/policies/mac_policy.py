@@ -13,12 +13,13 @@ from rllab.misc import ext
 from sandbox.rocky.tf.spaces.discrete import Discrete
 from sandbox.gkahn.tf.core.parameterized import Parameterized
 from sandbox.gkahn.tf.core import xplatform
-from sandbox.gkahn.rnn_critic.utils import schedules, tf_utils
-from sandbox.gkahn.rnn_critic.tf import networks
+from sandbox.gkahn.gcg.utils import schedules
+from sandbox.gkahn.gcg.tf import tf_utils
+from sandbox.gkahn.gcg.tf import networks
 
 ### exploration strategies
-from sandbox.gkahn.rnn_critic.exploration_strategies.epsilon_greedy_strategy import EpsilonGreedyStrategy
-from sandbox.gkahn.rnn_critic.exploration_strategies.gaussian_strategy import GaussianStrategy
+from sandbox.gkahn.gcg.exploration_strategies.epsilon_greedy_strategy import EpsilonGreedyStrategy
+from sandbox.gkahn.gcg.exploration_strategies.gaussian_strategy import GaussianStrategy
 
 class MACPolicy(Parameterized, Serializable):
     def __init__(self, **kwargs):

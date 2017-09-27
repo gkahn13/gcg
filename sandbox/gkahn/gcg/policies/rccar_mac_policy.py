@@ -4,10 +4,10 @@ import tensorflow as tf
 from rllab.core.serializable import Serializable
 from rllab.misc import ext
 
-from sandbox.gkahn.rnn_critic.policies.mac_policy import MACPolicy
-from sandbox.gkahn.rnn_critic.utils import tf_utils
+from sandbox.gkahn.gcg.policies.mac_policy import MACPolicy
+from sandbox.gkahn.gcg.tf import tf_utils
 from sandbox.gkahn.tf.core import xplatform
-from sandbox.gkahn.rnn_critic.tf import networks
+from sandbox.gkahn.gcg.tf import networks
 
 from sandbox.rocky.tf.spaces.discrete import Discrete
 

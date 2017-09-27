@@ -1,7 +1,7 @@
 import time
 import numpy as np
 import sys
-from sandbox.gkahn.rnn_critic.envs.rccar.panda3d_camera_sensor import Panda3dCameraSensor
+from sandbox.gkahn.gcg.envs.rccar.panda3d_camera_sensor import Panda3dCameraSensor
 from direct.showbase.DirectObject import DirectObject
 from direct.showbase.ShowBase import ShowBase
 from panda3d.core import loadPrcFileData

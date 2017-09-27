@@ -1,0 +1,183 @@
+exp_name: dql
+exp_prefix: sim_rccar
+seed: 1
+
+#################
+### Algorithm ###
+#################
+
+alg:
+
+  ### Environment ###
+
+  env: "SquareClutteredEnv(params={'hfov': 120, 'do_back_up': False, 'collision_reward_only': False, 'collision_reward': 0, 'speed_limits': [2., 2.]})"
+  env_eval: "SquareClutteredEnv(params={'hfov': 120, 'do_back_up': False, 'collision_reward': 0, 'speed_limits': [2., 2.]})"
+  normalize_env: False
+  n_envs: 1 # number of training environments
+  render: False
+  
+  
+  ### Offpolicy data ###
+  
+  offpolicy: # folder path containing .pkl files with rollouts
+  num_offpolicy: # number of offpolicy datapoints to load
+
+  
+  ### Steps ###
+  
+  total_steps: 8.e+5 # corresponding to number of env.step(...) calls
+
+  sample_after_n_steps: -1
+  onpolicy_after_n_steps: 4.e+3 # take random actions until this many steps is reached
+  
+  learn_after_n_steps: 1.e+3 # when to start training the model
+  train_every_n_steps: 0.25 # number of calls to model.train per env.step (if fractional, multiple trains per step)
+  eval_every_n_steps: 5.e+2 # how often to evaluate policy in env_eval
+
+  update_target_after_n_steps: -1 # after which the target network can be updated
+  update_target_every_n_steps: 5.e+3 # how often to update target network
+  update_preprocess_every_n_steps: 1.e+3 # how often to update preprocess (see preprocess below)
+
+  save_every_n_steps: 1.e+4 # how often to save experiment data
+  log_every_n_steps: 1.e+3 # how often to print log information
+
+  save_every_n_batches: 5
+  log_every_n_batches: 1
+
+  
+  ### Exploration ###
+
+  exploration_strategies:
+    # endpoints: [[step, value], [step, value], ...]
+    GaussianStrategy: # additive gaussian noise
+      endpoints: [[0, 0.25], [8.e+4, 0.05], [24.e+4, 0.005]]
+      outside_value: 0.005
+    EpsilonGreedyStrategy:
+      endpoints: [[0, 1.0], [1.e+3, 1.0], [8.e+4, 0.1], [16.e+4, 0.01]]
+      outside_value: 0.01
+
+
+  ### Replay pool
+    
+  batch_size: 32 # per training step
+  replay_pool_size: 1.e+6
+  replay_pool_sampling: uniform # <uniform/terminal>
+  replay_pool_params:
+    terminal:
+      frac: 0.5 # fraction of batch that from an end of an episode
+      
+      
+  ### Saving data
+      
+  save_rollouts: False
+  save_rollouts_observations: False # False saves space
+  save_env_infos: False # False saves space
+
+##############
+### Policy ###
+##############
+
+policy:
+  N: 1 # label horizon
+  H: 1 # model horizon
+  gamma: 0.99 # discount factor
+  obs_history_len: 4 # number of previous observations to concatenate (inclusive)
+  
+  values_softmax: # how to weight the output predictions from horizons [1..H]
+    type: mean # <mean/final/exponential>
+    exponential:
+      lambda: 0.9
+  use_target: True # target network?
+  separate_target_params: True # if target network, separate parameters?
+  clip_cost_target_with_dones: False # if False, extends end of episodes by assuming 0 rewards and random actions taken
+  
+  get_action_test: # how to select actions at test time (i.e., when gathering samples)
+    H: 1
+    values_softmax:
+      type: mean # <mean/final/exponential>
+      exponential:
+        lambda: 0.9
+    type: random # <random/lattice> action selection method
+    random:
+      K: 4096
+    lattice:
+
+  get_action_target: # for computing target values
+    H: 1
+    values_softmax:
+      type: mean # <mean/final/exponential>
+      exponential:
+        lambda: 0.9
+    type: random # <random/lattice>
+    random:
+      K: 100
+    lattice:
+
+  class: MACPolicy # <MACPolicy/RCcarMACPolicy> model class
+  MACPolicy: &idMACPolicy # outputs values
+    image_graph: # CNN
+      filters: [32, 64, 64]
+      kernels: [8, 4, 3]
+      strides: [4, 2, 1]
+      padding: SAME
+      conv_activation: relu # <relu>
+      output_activation: relu # <relu/tanh/sigmoid/softmax>
+      normalizer: # <layer_norm/weight_norm/batch_norm>
+      batch_norm_decay: 0.9
+      
+    observation_graph: # fully connected
+      hidden_layers: [256]
+      hidden_activation: relu # <relu/tanh>
+      output_dim: 128 # this is the hidden size of the rnn
+      output_activation: relu # <relu/tanh/sigmoid/softmax>
+      normalizer: # <layer_norm/weight_norm/batch_norm>
+      batch_norm_decay: 0.9
+
+    action_graph: # fully connected
+      hidden_layers: [16]
+      hidden_activation: relu # <relu/tanh>
+      output_dim: 16
+      output_activation: relu # <relu/tanh/sigmoid/softmax>
+      normalizer: # <layer_norm/weight_norm/batch_norm>
+      batch_norm_decay: 0.9
+
+    rnn_graph:
+      num_cells: 1
+      cell_type: mulint_lstm # <rnn/mulint_rnn/lstm/mulint_lstm>
+      cell_args: # If you need to pass variables to cells 
+        use_layer_norm: False
+
+    output_graph: # fully connected
+      hidden_layers: [16]
+      hidden_activation: relu # <relu/tanh>
+      normalizer: # <layer_norm/weight_norm/batch_norm>
+      batch_norm_decay: 0.9 
+      
+    only_completed_episodes: False # only train with fully completed episodes?
+  RCcarMACPolicy: # outputs collision probabilities
+    <<: *idMACPolicy
+    speed_weight: 0. # how much do we care about going the maximum speed possible? (doesn't matter when fixed speed environment)
+    probcoll_strictly_increasing: False # enforce predicted probabilities always increase
+    is_classification: True # use cross entropy loss instead of mean squared error
+    coll_weight_pct: # if replay_pool_sample is terminal, how much to reweight collision vs non-collision trajectories in the cost function?
+
+  # preprocessing
+  preprocess: # whiten observations / actions / rewards
+    observations_mean: True
+    observations_orth: True
+    actions_mean: False
+    actions_orth: False
+    rewards_mean: False
+    rewards_orth: False
+
+  # training
+  weight_decay: 1.e-6 # L2 regularization
+  lr_schedule: # learning rate schedule
+    endpoints: [[0, 1.e-4], [1.e+6, 1.e-4]]
+    outside_value: 1.e-4
+  grad_clip_norm: 10 # clip the gradient magnitude
+
+  # device
+  gpu_device: 1
+  gpu_frac: 0.2
+

@@ -5,7 +5,7 @@ import numpy as np
 
 import rllab.misc.logger as logger
 
-from sandbox.gkahn.rnn_critic.utils.utils import timeit
+from sandbox.gkahn.gcg.utils.utils import timeit
 
 class RNNCriticReplayPool(object):
 
