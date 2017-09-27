@@ -55,6 +55,8 @@ To run our approach, execute
 $ python run_exp.py --exps ours
 ```
 
+The results will be stored in the gcg/data folder.
+
 You can run other yaml files by replacing "ours" with the desired yaml file name (e.g., "dql" or "nstep_dql")
 
 ---
