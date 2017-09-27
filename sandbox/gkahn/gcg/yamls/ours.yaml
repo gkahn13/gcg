@@ -179,5 +179,5 @@ policy:
 
   # device
   gpu_device: 0
-  gpu_frac: 0.6
+  gpu_frac: 0.7
 

@@ -5,6 +5,8 @@ Code implementation of our [paper](TODO). The main code is in [sandbox/gkahn/gcg
 ---
 ### Installation
 
+Clone the repository and add it to your PYTHONPATH
+
 Install [Anaconda using the Python 2.7 installer](https://www.anaconda.com/download/).
 
 We will always assume the current directory is [sandbox/gkahn/gcg](https://github.com/gkahn13/gcg/tree/gcg_release/sandbox/gkahn/gcg). Create a new Anaconda environment and activate it:
@@ -27,12 +29,12 @@ $ python envs/rccar/square_cluttered_env.py
 ```
 
 The commands are
-* [w] forward
-* [x] backward
-* [a] left
-* [d] right
-* [s] stop
-* [r] reset
+- [w] forward
+- [x] backward
+- [a] left
+- [d] right
+- [s] stop
+- [r] reset
 
 ---
 ### Yaml experiment configuration files
