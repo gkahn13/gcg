@@ -18,6 +18,12 @@ Install Panda3D
 $ pip install --pre --extra-index-url https://archive.panda3d.org/ panda3d
 ```
 
+Increase the simulation speed by running
+```bash
+$ nvidia-settings
+```
+And disabling "Sync to VBLank" under "OpenGL Settings"
+
 ---
 ### Simulation environment
 
@@ -27,12 +33,12 @@ $ python envs/rccar/square_cluttered_env.py
 ```
 
 The commands are
-* [w] forward
-* [x] backward
-* [a] left
-* [d] right
-* [s] stop
-* [r] reset
+- [w] forward
+- [x] backward
+- [a] left
+- [d] right
+- [s] stop
+- [r] reset
 
 ---
 ### Yaml experiment configuration files
