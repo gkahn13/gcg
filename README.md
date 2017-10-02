@@ -1,6 +1,6 @@
 # Self-supervised Deep Reinforcement Learning with Generalized Computation Graphs for Robot Navigation
 
-[Arxiv link](TODO)
+[Arxiv link](https://arxiv.org/abs/1709.10489)
 
 <b>Abstract</b>: Enabling robots to autonomously navigate complex environments is essential for real-world deployment. Prior methods approach this problem by having the robot maintain an internal map of the world, and then use a localization and planning method to navigate through the internal map. However, these approaches often include a variety of assumptions, are computationally intensive, and do not learn from failures. In contrast, learning-based methods improve as the robot acts in the environment, but are difficult to deploy in the real-world due to their high sample complexity. To address the need to learn complex policies with few samples, we propose a generalized computation graph that subsumes value-based model-free methods and model-based methods, with specific instantiations interpolating between model-free and model-based. We then instantiate this graph to form a navigation model that learns from raw images and is sample efficient. Our simulated car experiments explore the design decisions of our navigation model, and show our approach outperforms single-step and N-step double Q-learning. We also evaluate our approach on a real-world RC car and show it can learn to navigate through a complex indoor environment with a few hours of fully autonomous, self-supervised training. 
 
@@ -75,7 +75,5 @@ You can run other yaml files by replacing "ours" with the desired yaml file name
 ---
 ### References
 
-```
-TODO bibtex
-```
+Gregory Kahn, Adam Villaflor, Bosen Ding, Pieter Abbeel, Sergey Levine. "Self-supervised Deep Reinforcement Learning with Generalized Computation Graphs for Robot Navigation." 	[arXiv:1709.10489](https://arxiv.org/abs/1709.10489)
 
