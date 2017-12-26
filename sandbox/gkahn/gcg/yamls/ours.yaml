@@ -10,7 +10,7 @@ alg:
 
   ### Environment ###
 
-  env: "SquareClutteredEnv(params={'hfov': 120, 'do_back_up': False, 'collision_reward_only': True, 'collision_reward': -1, 'speed_limits': [2., 2.]})"
+  env: "SquareClutteredEnv(params={'hfov': 120, 'do_back_up': True, 'collision_reward_only': True, 'collision_reward': -1, 'speed_limits': [2., 2.]})"
   env_eval: "SquareClutteredEnv(params={'hfov': 120, 'do_back_up': False, 'collision_reward': 0, 'speed_limits': [2., 2.]})"
   normalize_env: False
   n_envs: 1 # number of training environments
